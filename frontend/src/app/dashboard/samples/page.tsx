@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Search, QrCode } from "lucide-react";
+import { Plus, Search, QrCode, Printer } from "lucide-react";
 import { format } from "date-fns";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/Button";
@@ -12,11 +13,14 @@ import { SampleStatusBadge } from "@/components/ui/Badge";
 import { SampleForm } from "@/components/forms/SampleForm";
 import { samplesApi } from "@/lib/api";
 import type { Sample } from "@/lib/types";
+import TestReportPrint from "@/components/TestReportPrint";
 
 export default function SamplesPage() {
   const qc = useQueryClient();
+  const router = useRouter();
   const [showCreate, setShowCreate] = useState(false);
   const [barcodeModal, setBarcodeModal] = useState<{ code: string; b64: string } | null>(null);
+  const [printSampleId, setPrintSampleId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
 
@@ -48,7 +52,7 @@ export default function SamplesPage() {
   });
 
   const columns = [
-    { key: "sample_code", header: "Sample Code", render: (r: Sample) => <span className="font-mono font-medium text-primary-600">{r.sample_code}</span> },
+    { key: "sample_code", header: "Sample Code", render: (r: Sample) => <button className="font-mono font-medium text-primary-600 hover:text-primary-800 hover:underline" onClick={(e) => { e.stopPropagation(); router.push(`/dashboard/samples/${r.id}`); }}>{r.sample_code}</button> },
     { key: "sample_type", header: "Type", render: (r: Sample) => <span>{r.sample_type ?? "—"}</span> },
     { key: "contract_id", header: "Contract", render: (r: Sample) => <span className="text-gray-500">{r.contract_id ? `#${r.contract_id}` : "Standalone"}</span> },
     { key: "status", header: "Status", render: (r: Sample) => <SampleStatusBadge status={r.status} /> },
@@ -56,11 +60,16 @@ export default function SamplesPage() {
     { key: "received_at", header: "Received", render: (r: Sample) => <span className="text-gray-500 text-xs">{format(new Date(r.received_at), "MMM d, yyyy")}</span> },
     {
       key: "actions",
-      header: "QR",
+      header: "",
       render: (r: Sample) => (
-        <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); handleBarcode(r.id); }}>
-          <QrCode className="w-4 h-4" />
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button size="sm" variant="ghost" title="Print Test Report" onClick={(e) => { e.stopPropagation(); setPrintSampleId(r.id); }}>
+            <Printer className="w-4 h-4" />
+          </Button>
+          <Button size="sm" variant="ghost" title="QR Code" onClick={(e) => { e.stopPropagation(); handleBarcode(r.id); }}>
+            <QrCode className="w-4 h-4" />
+          </Button>
+        </div>
       ),
     },
   ];
@@ -129,6 +138,9 @@ export default function SamplesPage() {
           </div>
         )}
       </Modal>
+      {printSampleId && (
+        <TestReportPrint sampleId={printSampleId} onClose={() => setPrintSampleId(null)} />
+      )}
     </DashboardLayout>
   );
 }

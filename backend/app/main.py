@@ -125,6 +125,21 @@ def ensure_schema_compatibility():
             ))
             print("[LIMS] Added samples.requested_test_ids column.")
 
+        # customers.currency — add if not present
+        currency_exists = connection.execute(
+            text(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'customers' AND column_name = 'currency'
+                """
+            )
+        ).scalar()
+        if not currency_exists:
+            connection.execute(text(
+                "ALTER TABLE customers ADD COLUMN currency VARCHAR DEFAULT 'KES'"
+            ))
+            print("[LIMS] Added customers.currency column.")
+
 
 @app.on_event("startup")
 def on_startup():
@@ -145,6 +160,13 @@ def on_startup():
             print(f"[LIMS] Seeded {added} dialysis water test catalog items.")
         else:
             print("[LIMS] Test catalog already up to date.")
+
+        from app.services.seed_customers import seed_customers
+        cust_added = seed_customers(db)
+        if cust_added:
+            print(f"[LIMS] Seeded {cust_added} customers from customer list.")
+        else:
+            print("[LIMS] Customers already up to date.")
     finally:
         db.close()
 

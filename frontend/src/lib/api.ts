@@ -4,6 +4,7 @@ import type {
   User, UserRole, Customer, Contract, Sample, TestResult,
   Equipment, Report, Complaint, Nonconformity, AuditLog,
   PaginatedResponse, LoginResponse, QualityDashboard, TestCatalogItem, TestCategory,
+  Method,
 } from "./types";
 
 const BASE_URL = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000") + "/api/v1";
@@ -81,13 +82,21 @@ export const samplesApi = {
 
 // ─── Test Results ─────────────────────────────────────────────────────────────
 export const testResultsApi = {
-  list: () => api.get<TestResult[]>("/test-results"),
+  list: (params?: { sample_id?: number }) => api.get<TestResult[]>("/test-results", { params }),
   get: (id: number) => api.get<TestResult>(`/test-results/${id}`),
   create: (data: Partial<TestResult>) => api.post<TestResult>("/test-results", data),
   update: (id: number, data: Partial<TestResult>) => api.put<TestResult>(`/test-results/${id}`, data),
   validate: (id: number) => api.post<TestResult>(`/test-results/${id}/validate`),
+  bulkSave: (data: { sample_id: number; rows: { catalog_item_id: number; result_value?: string; notes?: string }[] }) =>
+    api.post<TestResult[]>("/test-results/bulk", data),
   calculateUncertainty: (id: number, values: number[], coverage_factor = 2.0) =>
     api.post(`/test-results/${id}/calculate-uncertainty`, { values, coverage_factor }),
+};
+
+// ─── Methods ──────────────────────────────────────────────────────────────────
+export const methodsApi = {
+  list: () => api.get<Method[]>("/methods"),
+  get: (id: number) => api.get<Method>(`/methods/${id}`),
 };
 
 // ─── Equipment ────────────────────────────────────────────────────────────────

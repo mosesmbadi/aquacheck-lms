@@ -110,6 +110,7 @@ export interface Customer {
   phone?: string;
   address?: string;
   organization_type?: string;
+  currency?: string;
   is_active: boolean;
   created_at: string;
 }
@@ -180,6 +181,7 @@ export interface TestResult {
   id: number;
   sample_id: number;
   method_id: number;
+  catalog_item_id?: number;
   assigned_to?: number;
   equipment_ids?: number[];
   raw_observations?: Record<string, unknown>;

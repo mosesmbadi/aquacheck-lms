@@ -16,8 +16,15 @@ router = APIRouter(prefix="/test-results", tags=["Test Results"])
 
 
 @router.get("", response_model=List[TestResultOut])
-def list_test_results(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
-    return db.query(TestResult).order_by(TestResult.created_at.desc()).all()
+def list_test_results(
+    sample_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    q = db.query(TestResult)
+    if sample_id is not None:
+        q = q.filter(TestResult.sample_id == sample_id)
+    return q.order_by(TestResult.created_at.desc()).all()
 
 
 @router.post("", response_model=TestResultOut, status_code=status.HTTP_201_CREATED)
@@ -118,3 +125,71 @@ def calc_uncertainty(
     tr.uncertainty_unit = tr.result_unit or ""
     db.commit()
     return UncertaintyResult(**result)
+
+
+@router.post("/bulk", response_model=List[TestResultOut])
+def bulk_upsert_results(
+    payload: BulkResultCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Create or update test results for a sample in bulk (one row per catalog item)."""
+    sample = db.query(Sample).filter(Sample.id == payload.sample_id).first()
+    if not sample:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sample not found")
+
+    # Index existing results by catalog_item_id for this sample
+    existing = (
+        db.query(TestResult)
+        .filter(TestResult.sample_id == payload.sample_id, TestResult.catalog_item_id.isnot(None))
+        .all()
+    )
+    by_catalog = {tr.catalog_item_id: tr for tr in existing}
+
+    results: list[TestResult] = []
+    now = datetime.now(timezone.utc)
+
+    for row in payload.rows:
+        # Skip rows with no result entered
+        if not row.result_value:
+            continue
+
+        catalog = db.query(TestCatalogItem).filter(TestCatalogItem.id == row.catalog_item_id).first()
+        unit = catalog.unit if catalog else ""
+
+        if row.catalog_item_id in by_catalog:
+            # Update existing
+            tr = by_catalog[row.catalog_item_id]
+            tr.result_value = row.result_value
+            tr.result_unit = unit
+            tr.notes = row.notes or tr.notes
+            if tr.status == TestStatus.pending or tr.status == TestStatus.in_progress:
+                tr.status = TestStatus.completed
+                tr.completed_at = now
+        else:
+            # Create new
+            tr = TestResult(
+                sample_id=payload.sample_id,
+                catalog_item_id=row.catalog_item_id,
+                result_value=row.result_value,
+                result_unit=unit,
+                notes=row.notes,
+                status=TestStatus.completed if row.result_value else TestStatus.in_progress,
+                started_at=now,
+                completed_at=now if row.result_value else None,
+            )
+            db.add(tr)
+        results.append(tr)
+
+    # Update sample status
+    if results and sample.status in {
+        SampleStatus.received, SampleStatus.registered, SampleStatus.assigned
+    }:
+        sample.status = SampleStatus.in_testing
+
+    db.commit()
+    for tr in results:
+        db.refresh(tr)
+
+    log_action(db, current_user.id, "BULK_RESULTS", "sample", str(payload.sample_id))
+    return results

@@ -10,6 +10,7 @@ class CustomerBase(BaseModel):
     phone: Optional[str] = None
     address: Optional[str] = None
     organization_type: Optional[str] = None
+    currency: Optional[str] = "KES"
     is_active: bool = True
 
 
@@ -24,6 +25,7 @@ class CustomerUpdate(BaseModel):
     phone: Optional[str] = None
     address: Optional[str] = None
     organization_type: Optional[str] = None
+    currency: Optional[str] = None
     is_active: Optional[bool] = None
 
 

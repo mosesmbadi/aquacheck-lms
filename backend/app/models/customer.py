@@ -14,6 +14,7 @@ class Customer(Base):
     phone = Column(String, nullable=True)
     address = Column(String, nullable=True)
     organization_type = Column(String, nullable=True)
+    currency = Column(String, nullable=True, default="KES")
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 

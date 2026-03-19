@@ -13,6 +13,7 @@ const schema = z.object({
   phone: z.string().optional(),
   address: z.string().optional(),
   organization_type: z.string().optional(),
+  currency: z.string().optional(),
 });
 
 export type CustomerFormData = {
@@ -22,6 +23,7 @@ export type CustomerFormData = {
   phone?: string;
   address?: string;
   organization_type?: string;
+  currency?: string;
 };
 
 interface CustomerFormProps {
@@ -44,6 +46,7 @@ export function CustomerForm({ onSubmit, onCancel, loading }: CustomerFormProps)
       phone: "",
       address: "",
       organization_type: "",
+      currency: "KES",
     },
   });
 
@@ -59,6 +62,10 @@ export function CustomerForm({ onSubmit, onCancel, loading }: CustomerFormProps)
       <div className="grid grid-cols-2 gap-4">
         <Input label="Email" type="email" error={errors.email?.message} {...register("email")} placeholder="contact@example.com" />
         <Input label="Phone" error={errors.phone?.message} {...register("phone")} placeholder="+254 700 000000" />
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <Input label="Currency" error={errors.currency?.message} {...register("currency")} placeholder="KES" />
       </div>
 
       <Textarea label="Address" error={errors.address?.message} {...register("address")} rows={3} placeholder="Postal or physical address" />
