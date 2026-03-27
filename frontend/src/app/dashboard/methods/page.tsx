@@ -83,7 +83,7 @@ export default function MethodsPage() {
           </div>
           <Button onClick={() => setShowCreate(true)}><Plus className="w-4 h-4" />Add Method</Button>
         </div>
-        <Table columns={columns as never} data={filtered as never} loading={isLoading} emptyMessage="No methods defined." keyExtractor={(r) => (r as Method).id} />
+        <Table columns={columns as never} data={filtered as never} loading={isLoading} emptyMessage="No methods defined." keyExtractor={(r) => (r as unknown as Method).id} />
       </div>
 
       <Modal open={showCreate} onClose={() => { setShowCreate(false); reset(); }} title="Add Test Method" size="lg">

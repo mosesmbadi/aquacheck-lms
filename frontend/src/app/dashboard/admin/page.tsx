@@ -90,7 +90,7 @@ export default function AdminPage() {
         <div className="flex justify-end">
           <Button onClick={() => setShowCreate(true)}><Plus className="w-4 h-4" />Add User</Button>
         </div>
-        <Table columns={columns as never} data={users as never} loading={isLoading} emptyMessage="No users found." keyExtractor={(r) => (r as User).id} />
+        <Table columns={columns as never} data={users as never} loading={isLoading} emptyMessage="No users found." keyExtractor={(r) => (r as unknown as User).id} />
       </div>
 
       <Modal open={showCreate} onClose={() => { setShowCreate(false); reset(); }} title="Add User" size="md">

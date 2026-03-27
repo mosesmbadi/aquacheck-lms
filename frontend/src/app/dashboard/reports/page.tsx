@@ -89,7 +89,7 @@ export default function ReportsPage() {
         <div className="flex justify-end">
           <Button onClick={() => setShowCreate(true)}><Plus className="w-4 h-4" />New Report</Button>
         </div>
-        <Table columns={columns as never} data={reports as never} loading={isLoading} emptyMessage="No reports generated." keyExtractor={(r) => (r as Report).id} />
+        <Table columns={columns as never} data={reports as never} loading={isLoading} emptyMessage="No reports generated." keyExtractor={(r) => (r as unknown as Report).id} />
       </div>
 
       <Modal open={showCreate} onClose={() => { setShowCreate(false); reset(); }} title="Create Report" size="md">

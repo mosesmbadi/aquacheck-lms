@@ -81,7 +81,7 @@ export default function ComplaintsPage() {
           <Button onClick={() => setShowCreate(true)}><Plus className="w-4 h-4" />Submit Complaint</Button>
         </div>
 
-        <Table columns={columns as never} data={filtered as never} loading={isLoading} emptyMessage="No complaints filed." keyExtractor={(r) => (r as Complaint).id} />
+        <Table columns={columns as never} data={filtered as never} loading={isLoading} emptyMessage="No complaints filed." keyExtractor={(r) => (r as unknown as Complaint).id} />
       </div>
 
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Submit Complaint" size="lg">

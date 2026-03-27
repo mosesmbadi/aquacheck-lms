@@ -117,7 +117,7 @@ export default function ContractsPage() {
           data={filtered as never}
           loading={isLoading}
           emptyMessage="No contracts found."
-          keyExtractor={(r) => (r as Contract).id}
+          keyExtractor={(r) => (r as unknown as Contract).id}
         />
       </div>
 
