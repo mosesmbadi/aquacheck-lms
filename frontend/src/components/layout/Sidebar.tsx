@@ -15,7 +15,10 @@ import {
   Settings,
   LogOut,
   BookMarked,
+<<<<<<< HEAD
   Library,
+=======
+>>>>>>> origin/main
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getCurrentUser, logout } from "@/lib/auth";
@@ -34,10 +37,13 @@ const navItems = [
 
 const adminItems = [{ label: "Admin", href: "/dashboard/admin", icon: Settings }];
 
+<<<<<<< HEAD
 const catalogItems = [
   { label: "Test Catalog", href: "/dashboard/catalog/tests", icon: Library },
 ];
 
+=======
+>>>>>>> origin/main
 const settingsItems = [{ label: "Docs", href: "/dashboard/settings/docs", icon: BookMarked }];
 
 export function Sidebar() {
@@ -100,6 +106,7 @@ export function Sidebar() {
           </div>
         )}
 
+<<<<<<< HEAD
         {/* Catalog */}
         <div className="pt-3 mt-3 border-t border-dark-700">
           <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
@@ -122,6 +129,8 @@ export function Sidebar() {
           ))}
         </div>
 
+=======
+>>>>>>> origin/main
         {/* Settings */}
         <div className="pt-3 mt-3 border-t border-dark-700">
           <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">

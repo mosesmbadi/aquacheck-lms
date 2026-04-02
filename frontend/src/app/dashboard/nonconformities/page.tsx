@@ -91,7 +91,7 @@ export default function NonconformitiesPage() {
         <div className="flex justify-end">
           <Button onClick={() => setShowCreate(true)}><Plus className="w-4 h-4" />Record NC</Button>
         </div>
-        <Table columns={columns as never} data={ncs as never} loading={isLoading} emptyMessage="No non-conformities recorded." keyExtractor={(r) => (r as Nonconformity).id} />
+        <Table columns={columns as never} data={ncs as never} loading={isLoading} emptyMessage="No non-conformities recorded." keyExtractor={(r) => (r as unknown as Nonconformity).id} />
       </div>
 
       <Modal open={showCreate} onClose={() => { setShowCreate(false); reset(); }} title="Record Non-Conformity" size="lg">

@@ -84,7 +84,7 @@ export default function EquipmentPage() {
           <Button onClick={() => setShowCreate(true)}><Plus className="w-4 h-4" />Add Equipment</Button>
         </div>
 
-        <Table columns={columns as never} data={equipment as never} loading={isLoading} emptyMessage="No equipment registered." keyExtractor={(r) => (r as Equipment).id} />
+        <Table columns={columns as never} data={equipment as never} loading={isLoading} emptyMessage="No equipment registered." keyExtractor={(r) => (r as unknown as Equipment).id} />
       </div>
 
       <Modal open={showCreate} onClose={() => { setShowCreate(false); reset(); }} title="Add Equipment" size="lg">

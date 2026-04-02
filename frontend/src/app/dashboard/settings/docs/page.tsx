@@ -9,7 +9,11 @@ const sections = [
     table: {
       headers: ["Field", "Required", "Example"],
       rows: [
+<<<<<<< HEAD
         ["Contract", "No", "Select a contract or leave blank for standalone sample"],
+=======
+        ["Contract", "Yes", "Select an existing contract"],
+>>>>>>> origin/main
         ["Sample Type", "Yes", "Water, Soil, Air"],
         ["Description", "No", "Borehole water sample"],
         ["Collection Date", "No", "2026-03-15"],
@@ -22,7 +26,10 @@ const sections = [
       "A unique sample code is generated automatically (e.g. AQ-2026-00001).",
       "A QR barcode is created for the sample — view it by clicking the QR icon in the samples table.",
       "The chain of custody is initialized with a 'Sample received' entry.",
+<<<<<<< HEAD
       "Standalone samples can be registered without a contract, but they cannot proceed to testing until linked to one.",
+=======
+>>>>>>> origin/main
       "Every action is recorded in the audit trail.",
     ],
   },
@@ -60,10 +67,17 @@ const sections = [
     content: "",
     steps: [
       { status: "Step 1", description: "Create a Contract (Dashboard → Contracts)." },
+<<<<<<< HEAD
       { status: "Step 2", description: "Register samples either as standalone samples or against a contract (Dashboard → Samples)." },
       { status: "Step 3", description: "Link the sample to a contract before recording test results if testing is required." },
       { status: "Step 4", description: "Record and validate test results for each sample (Dashboard → Tests)." },
       { status: "Step 5", description: "Generate sample-based reports from validated results (Dashboard → Reports)." },
+=======
+      { status: "Step 2", description: "Register Samples against the contract (Dashboard → Samples)." },
+      { status: "Step 3", description: "Record Test Results for each sample, selecting a method (Dashboard → Tests)." },
+      { status: "Step 4", description: "Results are validated by a Quality Manager or Admin." },
+      { status: "Step 5", description: "Generate Reports from validated results (Dashboard → Reports)." },
+>>>>>>> origin/main
     ],
     notes: [],
   },

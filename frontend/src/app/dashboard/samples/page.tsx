@@ -111,7 +111,7 @@ export default function SamplesPage() {
           data={filtered as never}
           loading={isLoading}
           emptyMessage="No samples registered."
-          keyExtractor={(r) => (r as Sample).id}
+          keyExtractor={(r) => (r as unknown as Sample).id}
         />
       </div>
 

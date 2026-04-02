@@ -50,8 +50,10 @@ services:
       dockerfile: Dockerfile
     container_name: aquacheck_backend
     restart: unless-stopped
+    env_file:
+      - env
     ports:
-      - "8000:8000"
+      - "8088:8000"
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://lims_user:lims_pass@db:5432/lims_db}
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production-super-secret-key-123}
@@ -69,12 +71,16 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://35.154.192.45:8088}
     container_name: aquacheck_frontend
     restart: unless-stopped
+    env_file:
+      - env
     ports:
-      - "3000:3000"
+      - "3030:3000"
     environment:
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://35.154.192.45:8088}
     volumes:
       - ./frontend/src:/app/src
       - ./frontend/public:/app/public

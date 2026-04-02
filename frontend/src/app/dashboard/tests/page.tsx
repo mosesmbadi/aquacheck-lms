@@ -83,7 +83,7 @@ export default function TestsPage() {
         <div className="flex justify-end">
           <Button onClick={() => setShowCreate(true)}><Plus className="w-4 h-4" />New Test</Button>
         </div>
-        <Table columns={columns as never} data={tests as never} loading={isLoading} emptyMessage="No test results recorded." keyExtractor={(r) => (r as TestResult).id} />
+        <Table columns={columns as never} data={tests as never} loading={isLoading} emptyMessage="No test results recorded." keyExtractor={(r) => (r as unknown as TestResult).id} />
       </div>
 
       <Modal open={showCreate} onClose={() => { setShowCreate(false); reset(); }} title="Record Test Result" size="lg">
