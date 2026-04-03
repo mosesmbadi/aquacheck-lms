@@ -52,15 +52,18 @@ export default function SampleDetailPage() {
     }
   }
 
-  // Initialize drafts from existing results when data loads
+  // Initialize drafts from existing results when data loads.
+  // Condition: update a slot if it is missing OR currently empty — this handles the
+  // race where catalogItems arrives before testResults and pre-fills blanks, which
+  // would otherwise block a later update when testResults finally loads.
   useEffect(() => {
     if (catalogItems.length === 0) return;
     setDrafts((prev) => {
       const next = { ...prev };
       let changed = false;
       for (const item of catalogItems) {
-        if (!(item.id in next)) {
-          const existing = resultByCatalog[item.id];
+        const existing = resultByCatalog[item.id];
+        if (!(item.id in next) || (!next[item.id].result_value && existing?.result_value)) {
           next[item.id] = {
             result_value: existing?.result_value || "",
             notes: existing?.notes || "",
@@ -95,6 +98,8 @@ export default function SampleDetailPage() {
     mutationFn: (resultId: number) => testResultsApi.validate(resultId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["test-results", { sample_id: sampleId }] });
+      qc.invalidateQueries({ queryKey: ["sample", sampleId] });
+      qc.invalidateQueries({ queryKey: ["samples"] });
     },
   });
 

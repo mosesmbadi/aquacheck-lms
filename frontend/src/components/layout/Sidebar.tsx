@@ -34,6 +34,7 @@ const navItems = [
 
 const customerNavItems = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { label: "Samples", href: "/dashboard/samples", icon: FlaskConical },
   { label: "Reports", href: "/dashboard/reports", icon: ClipboardList },
   { label: "Complaints", href: "/dashboard/complaints", icon: MessageSquareWarning },
 ];

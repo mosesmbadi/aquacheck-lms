@@ -20,6 +20,8 @@ def _maybe_complete_sample(sample: Sample, db: Session) -> None:
     requested_ids: list[int] = sample.requested_test_ids or []
     if not requested_ids:
         return
+    # flush so the just-validated result is visible in this transaction
+    db.flush()
     validated_ids = {
         tr.catalog_item_id
         for tr in db.query(TestResult).filter(

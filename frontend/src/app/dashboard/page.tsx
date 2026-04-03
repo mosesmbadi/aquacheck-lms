@@ -49,6 +49,48 @@ function CustomerDashboard() {
         <StatCard title="Reports Issued" value={issuedReports.length} icon={<Microscope className="w-5 h-5" />} color="blue" />
       </div>
 
+      {/* Samples table */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-6">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <h3 className="font-semibold text-gray-900 text-sm">My Samples</h3>
+          <Button size="sm" variant="outline" onClick={() => router.push("/dashboard/samples")}>
+            View All Samples
+          </Button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm divide-y divide-gray-100">
+            <thead className="bg-gray-50">
+              <tr>
+                {["Sample Code", "Type", "Status", "Received"].map((h) => (
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {(samples as Sample[]).length === 0 ? (
+                <tr><td colSpan={4} className="px-4 py-6 text-center text-gray-400 text-sm">No samples found.</td></tr>
+              ) : (
+                (samples as Sample[]).slice(0, 8).map((s) => (
+                  <tr key={s.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => router.push(`/dashboard/samples/${s.id}`)}>
+                    <td className="px-4 py-2.5 font-mono text-xs text-primary-600 font-medium">{s.sample_code}</td>
+                    <td className="px-4 py-2.5 text-gray-800">{s.sample_type || "—"}</td>
+                    <td className="px-4 py-2.5">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                        s.status === "completed" ? "bg-green-100 text-green-700" :
+                        s.status === "in_testing" ? "bg-blue-100 text-blue-700" :
+                        s.status === "received" ? "bg-yellow-100 text-yellow-700" :
+                        "bg-gray-100 text-gray-600"
+                      }`}>{s.status.replace("_", " ")}</span>
+                    </td>
+                    <td className="px-4 py-2.5 text-gray-400 text-xs">{format(new Date(s.received_at), "MMM d, yyyy")}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent contracts */}
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
