@@ -11,6 +11,10 @@ from app.models.nonconformity import Nonconformity, NonconformityStatus, RiskLev
 from app.models.audit_log import AuditLog
 from app.models.test_catalog import TestCatalogItem, TestCategory
 from app.models.document import Document, DocumentCategory, DocumentStatus
+from app.models.inventory import (
+    InventoryItem, InventoryTransaction, InventoryCategory, TransactionType,
+    TestReagentUsage,
+)
 
 __all__ = [
     "User", "UserRole",
@@ -26,4 +30,6 @@ __all__ = [
     "AuditLog",
     "TestCatalogItem", "TestCategory",
     "Document", "DocumentCategory", "DocumentStatus",
+    "InventoryItem", "InventoryTransaction", "InventoryCategory", "TransactionType",
+    "TestReagentUsage",
 ]

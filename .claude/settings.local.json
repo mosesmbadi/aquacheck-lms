@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"from app.models.inventory import InventoryItem, InventoryTransaction; from app.schemas.inventory import InventoryItemCreate, InventoryTransactionCreate; from app.routers.inventory import router; print\\('OK'\\)\")",
+      "Bash(python -m py_compile app/models/inventory.py app/schemas/inventory.py app/routers/inventory.py app/main.py app/models/__init__.py)",
+      "Bash(python -m py_compile app/models/inventory.py app/schemas/inventory.py app/routers/inventory.py app/routers/test_results.py app/models/__init__.py)",
+      "Bash(python -m py_compile app/models/inventory.py app/schemas/inventory.py app/routers/inventory.py app/routers/test_results.py app/main.py)"
+    ]
+  }
+}

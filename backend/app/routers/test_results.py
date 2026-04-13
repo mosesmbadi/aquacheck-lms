@@ -11,6 +11,7 @@ from app.models.test_catalog import TestCatalogItem
 from app.schemas.test_result import TestResultCreate, TestResultUpdate, TestResultOut, UncertaintyResult, BulkResultCreate
 from app.services.audit import log_action
 from app.services.uncertainty import calculate_uncertainty
+from app.routers.inventory import deduct_reagents_for_test_result
 
 router = APIRouter(prefix="/test-results", tags=["Test Results"])
 
@@ -70,6 +71,10 @@ def create_test_result(
         sample.status = SampleStatus.in_testing
 
     db.add(tr)
+    db.flush()
+    # Auto-deduct reagents if a result value was provided on creation
+    if tr.result_value and tr.catalog_item_id:
+        deduct_reagents_for_test_result(db, tr.id, tr.catalog_item_id, current_user.id)
     db.commit()
     db.refresh(tr)
     log_action(db, current_user.id, "CREATE_TEST_RESULT", "test_result", str(tr.id))
@@ -94,6 +99,7 @@ def update_test_result(
     tr = db.query(TestResult).filter(TestResult.id == result_id).first()
     if not tr:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Test result not found")
+    had_value = bool(tr.result_value)
     update_data = payload.model_dump(exclude_unset=True)
     # If result_value is set, mark completed
     if "result_value" in update_data and update_data["result_value"] and tr.status == TestStatus.in_progress:
@@ -101,6 +107,9 @@ def update_test_result(
         tr.completed_at = datetime.now(timezone.utc)
     for k, v in update_data.items():
         setattr(tr, k, v)
+    # Deduct reagents on first-time completion (value added)
+    if not had_value and tr.result_value and tr.catalog_item_id:
+        deduct_reagents_for_test_result(db, tr.id, tr.catalog_item_id, current_user.id)
     db.commit()
     db.refresh(tr)
     log_action(db, current_user.id, "UPDATE_TEST_RESULT", "test_result", str(result_id))
@@ -172,6 +181,7 @@ def bulk_upsert_results(
     by_catalog = {tr.catalog_item_id: tr for tr in existing}
 
     results: list[TestResult] = []
+    newly_completed: list[TestResult] = []  # for reagent deduction
     now = datetime.now(timezone.utc)
 
     for row in payload.rows:
@@ -185,12 +195,15 @@ def bulk_upsert_results(
         if row.catalog_item_id in by_catalog:
             # Update existing
             tr = by_catalog[row.catalog_item_id]
+            had_value = bool(tr.result_value)
             tr.result_value = row.result_value
             tr.result_unit = unit
             tr.notes = row.notes or tr.notes
             if tr.status == TestStatus.pending or tr.status == TestStatus.in_progress:
                 tr.status = TestStatus.completed
                 tr.completed_at = now
+            if not had_value and tr.result_value:
+                newly_completed.append(tr)
         else:
             # Create new
             tr = TestResult(
@@ -204,6 +217,8 @@ def bulk_upsert_results(
                 completed_at=now if row.result_value else None,
             )
             db.add(tr)
+            if row.result_value:
+                newly_completed.append(tr)
         results.append(tr)
 
     # Update sample status to in_testing if not already further along
@@ -214,6 +229,12 @@ def bulk_upsert_results(
 
     # Auto-complete sample if all requested tests happen to be validated already
     _maybe_complete_sample(sample, db)
+
+    # Flush so new TestResult rows get IDs, then auto-deduct reagents
+    db.flush()
+    for tr in newly_completed:
+        if tr.catalog_item_id and tr.id:
+            deduct_reagents_for_test_result(db, tr.id, tr.catalog_item_id, current_user.id)
 
     db.commit()
     for tr in results:

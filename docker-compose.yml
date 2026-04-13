@@ -1,5 +1,3 @@
-version: "3.9"
-
 networks:
   lims_network:
     driver: bridge

@@ -20,6 +20,7 @@ from app.routers import (
     quality,
     test_catalog,
     documents,
+    inventory,
 )
 
 app = FastAPI(
@@ -49,7 +50,7 @@ API_PREFIX = "/api/v1"
 for router_module in [
     auth, users, customers, contracts, samples,
     test_results, equipment, reports, complaints, nonconformities, quality,
-    test_catalog, documents,
+    test_catalog, documents, inventory,
 ]:
     app.include_router(router_module.router, prefix=API_PREFIX)
 
