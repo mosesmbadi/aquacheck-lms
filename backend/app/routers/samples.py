@@ -16,8 +16,15 @@ router = APIRouter(prefix="/samples", tags=["Samples"])
 
 def _next_sample_code(db: Session) -> str:
     year = datetime.now(timezone.utc).year
-    count = db.query(Sample).filter(Sample.sample_code.like(f"AQ-{year}-%")).count()
-    return f"AQ-{year}-{str(count + 1).zfill(5)}"
+    max_seq = 0
+    for (code,) in db.query(Sample.sample_code).filter(Sample.sample_code.like("QT/%/%")).all():
+        try:
+            seq = int(code.split("/")[1])
+            if seq > max_seq:
+                max_seq = seq
+        except (IndexError, ValueError):
+            continue
+    return f"QT/{max_seq + 1}/{year}"
 
 
 @router.get("", response_model=List[SampleOut])
