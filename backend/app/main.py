@@ -21,6 +21,7 @@ from app.routers import (
     test_catalog,
     documents,
     inventory,
+    quotations,
 )
 
 app = FastAPI(
@@ -50,7 +51,7 @@ API_PREFIX = "/api/v1"
 for router_module in [
     auth, users, customers, contracts, samples,
     test_results, equipment, reports, complaints, nonconformities, quality,
-    test_catalog, documents, inventory,
+    test_catalog, documents, inventory, quotations,
 ]:
     app.include_router(router_module.router, prefix=API_PREFIX)
 
@@ -194,6 +195,21 @@ def ensure_schema_compatibility():
                 "ALTER TABLE users ADD COLUMN is_contact_person BOOLEAN NOT NULL DEFAULT FALSE"
             ))
             print("[LIMS] Added users.is_contact_person column.")
+
+        # test_catalog.price — add if not present
+        price_exists = connection.execute(
+            text(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'test_catalog' AND column_name = 'price'
+                """
+            )
+        ).scalar()
+        if not price_exists:
+            connection.execute(text(
+                "ALTER TABLE test_catalog ADD COLUMN price NUMERIC(12,2) NOT NULL DEFAULT 0"
+            ))
+            print("[LIMS] Added test_catalog.price column.")
 
         # samples.customer_id — associate sample directly with a customer
         sample_cust_exists = connection.execute(

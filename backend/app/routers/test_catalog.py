@@ -19,6 +19,7 @@ class CatalogItemBase(BaseModel):
     method_name: Optional[str] = None
     standard_limit: Optional[str] = None
     description: Optional[str] = None
+    price: float = 0
     sort_order: int = 0
     is_active: bool = True
 
@@ -34,6 +35,7 @@ class CatalogItemUpdate(BaseModel):
     method_name: Optional[str] = None
     standard_limit: Optional[str] = None
     description: Optional[str] = None
+    price: Optional[float] = None
     sort_order: Optional[int] = None
     is_active: Optional[bool] = None
 
@@ -56,6 +58,7 @@ class CatalogItemOut(CatalogItemBase):
             "method_name": obj.method_name,
             "standard_limit": obj.standard_limit,
             "description": obj.description,
+            "price": float(obj.price) if obj.price is not None else 0,
             "sort_order": obj.sort_order,
             "is_active": obj.is_active,
             "created_at": obj.created_at.isoformat() if obj.created_at else "",

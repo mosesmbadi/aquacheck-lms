@@ -1,6 +1,6 @@
 import enum
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, DateTime, Enum as SAEnum, Text, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, Enum as SAEnum, Text, Boolean, Numeric
 from app.database import Base
 
 
@@ -19,6 +19,7 @@ class TestCatalogItem(Base):
     method_name = Column(String, nullable=True)
     standard_limit = Column(String, nullable=True)
     description = Column(Text, nullable=True)
+    price = Column(Numeric(12, 2), nullable=False, default=0)
     sort_order = Column(Integer, default=0)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

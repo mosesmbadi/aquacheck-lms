@@ -4,7 +4,7 @@ import type {
   User, UserRole, Customer, Contract, Sample, TestResult,
   Equipment, Report, Complaint, Nonconformity, AuditLog,
   PaginatedResponse, LoginResponse, QualityDashboard, TestCatalogItem, TestCategory,
-  Method, Document, DocumentCategory,
+  Method, Document, DocumentCategory, Quotation, QuotationItem,
   InventoryItem, InventoryTransaction, InventoryStats, InventoryCategory,
   TestReagentUsage, CsvImportResult,
 } from "./types";
@@ -230,6 +230,46 @@ export const inventoryApi = {
     return api.post<CsvImportResult>("/inventory/import/items", form, {
       headers: { "Content-Type": "multipart/form-data" },
     });
+  },
+};
+
+// ─── Quotations ───────────────────────────────────────────────────────────────
+export const quotationsApi = {
+  list: () => api.get<Quotation[]>("/quotations"),
+  get: (id: number) => api.get<Quotation>(`/quotations/${id}`),
+  create: (data: {
+    customer_id: number;
+    items: QuotationItem[];
+    vat_rate?: number;
+    currency?: string;
+    valid_until?: string;
+    notes?: string;
+    terms?: string;
+  }) => api.post<Quotation>("/quotations", data),
+  update: (
+    id: number,
+    data: Partial<{
+      items: QuotationItem[];
+      vat_rate: number;
+      currency: string;
+      valid_until: string;
+      notes: string;
+      terms: string;
+      status: string;
+    }>
+  ) => api.put<Quotation>(`/quotations/${id}`, data),
+  delete: (id: number) => api.delete(`/quotations/${id}`),
+  send: (id: number, data: { to?: string[]; subject?: string; message?: string }) =>
+    api.post<Quotation>(`/quotations/${id}/send`, data),
+  pdfUrl: (id: number) => `${BASE_URL}/quotations/${id}/pdf`,
+  downloadPdf: async (id: number, quoteNumber: string) => {
+    const res = await api.get(`/quotations/${id}/pdf`, { responseType: "blob" });
+    const url = window.URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${quoteNumber.replace(/\//g, "_")}.pdf`;
+    a.click();
+    window.URL.revokeObjectURL(url);
   },
 };
 

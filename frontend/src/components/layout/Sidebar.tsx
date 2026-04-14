@@ -17,6 +17,7 @@ import {
   BookMarked,
   Library,
   Package,
+  Receipt,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getCurrentUser, logout } from "@/lib/auth";
@@ -29,6 +30,7 @@ const navItems = [
   { label: "Equipment", href: "/dashboard/equipment", icon: Wrench },
   { label: "Inventory", href: "/dashboard/inventory", icon: Package },
   { label: "Reports", href: "/dashboard/reports", icon: ClipboardList },
+  { label: "Quotations", href: "/dashboard/quotations", icon: Receipt },
   { label: "Complaints", href: "/dashboard/complaints", icon: MessageSquareWarning },
   { label: "Non-Conformities", href: "/dashboard/nonconformities", icon: AlertTriangle },
   { label: "Quality", href: "/dashboard/quality", icon: ShieldCheck },

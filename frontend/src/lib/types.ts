@@ -84,8 +84,42 @@ export interface TestCatalogItem {
   method_name?: string;
   standard_limit?: string;
   description?: string;
+  price?: number;
   sort_order: number;
   is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── Quotations ───────────────────────────────────────────────────────────────
+export type QuotationStatus = "draft" | "sent" | "accepted" | "rejected" | "expired";
+
+export interface QuotationItem {
+  catalog_item_id?: number | null;
+  name: string;
+  unit?: string | null;
+  quantity: number;
+  unit_price: number;
+  total: number;
+}
+
+export interface Quotation {
+  id: number;
+  quote_number: string;
+  customer_id: number;
+  customer_name?: string | null;
+  items: QuotationItem[];
+  subtotal: number;
+  vat_rate: number;
+  vat_amount: number;
+  total: number;
+  currency: string;
+  status: QuotationStatus;
+  valid_until?: string | null;
+  notes?: string | null;
+  terms?: string | null;
+  sent_to?: string | null;
+  sent_at?: string | null;
   created_at: string;
   updated_at: string;
 }

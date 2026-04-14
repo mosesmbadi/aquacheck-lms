@@ -15,6 +15,7 @@ from app.models.inventory import (
     InventoryItem, InventoryTransaction, InventoryCategory, TransactionType,
     TestReagentUsage,
 )
+from app.models.quotation import Quotation, QuotationStatus
 
 __all__ = [
     "User", "UserRole",
@@ -32,4 +33,5 @@ __all__ = [
     "Document", "DocumentCategory", "DocumentStatus",
     "InventoryItem", "InventoryTransaction", "InventoryCategory", "TransactionType",
     "TestReagentUsage",
+    "Quotation", "QuotationStatus",
 ]
