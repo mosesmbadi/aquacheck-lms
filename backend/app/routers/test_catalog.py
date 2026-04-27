@@ -15,6 +15,7 @@ router = APIRouter(prefix="/test-catalog", tags=["Test Catalog"])
 class CatalogItemBase(BaseModel):
     name: str
     category: TestCategory
+    water_type: str = "dialysis_potable"
     unit: Optional[str] = None
     method_name: Optional[str] = None
     standard_limit: Optional[str] = None
@@ -31,6 +32,7 @@ class CatalogItemCreate(CatalogItemBase):
 class CatalogItemUpdate(BaseModel):
     name: Optional[str] = None
     category: Optional[TestCategory] = None
+    water_type: Optional[str] = None
     unit: Optional[str] = None
     method_name: Optional[str] = None
     standard_limit: Optional[str] = None
@@ -54,6 +56,7 @@ class CatalogItemOut(CatalogItemBase):
             "id": obj.id,
             "name": obj.name,
             "category": obj.category,
+            "water_type": obj.water_type if obj.water_type else "dialysis_potable",
             "unit": obj.unit,
             "method_name": obj.method_name,
             "standard_limit": obj.standard_limit,
@@ -67,7 +70,7 @@ class CatalogItemOut(CatalogItemBase):
         return cls(**data)
 
 
-# ─── Default dialysis water tests ─────────────────────────────────────────────
+# ─── Default dialysis / potable water tests ───────────────────────────────────
 
 DIALYSIS_WATER_TESTS = [
     # ── Physicochemical ──────────────────────────────────────────────────
@@ -129,12 +132,202 @@ DIALYSIS_WATER_TESTS = [
 ]
 
 
+# ─── Waste water tests — Schedules 1–6 ───────────────────────────────────────
+
+WASTE_SCHEDULE_TESTS = [
+    # ── Schedule 1: Quality Standards for Sources of Domestic Water ──────────
+    {"water_type": "waste_1", "name": "pH", "category": "physicochemical", "unit": "", "standard_limit": "6.5 – 8.5", "sort_order": 1},
+    {"water_type": "waste_1", "name": "Suspended Solids", "category": "physicochemical", "unit": "mg/L", "standard_limit": "30", "sort_order": 2},
+    {"water_type": "waste_1", "name": "Nitrate-NO3", "category": "physicochemical", "unit": "mg/L", "standard_limit": "10", "sort_order": 3},
+    {"water_type": "waste_1", "name": "Nitrite-NO2", "category": "physicochemical", "unit": "mg/L", "standard_limit": "3", "sort_order": 4},
+    {"water_type": "waste_1", "name": "Total Dissolved Solids", "category": "physicochemical", "unit": "mg/L", "standard_limit": "1200", "sort_order": 5},
+    {"water_type": "waste_1", "name": "Fluoride", "category": "physicochemical", "unit": "mg/L", "standard_limit": "1.5", "sort_order": 6},
+    {"water_type": "waste_1", "name": "Phenols", "category": "physicochemical", "unit": "mg/L", "standard_limit": "Nil", "sort_order": 7},
+    {"water_type": "waste_1", "name": "Arsenic", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.01", "sort_order": 8},
+    {"water_type": "waste_1", "name": "Cadmium", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.01", "sort_order": 9},
+    {"water_type": "waste_1", "name": "Lead", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.05", "sort_order": 10},
+    {"water_type": "waste_1", "name": "Selenium", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.01", "sort_order": 11},
+    {"water_type": "waste_1", "name": "Copper", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.05", "sort_order": 12},
+    {"water_type": "waste_1", "name": "Zinc", "category": "physicochemical", "unit": "mg/L", "standard_limit": "1.5", "sort_order": 13},
+    {"water_type": "waste_1", "name": "Alkyl Benzyl Sulphonates", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.5", "sort_order": 14},
+    {"water_type": "waste_1", "name": "Permanganate Value (PV)", "category": "physicochemical", "unit": "mg/L", "standard_limit": "1.0", "sort_order": 15},
+    {"water_type": "waste_1", "name": "Total Coliforms", "category": "microbiological", "unit": "per 100 ml", "standard_limit": "Nil", "sort_order": 50},
+
+    # ── Schedule 2: Water Quality Monitoring for Sources of Domestic Water ───
+    {"water_type": "waste_2", "name": "pH", "category": "physicochemical", "unit": "", "standard_limit": "6.5 – 8.5", "sort_order": 1},
+    {"water_type": "waste_2", "name": "Suspended Solids", "category": "physicochemical", "unit": "mg/L", "standard_limit": "30", "sort_order": 2},
+    {"water_type": "waste_2", "name": "Nitrate-NO3", "category": "physicochemical", "unit": "mg/L", "standard_limit": "10", "sort_order": 3},
+    {"water_type": "waste_2", "name": "Ammonia-NH3", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.5", "sort_order": 4},
+    {"water_type": "waste_2", "name": "Nitrite-NO2", "category": "physicochemical", "unit": "mg/L", "standard_limit": "3", "sort_order": 5},
+    {"water_type": "waste_2", "name": "Total Dissolved Solids", "category": "physicochemical", "unit": "mg/L", "standard_limit": "1200", "sort_order": 6},
+    {"water_type": "waste_2", "name": "Fluoride", "category": "physicochemical", "unit": "mg/L", "standard_limit": "1.5", "sort_order": 7},
+    {"water_type": "waste_2", "name": "Phenols", "category": "physicochemical", "unit": "mg/L", "standard_limit": "Nil", "sort_order": 8},
+    {"water_type": "waste_2", "name": "Arsenic", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.01", "sort_order": 9},
+    {"water_type": "waste_2", "name": "Cadmium", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.01", "sort_order": 10},
+    {"water_type": "waste_2", "name": "Lead", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.05", "sort_order": 11},
+    {"water_type": "waste_2", "name": "Selenium", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.01", "sort_order": 12},
+    {"water_type": "waste_2", "name": "Copper", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.05", "sort_order": 13},
+    {"water_type": "waste_2", "name": "Zinc", "category": "physicochemical", "unit": "mg/L", "standard_limit": "1.5", "sort_order": 14},
+    {"water_type": "waste_2", "name": "Alkyl Benzyl Sulphonates", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.5", "sort_order": 15},
+    {"water_type": "waste_2", "name": "Permanganate Value", "category": "physicochemical", "unit": "mg/L", "standard_limit": "1.0", "sort_order": 16},
+    {"water_type": "waste_2", "name": "Total Coliforms", "category": "microbiological", "unit": "per 100 ml", "standard_limit": "Nil", "sort_order": 50},
+
+    # ── Schedule 3: Standards for Effluent Discharge Into the Environment ────
+    {"water_type": "waste_3", "name": "pH (non-marine)", "category": "physicochemical", "unit": "", "standard_limit": "6.5 – 8.5", "sort_order": 1},
+    {"water_type": "waste_3", "name": "pH (marine)", "category": "physicochemical", "unit": "", "standard_limit": "5.0 – 9.0", "sort_order": 2},
+    {"water_type": "waste_3", "name": "BOD (5 days at 20°C)", "category": "physicochemical", "unit": "mg/L", "standard_limit": "30", "sort_order": 3},
+    {"water_type": "waste_3", "name": "COD", "category": "physicochemical", "unit": "mg/L", "standard_limit": "50", "sort_order": 4},
+    {"water_type": "waste_3", "name": "Total Suspended Solids (TSS)", "category": "physicochemical", "unit": "mg/L", "standard_limit": "30", "sort_order": 5},
+    {"water_type": "waste_3", "name": "Total Dissolved Solids (TDS)", "category": "physicochemical", "unit": "mg/L", "standard_limit": "1200", "sort_order": 6},
+    {"water_type": "waste_3", "name": "Ammonia & Nitrate/Nitrite compounds (sum total)", "category": "physicochemical", "unit": "mg/L", "standard_limit": "100", "sort_order": 7},
+    {"water_type": "waste_3", "name": "Arsenic", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.02", "sort_order": 8},
+    {"water_type": "waste_3", "name": "Benzene", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.1", "sort_order": 9},
+    {"water_type": "waste_3", "name": "Boron", "category": "physicochemical", "unit": "mg/L", "standard_limit": "1.0", "sort_order": 10},
+    {"water_type": "waste_3", "name": "Cadmium", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.01", "sort_order": 11},
+    {"water_type": "waste_3", "name": "Carbon Tetrachloride", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.02", "sort_order": 12},
+    {"water_type": "waste_3", "name": "Chloride", "category": "physicochemical", "unit": "mg/L", "standard_limit": "250", "sort_order": 13},
+    {"water_type": "waste_3", "name": "Chlorine Free Residue", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.10", "sort_order": 14},
+    {"water_type": "waste_3", "name": "Chromium VI", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.05", "sort_order": 15},
+    {"water_type": "waste_3", "name": "Chromium (Total)", "category": "physicochemical", "unit": "mg/L", "standard_limit": "2", "sort_order": 16},
+    {"water_type": "waste_3", "name": "cis-1,2-Dichloroethylene", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.4", "sort_order": 17},
+    {"water_type": "waste_3", "name": "Copper", "category": "physicochemical", "unit": "mg/L", "standard_limit": "1.0", "sort_order": 18},
+    {"water_type": "waste_3", "name": "Dichloromethane", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.2", "sort_order": 19},
+    {"water_type": "waste_3", "name": "Dissolved Iron", "category": "physicochemical", "unit": "mg/L", "standard_limit": "10", "sort_order": 20},
+    {"water_type": "waste_3", "name": "Dissolved Manganese", "category": "physicochemical", "unit": "mg/L", "standard_limit": "10", "sort_order": 21},
+    {"water_type": "waste_3", "name": "Fluoride (non-marine)", "category": "physicochemical", "unit": "mg/L", "standard_limit": "1.5", "sort_order": 22},
+    {"water_type": "waste_3", "name": "Fluoride (marine)", "category": "physicochemical", "unit": "mg/L", "standard_limit": "8", "sort_order": 23},
+    {"water_type": "waste_3", "name": "Lead", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.01", "sort_order": 24},
+    {"water_type": "waste_3", "name": "Mercury (Total)", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.005", "sort_order": 25},
+    {"water_type": "waste_3", "name": "n-Hexane Extracts (Animal/Vegetable Fats)", "category": "physicochemical", "unit": "mg/L", "standard_limit": "30", "sort_order": 26},
+    {"water_type": "waste_3", "name": "n-Hexane Extracts (Mineral Oil)", "category": "physicochemical", "unit": "mg/L", "standard_limit": "5", "sort_order": 27},
+    {"water_type": "waste_3", "name": "Oil and Grease", "category": "physicochemical", "unit": "mg/L", "standard_limit": "Nil", "sort_order": 28},
+    {"water_type": "waste_3", "name": "Organophosphorus Compounds", "category": "physicochemical", "unit": "mg/L", "standard_limit": "1.0", "sort_order": 29},
+    {"water_type": "waste_3", "name": "PCBs (Polychlorinated Biphenyls)", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.003", "sort_order": 30},
+    {"water_type": "waste_3", "name": "Phenols", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.001", "sort_order": 31},
+    {"water_type": "waste_3", "name": "Selenium", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.01", "sort_order": 32},
+    {"water_type": "waste_3", "name": "Simazine", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.03", "sort_order": 33},
+    {"water_type": "waste_3", "name": "Sulphide", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.1", "sort_order": 34},
+    {"water_type": "waste_3", "name": "Temperature", "category": "physicochemical", "unit": "°C", "standard_limit": "Ambient ± 3", "sort_order": 35},
+    {"water_type": "waste_3", "name": "Tetrachloroethylene", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.1", "sort_order": 36},
+    {"water_type": "waste_3", "name": "Thiobencarb", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.1", "sort_order": 37},
+    {"water_type": "waste_3", "name": "Thiram", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.06", "sort_order": 38},
+    {"water_type": "waste_3", "name": "Total Nickel", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.3", "sort_order": 39},
+    {"water_type": "waste_3", "name": "Colour", "category": "physicochemical", "unit": "Hazen Units", "standard_limit": "15", "sort_order": 40},
+    {"water_type": "waste_3", "name": "Detergents", "category": "physicochemical", "unit": "mg/L", "standard_limit": "Nil", "sort_order": 41},
+    {"water_type": "waste_3", "name": "Zinc", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.5", "sort_order": 42},
+    {"water_type": "waste_3", "name": "Total Phosphorus", "category": "physicochemical", "unit": "mg/L", "standard_limit": "2", "sort_order": 43},
+    {"water_type": "waste_3", "name": "Total Nitrogen", "category": "physicochemical", "unit": "mg/L", "standard_limit": "2", "sort_order": 44},
+    {"water_type": "waste_3", "name": "1,1,1-Trichloroethane", "category": "physicochemical", "unit": "mg/L", "standard_limit": "3", "sort_order": 45},
+    {"water_type": "waste_3", "name": "1,1,2-Trichloroethane", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.06", "sort_order": 46},
+    {"water_type": "waste_3", "name": "1,1-Dichloroethylene", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.2", "sort_order": 47},
+    {"water_type": "waste_3", "name": "1,2-Dichloroethane", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.04", "sort_order": 48},
+    {"water_type": "waste_3", "name": "1,3-Dichloropropene", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.02", "sort_order": 49},
+    {"water_type": "waste_3", "name": "Alkyl Mercury Compounds", "category": "physicochemical", "unit": "mg/L", "standard_limit": "Not Detectable", "sort_order": 50},
+    {"water_type": "waste_3", "name": "E.coli", "category": "microbiological", "unit": "per 100 ml", "standard_limit": "Nil", "sort_order": 60},
+    {"water_type": "waste_3", "name": "Total Coliforms", "category": "microbiological", "unit": "per 100 ml", "standard_limit": "30", "sort_order": 61},
+
+    # ── Schedule 4: Monitoring Guide for Discharge Into the Environment ───────
+    {"water_type": "waste_4", "name": "BOD (Biochemical Oxygen Demand)", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 1},
+    {"water_type": "waste_4", "name": "TSS (Total Suspended Solids)", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 2},
+    {"water_type": "waste_4", "name": "pH", "category": "physicochemical", "unit": "", "standard_limit": "—", "sort_order": 3},
+    {"water_type": "waste_4", "name": "Oil and Grease", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 4},
+    {"water_type": "waste_4", "name": "Temperature", "category": "physicochemical", "unit": "°C", "standard_limit": "—", "sort_order": 5},
+    {"water_type": "waste_4", "name": "COD (Chemical Oxygen Demand)", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 6},
+    {"water_type": "waste_4", "name": "Colour/Dye/Pigment", "category": "physicochemical", "unit": "Hazen Units", "standard_limit": "—", "sort_order": 7},
+    {"water_type": "waste_4", "name": "Elemental Phosphorus", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 8},
+    {"water_type": "waste_4", "name": "Total Phosphorus", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 9},
+    {"water_type": "waste_4", "name": "Ammonia (as N)", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 10},
+    {"water_type": "waste_4", "name": "Organic Nitrogen (as N)", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 11},
+    {"water_type": "waste_4", "name": "Nitrate", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 12},
+    {"water_type": "waste_4", "name": "Flow", "category": "physicochemical", "unit": "m³/day", "standard_limit": "—", "sort_order": 13},
+    {"water_type": "waste_4", "name": "Phenols", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 14},
+    {"water_type": "waste_4", "name": "Sulphide", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 15},
+    {"water_type": "waste_4", "name": "Total Chromium", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 16},
+    {"water_type": "waste_4", "name": "Chromium VI", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 17},
+    {"water_type": "waste_4", "name": "Copper", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 18},
+    {"water_type": "waste_4", "name": "Nickel", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 19},
+    {"water_type": "waste_4", "name": "Zinc", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 20},
+    {"water_type": "waste_4", "name": "Total Cyanide", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 21},
+    {"water_type": "waste_4", "name": "Fluorine", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 22},
+    {"water_type": "waste_4", "name": "Free Available Chlorine", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 23},
+    {"water_type": "waste_4", "name": "Residual Chlorine", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 24},
+    {"water_type": "waste_4", "name": "Cadmium", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 25},
+    {"water_type": "waste_4", "name": "Lead", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 26},
+    {"water_type": "waste_4", "name": "Iron", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 27},
+    {"water_type": "waste_4", "name": "Tin", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 28},
+    {"water_type": "waste_4", "name": "Silver", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 29},
+    {"water_type": "waste_4", "name": "Mercury (Total)", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 30},
+    {"water_type": "waste_4", "name": "Total Organic Carbon (TOC)", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 31},
+    {"water_type": "waste_4", "name": "Aluminium", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 32},
+    {"water_type": "waste_4", "name": "Arsenic", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 33},
+    {"water_type": "waste_4", "name": "Selenium", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 34},
+    {"water_type": "waste_4", "name": "Barium", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 35},
+    {"water_type": "waste_4", "name": "Manganese", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 36},
+    {"water_type": "waste_4", "name": "Tannin", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 37},
+    {"water_type": "waste_4", "name": "Settleable Solids", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 38},
+    {"water_type": "waste_4", "name": "Surfactants", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 39},
+    {"water_type": "waste_4", "name": "Faecal Coliforms", "category": "microbiological", "unit": "per 100 ml", "standard_limit": "—", "sort_order": 50},
+
+    # ── Schedule 5: Standards for Effluent Discharge Into Public Sewers ──────
+    {"water_type": "waste_5", "name": "Suspended Solids", "category": "physicochemical", "unit": "mg/L", "standard_limit": "250", "sort_order": 1},
+    {"water_type": "waste_5", "name": "Total Dissolved Solids", "category": "physicochemical", "unit": "mg/L", "standard_limit": "2000", "sort_order": 2},
+    {"water_type": "waste_5", "name": "Temperature", "category": "physicochemical", "unit": "°C", "standard_limit": "20 – 35", "sort_order": 3},
+    {"water_type": "waste_5", "name": "pH", "category": "physicochemical", "unit": "", "standard_limit": "6 – 9", "sort_order": 4},
+    {"water_type": "waste_5", "name": "Oil and Grease", "category": "physicochemical", "unit": "mg/L", "standard_limit": "5", "sort_order": 5},
+    {"water_type": "waste_5", "name": "Ammonia Nitrogen", "category": "physicochemical", "unit": "mg/L", "standard_limit": "20", "sort_order": 6},
+    {"water_type": "waste_5", "name": "BOD (5 days at 20°C)", "category": "physicochemical", "unit": "mg/L", "standard_limit": "500", "sort_order": 7},
+    {"water_type": "waste_5", "name": "COD", "category": "physicochemical", "unit": "mg/L", "standard_limit": "1000", "sort_order": 8},
+    {"water_type": "waste_5", "name": "Arsenic", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.02", "sort_order": 9},
+    {"water_type": "waste_5", "name": "Mercury", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.05", "sort_order": 10},
+    {"water_type": "waste_5", "name": "Lead", "category": "physicochemical", "unit": "mg/L", "standard_limit": "1.0", "sort_order": 11},
+    {"water_type": "waste_5", "name": "Cadmium", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.5", "sort_order": 12},
+    {"water_type": "waste_5", "name": "Chromium VI", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.05", "sort_order": 13},
+    {"water_type": "waste_5", "name": "Chromium (Total)", "category": "physicochemical", "unit": "mg/L", "standard_limit": "2.0", "sort_order": 14},
+    {"water_type": "waste_5", "name": "Copper", "category": "physicochemical", "unit": "mg/L", "standard_limit": "1.0", "sort_order": 15},
+    {"water_type": "waste_5", "name": "Zinc", "category": "physicochemical", "unit": "mg/L", "standard_limit": "5.0", "sort_order": 16},
+    {"water_type": "waste_5", "name": "Selenium", "category": "physicochemical", "unit": "mg/L", "standard_limit": "0.2", "sort_order": 17},
+    {"water_type": "waste_5", "name": "Nickel", "category": "physicochemical", "unit": "mg/L", "standard_limit": "3.0", "sort_order": 18},
+    {"water_type": "waste_5", "name": "Nitrates", "category": "physicochemical", "unit": "mg/L", "standard_limit": "20", "sort_order": 19},
+    {"water_type": "waste_5", "name": "Phosphates", "category": "physicochemical", "unit": "mg/L", "standard_limit": "30", "sort_order": 20},
+    {"water_type": "waste_5", "name": "Total Cyanide", "category": "physicochemical", "unit": "mg/L", "standard_limit": "2", "sort_order": 21},
+    {"water_type": "waste_5", "name": "Sulphide", "category": "physicochemical", "unit": "mg/L", "standard_limit": "2", "sort_order": 22},
+    {"water_type": "waste_5", "name": "Phenols", "category": "physicochemical", "unit": "mg/L", "standard_limit": "10", "sort_order": 23},
+    {"water_type": "waste_5", "name": "Detergents", "category": "physicochemical", "unit": "mg/L", "standard_limit": "15", "sort_order": 24},
+    {"water_type": "waste_5", "name": "Colour", "category": "physicochemical", "unit": "Hazen Units", "standard_limit": "< 40", "sort_order": 25},
+    {"water_type": "waste_5", "name": "Alkyl Mercury", "category": "physicochemical", "unit": "mg/L", "standard_limit": "Not Detectable", "sort_order": 26},
+    {"water_type": "waste_5", "name": "Free and Saline Ammonia (as N)", "category": "physicochemical", "unit": "mg/L", "standard_limit": "4.0", "sort_order": 27},
+    {"water_type": "waste_5", "name": "Calcium Carbide", "category": "physicochemical", "unit": "", "standard_limit": "Nil", "sort_order": 28},
+    {"water_type": "waste_5", "name": "Chloroform", "category": "physicochemical", "unit": "mg/L", "standard_limit": "Nil", "sort_order": 29},
+    {"water_type": "waste_5", "name": "Inflammable Solvents", "category": "physicochemical", "unit": "", "standard_limit": "Nil", "sort_order": 30},
+    {"water_type": "waste_5", "name": "Radioactive Residues", "category": "physicochemical", "unit": "", "standard_limit": "Nil", "sort_order": 31},
+    {"water_type": "waste_5", "name": "Degreasing Solvents", "category": "physicochemical", "unit": "", "standard_limit": "Nil", "sort_order": 32},
+
+    # ── Schedule 6: Monitoring for Discharge of Treated Effluent Into Environment
+    {"water_type": "waste_6", "name": "pH", "category": "physicochemical", "unit": "", "standard_limit": "6.5 – 8.5", "sort_order": 1},
+    {"water_type": "waste_6", "name": "BOD (5 days at 20°C)", "category": "physicochemical", "unit": "mg/L", "standard_limit": "30", "sort_order": 2},
+    {"water_type": "waste_6", "name": "COD", "category": "physicochemical", "unit": "mg/L", "standard_limit": "50", "sort_order": 3},
+    {"water_type": "waste_6", "name": "Suspended Solids", "category": "physicochemical", "unit": "mg/L", "standard_limit": "30", "sort_order": 4},
+    {"water_type": "waste_6", "name": "Ammonia-NH4+", "category": "physicochemical", "unit": "mg/L", "standard_limit": "100", "sort_order": 5},
+    {"water_type": "waste_6", "name": "Nitrate-NO3 + Nitrite-NO2", "category": "physicochemical", "unit": "mg/L", "standard_limit": "—", "sort_order": 6},
+    {"water_type": "waste_6", "name": "Total Dissolved Solids", "category": "physicochemical", "unit": "mg/L", "standard_limit": "1200", "sort_order": 7},
+    {"water_type": "waste_6", "name": "E.coli", "category": "microbiological", "unit": "per 100 ml", "standard_limit": "Nil", "sort_order": 50},
+]
+
+
 def seed_catalog(db: Session) -> int:
-    """Insert default dialysis water tests if not already present. Returns count added."""
-    existing_names = {row.name for row in db.query(TestCatalogItem.name).all()}
+    """Insert default catalog tests if not already present. Keyed by (name, water_type). Returns count added."""
+    existing_pairs = {
+        (row[0], row[1] or "dialysis_potable")
+        for row in db.query(TestCatalogItem.name, TestCatalogItem.water_type).all()
+    }
+    all_items = (
+        [{**item, "water_type": "dialysis_potable"} for item in DIALYSIS_WATER_TESTS]
+        + WASTE_SCHEDULE_TESTS
+    )
     added = 0
-    for item in DIALYSIS_WATER_TESTS:
-        if item["name"] not in existing_names:
+    for item in all_items:
+        key = (item["name"], item.get("water_type", "dialysis_potable"))
+        if key not in existing_pairs:
             db.add(TestCatalogItem(**item))
             added += 1
     if added:
@@ -147,6 +340,7 @@ def seed_catalog(db: Session) -> int:
 @router.get("", response_model=List[CatalogItemOut])
 def list_catalog(
     category: Optional[TestCategory] = None,
+    water_type: Optional[str] = None,
     active_only: bool = True,
     db: Session = Depends(get_db),
 ):
@@ -155,6 +349,8 @@ def list_catalog(
         q = q.filter(TestCatalogItem.is_active == True)  # noqa: E712
     if category:
         q = q.filter(TestCatalogItem.category == category)
+    if water_type:
+        q = q.filter(TestCatalogItem.water_type == water_type)
     items = q.order_by(TestCatalogItem.sort_order, TestCatalogItem.name).all()
     return [CatalogItemOut.model_validate(i) for i in items]
 

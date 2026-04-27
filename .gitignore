@@ -83,3 +83,6 @@ desktop.ini
 # ==========================
 docs/_build/
 docs/site/
+
+
+tmp/

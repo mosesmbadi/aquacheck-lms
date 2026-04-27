@@ -15,6 +15,7 @@ class TestCatalogItem(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False, index=True)
     category = Column(SAEnum(TestCategory), nullable=False, index=True)
+    water_type = Column(String, nullable=False, default="dialysis_potable", index=True)
     unit = Column(String, nullable=True)
     method_name = Column(String, nullable=True)
     standard_limit = Column(String, nullable=True)

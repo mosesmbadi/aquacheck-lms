@@ -15,6 +15,12 @@ class SampleStatus(str, enum.Enum):
     disposed = "disposed"
 
 
+class SampleCategory(str, enum.Enum):
+    dialysis = "dialysis"
+    potable = "potable"
+    waste = "waste"
+
+
 class Sample(Base):
     __tablename__ = "samples"
 
@@ -24,6 +30,8 @@ class Sample(Base):
     contract_id = Column(Integer, ForeignKey("contracts.id"), nullable=True)
     description = Column(Text, nullable=True)
     sample_type = Column(String, nullable=True)
+    sample_category = Column(SAEnum(SampleCategory), nullable=True)
+    waste_schedule = Column(Integer, nullable=True)
     collection_date = Column(Date, nullable=True)
     collection_location = Column(String, nullable=True)
     gps_coordinates = Column(String, nullable=True)

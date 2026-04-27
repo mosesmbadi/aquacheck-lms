@@ -2,6 +2,17 @@
 
 export type TestCategory = "physicochemical" | "microbiological";
 
+export type SampleCategory = "dialysis" | "potable" | "waste";
+
+export type WaterType =
+  | "dialysis_potable"
+  | "waste_1"
+  | "waste_2"
+  | "waste_3"
+  | "waste_4"
+  | "waste_5"
+  | "waste_6";
+
 export type UserRole =
   | "admin"
   | "manager"
@@ -80,6 +91,7 @@ export interface TestCatalogItem {
   id: number;
   name: string;
   category: TestCategory;
+  water_type: WaterType;
   unit?: string;
   method_name?: string;
   standard_limit?: string;
@@ -192,6 +204,8 @@ export interface Sample {
   contract_id?: number;
   description?: string;
   sample_type?: string;
+  sample_category?: SampleCategory;
+  waste_schedule?: number;
   collection_date?: string;
   collection_location?: string;
   gps_coordinates?: string;

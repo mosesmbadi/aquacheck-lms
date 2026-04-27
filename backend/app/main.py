@@ -211,6 +211,51 @@ def ensure_schema_compatibility():
             ))
             print("[LIMS] Added test_catalog.price column.")
 
+        # test_catalog.water_type — categorise tests by sample water type
+        water_type_exists = connection.execute(
+            text(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'test_catalog' AND column_name = 'water_type'
+                """
+            )
+        ).scalar()
+        if not water_type_exists:
+            connection.execute(text(
+                "ALTER TABLE test_catalog ADD COLUMN water_type VARCHAR NOT NULL DEFAULT 'dialysis_potable'"
+            ))
+            print("[LIMS] Added test_catalog.water_type column.")
+
+        # samples.sample_category — dialysis / potable / waste
+        sample_cat_exists = connection.execute(
+            text(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'samples' AND column_name = 'sample_category'
+                """
+            )
+        ).scalar()
+        if not sample_cat_exists:
+            connection.execute(text(
+                "ALTER TABLE samples ADD COLUMN sample_category VARCHAR"
+            ))
+            print("[LIMS] Added samples.sample_category column.")
+
+        # samples.waste_schedule — 1–6 (only for waste samples)
+        waste_sched_exists = connection.execute(
+            text(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'samples' AND column_name = 'waste_schedule'
+                """
+            )
+        ).scalar()
+        if not waste_sched_exists:
+            connection.execute(text(
+                "ALTER TABLE samples ADD COLUMN waste_schedule INTEGER"
+            ))
+            print("[LIMS] Added samples.waste_schedule column.")
+
         # samples.customer_id — associate sample directly with a customer
         sample_cust_exists = connection.execute(
             text(

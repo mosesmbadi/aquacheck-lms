@@ -1,7 +1,7 @@
 from datetime import datetime, date
 from typing import Optional, List, Any
 from pydantic import BaseModel, Field, field_validator
-from app.models.sample import SampleStatus
+from app.models.sample import SampleStatus, SampleCategory
 
 
 class SampleBase(BaseModel):
@@ -9,6 +9,8 @@ class SampleBase(BaseModel):
     contract_id: Optional[int] = Field(None, gt=0)
     description: Optional[str] = None
     sample_type: Optional[str] = None
+    sample_category: Optional[SampleCategory] = None
+    waste_schedule: Optional[int] = None
     collection_date: Optional[date] = None
     collection_location: Optional[str] = None
     gps_coordinates: Optional[str] = None
@@ -31,6 +33,8 @@ class SampleUpdate(BaseModel):
     contract_id: Optional[int] = Field(None, gt=0)
     description: Optional[str] = None
     sample_type: Optional[str] = None
+    sample_category: Optional[SampleCategory] = None
+    waste_schedule: Optional[int] = None
     collection_date: Optional[date] = None
     collection_location: Optional[str] = None
     gps_coordinates: Optional[str] = None

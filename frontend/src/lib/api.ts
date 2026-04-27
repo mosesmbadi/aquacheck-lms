@@ -275,7 +275,7 @@ export const quotationsApi = {
 
 // ─── Test Catalog ─────────────────────────────────────────────────────────────
 export const testCatalogApi = {
-  list: (params?: { category?: TestCategory; active_only?: boolean }) =>
+  list: (params?: { category?: TestCategory; water_type?: string; active_only?: boolean }) =>
     api.get<TestCatalogItem[]>("/test-catalog", { params }),
   create: (data: Partial<TestCatalogItem>) => api.post<TestCatalogItem>("/test-catalog", data),
   update: (id: number, data: Partial<TestCatalogItem>) =>
