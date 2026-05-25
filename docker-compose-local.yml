@@ -61,6 +61,8 @@ services:
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production-super-secret-key-123}
       ALGORITHM: ${ALGORITHM:-HS256}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-480}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
     volumes:
       - ./backend:/app
       - ./docs:/app/docs_source:ro # read-only source for initial content import
@@ -69,6 +71,23 @@ services:
         condition: service_healthy
       migrations:
         condition: service_completed_successfully
+    networks:
+      - lims_network
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: aquacheck_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@aquachecklab.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-Admin@123}
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      db:
+        condition: service_healthy
     networks:
       - lims_network
 

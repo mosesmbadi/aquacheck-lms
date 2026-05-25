@@ -4,6 +4,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy import text
 
 from app.database import engine, Base, SessionLocal
+from app.config import settings
 from app.models import *  # noqa: F401,F403 — ensure all models are registered
 
 from app.routers import (
@@ -61,20 +62,23 @@ def seed_admin(db):
     from app.models.user import User, UserRole
     from app.services.auth import get_password_hash
 
-    existing = db.query(User).filter(User.email == "admin@aquacheck.com").first()
+    admin_email = settings.ADMIN_EMAIL
+    admin_password = settings.ADMIN_PASSWORD
+
+    existing = db.query(User).filter(User.email == admin_email).first()
     if not existing:
         admin = User(
-            email="admin@aquacheck.com",
+            email=admin_email,
             full_name="System Administrator",
-            hashed_password=get_password_hash("Admin@123"),
+            hashed_password=get_password_hash(admin_password),
             role=UserRole.admin,
             is_active=True,
         )
         db.add(admin)
         db.commit()
-        print("[LIMS] Default admin user created: admin@aquacheck.com / Admin@123")
+        print(f"[LIMS] Default admin user created: {admin_email}")
     else:
-        print("[LIMS] Admin user already exists.")
+        print(f"[LIMS] Admin user already exists: {admin_email}")
 
 
 def ensure_schema_compatibility():
