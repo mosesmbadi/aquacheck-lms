@@ -536,15 +536,22 @@ PACKAGED_DRINKING_WATER_TESTS = [
 ]
 
 
+_CHLORINE_NAMES = {"Free Chlorine mg/L", "Total Chlorine mg/L", "Chloramine as Cl₂ mg/L"}
+
 def seed_catalog(db: Session) -> int:
     """Insert default catalog tests if not already present. Keyed by (name, water_type). Returns count added."""
     existing_pairs = {
         (row[0], row[1] or "dialysis_potable")
         for row in db.query(TestCatalogItem.name, TestCatalogItem.water_type).all()
     }
+    # potable_treated  = full potable set (incl. residual chlorine for chlorinated sources)
+    # potable_natural  = potable set minus chlorine/disinfection (borehole, spring, river, rain)
+    potable_natural = [i for i in POTABLE_WATER_TESTS if i["name"] not in _CHLORINE_NAMES]
     all_items = (
         [{**item, "water_type": "dialysis_potable"} for item in DIALYSIS_WATER_TESTS]
         + [{**item, "water_type": "potable"} for item in POTABLE_WATER_TESTS]
+        + [{**item, "water_type": "potable_treated"} for item in POTABLE_WATER_TESTS]
+        + [{**item, "water_type": "potable_natural"} for item in potable_natural]
         + [{**item, "water_type": "packaged_drinking_water"} for item in PACKAGED_DRINKING_WATER_TESTS]
         + WASTE_SCHEDULE_TESTS
     )

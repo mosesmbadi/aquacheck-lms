@@ -19,7 +19,9 @@ import { Plus, Pencil, ToggleLeft, ToggleRight, FlaskConical, Microscope } from 
 
 const WATER_TYPE_OPTIONS = [
   { value: "dialysis_potable",        label: "Dialysis Water" },
-  { value: "potable",                 label: "Potable Water (KS 459)" },
+  { value: "potable",                 label: "Potable Water (generic)" },
+  { value: "potable_natural",         label: "Natural Potable Water" },
+  { value: "potable_treated",         label: "Treated Potable Water" },
   { value: "packaged_drinking_water", label: "Packaged Drinking Water" },
   { value: "waste_1",                 label: "Waste Water (Schedule 1)" },
   { value: "waste_2",                 label: "Waste Water (Schedule 2)" },

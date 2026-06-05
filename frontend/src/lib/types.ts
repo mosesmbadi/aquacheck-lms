@@ -7,6 +7,8 @@ export type SampleCategory = "dialysis" | "potable" | "waste" | "packaged_drinki
 export type WaterType =
   | "dialysis_potable"
   | "potable"
+  | "potable_natural"
+  | "potable_treated"
   | "packaged_drinking_water"
   | "waste_1"
   | "waste_2"
