@@ -2,13 +2,14 @@ from collections import OrderedDict
 from datetime import datetime, timezone
 from typing import List
 import io
+import base64
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from sqlalchemy.orm import Session
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.units import cm
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from app.deps import get_db, get_current_user
 from app.models.user import User, UserRole
@@ -19,6 +20,7 @@ from app.models.sample import Sample
 from app.models.test_result import TestResult
 from app.schemas.report import ReportCreate, ReportUpdate, ReportOut
 from app.services.audit import log_action
+from app.services.barcode import generate_barcode
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
 
@@ -184,6 +186,54 @@ def get_report(report_id: int, db: Session = Depends(get_db), current_user: User
     return report
 
 
+@router.put("/{report_id}", response_model=ReportOut)
+def update_report(
+    report_id: int,
+    payload: ReportUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role == UserRole.customer:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Customers cannot edit reports.")
+    report = db.query(Report).filter(Report.id == report_id).first()
+    if not report:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
+
+    update_data = payload.model_dump(exclude_unset=True, exclude={"amendment_reason"})
+    revision = list(report.revision_history or [])
+
+    if report.status in (ReportStatus.issued, ReportStatus.amended):
+        if not payload.amendment_reason:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="amendment_reason is required when editing an issued or amended report.",
+            )
+        revision.append({
+            "action": "amended",
+            "user_id": current_user.id,
+            "reason": payload.amendment_reason,
+            "previous_content": report.content,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+        update_data["status"] = ReportStatus.amended
+    else:
+        revision.append({
+            "action": "edited",
+            "user_id": current_user.id,
+            "reason": payload.amendment_reason or "Draft edit",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+
+    update_data["revision_history"] = revision
+    for k, v in update_data.items():
+        setattr(report, k, v)
+
+    db.commit()
+    db.refresh(report)
+    log_action(db, current_user.id, "UPDATE_REPORT", "report", str(report_id))
+    return report
+
+
 @router.post("/{report_id}/issue", response_model=ReportOut)
 def issue_report(
     report_id: int,
@@ -247,24 +297,44 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
     cell_style = ParagraphStyle("cell", parent=styles["Normal"], fontSize=8, leading=9)
     header_cell_style = ParagraphStyle("header_cell", parent=styles["Normal"], fontSize=8, leading=9, fontName="Helvetica-Bold", alignment=1)
 
+    # Build QR code image if report has a public_token
+    qr_image = None
+    if report.public_token:
+        public_url = _content_value(content, "public_base_url", "https://app.aquachecklab.com")
+        qr_url = f"{public_url}/public/reports/{report.public_token}"
+        qr_b64 = generate_barcode(qr_url)
+        qr_bytes = io.BytesIO(base64.b64decode(qr_b64))
+        qr_image = RLImage(qr_bytes, width=2 * cm, height=2 * cm)
+
+    header_cols = [
+        Paragraph("<b>AQUACHECK</b><br/>Trusted Quality Check Partner", styles["Title"]),
+        Paragraph(
+            "AQUACHECK LABORATORIES LIMITED<br/>P.O. Box 216 - 00300, NAIROBI<br/>Westlands Commercial Centre<br/>Off Ring Road, Parklands Rd<br/>Email: aquachecklab@gmail.com<br/>Website: www.aquachecklab.com<br/>Tel: 0755596064/0734933819",
+            company_style,
+        ),
+    ]
+    if qr_image:
+        header_cols.append(qr_image)
+
     header_table = Table(
-        [[
-            Paragraph("<b>AQUACHECK</b><br/>Trusted Quality Check Partner", styles["Title"]),
-            Paragraph(
-                "AQUACHECK LABORATORIES LIMITED<br/>P.O. Box 216 - 00300, NAIROBI<br/>Westlands Commercial Centre<br/>Off Ring Road, Parklands Rd<br/>Email: aquachecklab@gmail.com<br/>Website: www.aquachecklab.com<br/>Tel: 0755596064/0734933819",
-                company_style,
-            ),
-        ]],
-        colWidths=[8.2 * cm, 8.8 * cm],
+        [header_cols],
+        colWidths=[6.2 * cm, 7.8 * cm, 3 * cm] if qr_image else [8.2 * cm, 8.8 * cm],
     )
-    header_table.setStyle(TableStyle([
+    hdr_style_cmds = [
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("LINEBELOW", (0, 0), (-1, 0), 1, colors.HexColor("#60a5fa")),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-    ]))
+    ]
+    if qr_image:
+        hdr_style_cmds.append(("ALIGN", (2, 0), (2, 0), "CENTER"))
+    header_table.setStyle(TableStyle(hdr_style_cmds))
     story.append(header_table)
     story.append(Spacer(1, 0.15 * cm))
-    story.append(Paragraph(_content_value(content, "report_title", "TEST REPORT"), title_style))
+
+    report_title_text = _content_value(content, "report_title", "TEST REPORT")
+    if report.status == ReportStatus.amended:
+        report_title_text = f"{report_title_text} <font color=\"#b45309\">[REVISED]</font>"
+    story.append(Paragraph(report_title_text, title_style))
     story.append(Spacer(1, 0.15 * cm))
 
     def _contact_person_value():
@@ -355,6 +425,18 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
         ),
         styles["Normal"],
     ))
+
+    # Show amendment history if report has been revised
+    if report.status == ReportStatus.amended:
+        amendments = [e for e in (report.revision_history or []) if e.get("action") == "amended"]
+        if amendments:
+            story.append(Spacer(1, 0.2 * cm))
+            amendment_style = ParagraphStyle("amend", parent=styles["Normal"], fontSize=7, leading=9, textColor=colors.HexColor("#92400e"))
+            story.append(Paragraph("<b>AMENDMENT HISTORY</b>", amendment_style))
+            for amend in amendments:
+                ts = amend.get("timestamp", "")[:10]
+                reason = amend.get("reason", "")
+                story.append(Paragraph(f"• {ts}: {reason}", amendment_style))
 
     story.append(Spacer(1, 0.8 * cm))
     signatory_table = Table([

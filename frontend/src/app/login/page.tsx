@@ -94,10 +94,6 @@ export default function LoginPage() {
               {loading ? "Signing in..." : "Sign in"}
             </button>
           </form>
-
-          <p className="mt-6 text-xs text-center text-gray-500">
-            Default credentials: admin@aquacheck.com / Admin@123
-          </p>
         </div>
       </div>
     </div>

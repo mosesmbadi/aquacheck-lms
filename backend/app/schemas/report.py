@@ -17,6 +17,7 @@ class ReportCreate(ReportBase):
 class ReportUpdate(BaseModel):
     content: Optional[Dict[str, Any]] = None
     status: Optional[ReportStatus] = None
+    amendment_reason: Optional[str] = None  # required when editing an issued report
 
 
 class ReportOut(ReportBase):
@@ -27,6 +28,7 @@ class ReportOut(ReportBase):
     issued_at: Optional[datetime] = None
     pdf_path: Optional[str] = None
     digital_signature: Optional[str] = None
+    public_token: Optional[str] = None
     revision_history: Optional[List[Any]] = []
     created_at: datetime
     updated_at: datetime

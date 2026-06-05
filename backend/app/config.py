@@ -8,6 +8,10 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
 
+    # Admin seed credentials — must be set in .env; no hardcoded fallbacks
+    ADMIN_EMAIL: str
+    ADMIN_PASSWORD: str
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 

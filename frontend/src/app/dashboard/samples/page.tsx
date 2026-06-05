@@ -121,10 +121,17 @@ export default function SamplesPage() {
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Register Sample" size="lg">
         <SampleForm
           onSubmit={async (data) => {
+            // potable_type is a frontend-only field; derive sample_type label from it
+            const { potable_type, ...sampleData } = data as typeof data & { potable_type?: string | null };
+            const derivedSampleType =
+              sampleData.sample_category === "potable" && potable_type && !sampleData.sample_type
+                ? potable_type === "natural" ? "Natural Potable Water" : "Treated Potable Water"
+                : sampleData.sample_type;
             await createMutation.mutateAsync({
-              ...data,
-              customer_id: data.customer_id || undefined,
-              contract_id: data.contract_id || undefined,
+              ...sampleData,
+              sample_type: derivedSampleType,
+              customer_id: sampleData.customer_id || undefined,
+              contract_id: sampleData.contract_id || undefined,
             } as Partial<Sample>);
           }}
           onCancel={() => setShowCreate(false)}

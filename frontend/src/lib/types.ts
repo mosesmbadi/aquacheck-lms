@@ -2,10 +2,14 @@
 
 export type TestCategory = "physicochemical" | "microbiological";
 
-export type SampleCategory = "dialysis" | "potable" | "waste";
+export type SampleCategory = "dialysis" | "potable" | "waste" | "packaged_drinking_water";
 
 export type WaterType =
   | "dialysis_potable"
+  | "potable"
+  | "potable_natural"
+  | "potable_treated"
+  | "packaged_drinking_water"
   | "waste_1"
   | "waste_2"
   | "waste_3"
@@ -115,6 +119,9 @@ export interface QuotationItem {
   quantity: number;
   unit_price: number;
   total: number;
+  package_name?: string | null;
+  package_price?: number | null;
+  is_package_header?: boolean;
 }
 
 export interface Quotation {
@@ -334,7 +341,14 @@ export interface Report {
   issued_at?: string;
   pdf_path?: string;
   digital_signature?: string;
-  revision_history?: unknown[];
+  public_token?: string;
+  revision_history?: Array<{
+    action: string;
+    user_id: number;
+    reason?: string;
+    timestamp: string;
+    previous_content?: Record<string, unknown>;
+  }>;
   created_at: string;
   updated_at: string;
 }
@@ -407,7 +421,7 @@ export interface QualityDashboard {
   equipment_calibration_due: number;
 }
 
-export type DocumentCategory = "sop" | "masterlist";
+export type DocumentCategory = "sop" | "masterlist" | "user_guide" | "forms" | "external_documents";
 export type DocumentStatus = "active" | "under_review" | "superseded";
 
 export interface DocumentSection {
@@ -461,6 +475,7 @@ export interface InventoryItem {
   storage_location?: string;
   storage_conditions?: string;
   unit_cost?: number;
+  expiry_date?: string;
   is_active: number;
   is_low_stock: boolean;
   notes?: string;
@@ -515,4 +530,37 @@ export interface CsvImportResult {
   updated: number;
   skipped: number;
   errors: string[];
+}
+
+// ─── Invoices ─────────────────────────────────────────────────────────────────
+
+export type InvoiceStatus = "draft" | "issued" | "paid" | "void";
+
+export interface InvoiceItem {
+  name: string;
+  quantity: number;
+  unit_price: number;
+  total: number;
+}
+
+export interface Invoice {
+  id: number;
+  invoice_number: string;
+  sample_id?: number;
+  customer_id?: number;
+  contract_id?: number;
+  items: InvoiceItem[];
+  subtotal: number;
+  vat_rate: number;
+  vat_amount: number;
+  total: number;
+  currency: string;
+  status: InvoiceStatus;
+  due_date?: string;
+  notes?: string;
+  created_by?: number;
+  created_at: string;
+  updated_at: string;
+  customer_name?: string;
+  sample_code?: string;
 }

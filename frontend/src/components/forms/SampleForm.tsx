@@ -25,6 +25,7 @@ const SAMPLE_CATEGORIES = [
   { value: "dialysis", label: "Dialysis Water", icon: Droplets, color: "blue" },
   { value: "potable", label: "Potable Water", icon: Waves, color: "teal" },
   { value: "waste", label: "Waste Water", icon: Factory, color: "orange" },
+  { value: "packaged_drinking_water", label: "Packaged Drinking Water", icon: FlaskConical, color: "purple" },
 ] as const;
 
 const DISCHARGE_DESTINATIONS = [
@@ -46,8 +47,14 @@ const DISCHARGE_DESTINATIONS = [
   },
 ] as const;
 
-function getWaterType(category: string): string {
-  if (category === "dialysis" || category === "potable") return "dialysis_potable";
+function getWaterType(category: string, potableType?: string | null): string {
+  if (category === "dialysis") return "dialysis_potable";
+  if (category === "potable") {
+    if (potableType === "natural") return "potable_natural";
+    if (potableType === "treated") return "potable_treated";
+    return ""; // not ready until sub-type is chosen
+  }
+  if (category === "packaged_drinking_water") return "packaged_drinking_water";
   return "";
 }
 
@@ -63,9 +70,10 @@ const schema = z
       (v) => (v === "" || v === null || v === undefined ? undefined : v),
       z.coerce.number().int().positive().optional()
     ),
-    sample_category: z.enum(["dialysis", "potable", "waste"], {
+    sample_category: z.enum(["dialysis", "potable", "waste", "packaged_drinking_water"], {
       required_error: "Sample category is required",
     }),
+    potable_type: z.enum(["natural", "treated"]).optional().nullable(),
     waste_industry_type: z.string().optional().nullable(),
     discharge_destination: z
       .enum(["environment", "public_sewer"])
@@ -344,6 +352,7 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
 
   const selectedCustomerId = watch("customer_id");
   const sampleCategory = watch("sample_category");
+  const potableType = watch("potable_type");
   const wasteIndustryType = watch("waste_industry_type");
   const dischargeDestination = watch("discharge_destination");
 
@@ -354,7 +363,7 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
 
   // Catalog fetch: dialysis/potable use their own water_type; waste uses suggested endpoint
   const nonWasteWaterType = sampleCategory && sampleCategory !== "waste"
-    ? getWaterType(sampleCategory)
+    ? getWaterType(sampleCategory, potableType)
     : "";
 
   const { data: nonWasteCatalog = [] } = useQuery({
@@ -408,14 +417,22 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
   const testsReady =
     sampleCategory === "waste"
       ? wasteParamsReady
-      : !!nonWasteWaterType;
+      : sampleCategory === "potable"
+        ? !!potableType && !!nonWasteWaterType
+        : !!nonWasteWaterType;
 
-  function handleCategoryChange(value: "dialysis" | "potable" | "waste") {
+  function handleCategoryChange(value: "dialysis" | "potable" | "waste" | "packaged_drinking_water") {
     setValue("sample_category", value, { shouldValidate: true });
+    setValue("potable_type", null);
     setValue("waste_industry_type", null);
     setValue("discharge_destination", null);
     setValue("requested_test_ids", []);
-    setSuggestionsApplied(false); // allow re-applying for next waste selection
+    setSuggestionsApplied(false);
+  }
+
+  function handlePotableTypeChange(value: "natural" | "treated") {
+    setValue("potable_type", value, { shouldValidate: true });
+    setValue("requested_test_ids", []);
   }
 
   function handleIndustryChange(value: string) {
@@ -486,6 +503,57 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
           <p className="text-xs text-red-500">{errors.sample_category.message}</p>
         )}
       </div>
+
+      {/* ── Potable Water sub-type ── */}
+      {sampleCategory === "potable" && (
+        <div className="border border-teal-200 rounded-xl bg-teal-50/40 p-4 space-y-3">
+          <div>
+            <StepBadge n={2} label="Potable Water Source Type" done={!!potableType} />
+            <p className="text-xs text-gray-500 mb-3 ml-7">
+              Select whether this is natural (untreated) or treated potable water.
+              This determines which parameters are included.
+            </p>
+            <div className="grid grid-cols-2 gap-3 ml-7">
+              {[
+                {
+                  value: "natural" as const,
+                  label: "Natural Water",
+                  desc: "Borehole, spring, river, or rainwater — no chlorination",
+                  note: "Chlorine tests excluded",
+                },
+                {
+                  value: "treated" as const,
+                  label: "Treated Water",
+                  desc: "Municipal, NWSC, or chlorinated supply water",
+                  note: "Includes residual chlorine monitoring",
+                },
+              ].map((opt) => {
+                const isSelected = potableType === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => handlePotableTypeChange(opt.value)}
+                    className={`rounded-xl border-2 p-3 text-left transition-all ${
+                      isSelected
+                        ? "border-teal-500 bg-teal-50"
+                        : "border-gray-200 hover:border-teal-300 hover:bg-teal-50/50"
+                    }`}
+                  >
+                    <p className={`text-sm font-semibold ${isSelected ? "text-teal-800" : "text-gray-700"}`}>
+                      {opt.label}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-0.5">{opt.desc}</p>
+                    <p className={`text-xs mt-1 font-medium ${isSelected ? "text-teal-600" : "text-gray-400"}`}>
+                      {opt.note}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Waste Water wizard ── */}
       {sampleCategory === "waste" && (

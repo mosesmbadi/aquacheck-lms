@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, AlertCircle, Clock, Download, Trash2, CircleCheck, CircleX, TriangleAlert } from "lucide-react";
+import { Plus, AlertCircle, Clock, Download, Trash2, CircleCheck, CircleX, TriangleAlert, Pencil } from "lucide-react";
 import { format } from "date-fns";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/Button";
@@ -11,7 +11,7 @@ import { Modal } from "@/components/ui/Modal";
 import { EquipmentStatusBadge } from "@/components/ui/Badge";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 import { equipmentApi, calibrationApi } from "@/lib/api";
-import type { Equipment, CalibrationRecord, CalibrationResult } from "@/lib/types";
+import type { Equipment, CalibrationResult } from "@/lib/types";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -30,6 +30,21 @@ const addSchema = z.object({
   calibration_certificate_ref: z.string().optional(),
 });
 type AddFormData = z.infer<typeof addSchema>;
+
+// ─── Edit equipment schema ────────────────────────────────────────────────────
+
+const editSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  model: z.string().optional(),
+  manufacturer: z.string().optional(),
+  serial_number: z.string().optional(),
+  location: z.string().optional(),
+  status: z.enum(["active", "in_calibration", "out_of_service", "decommissioned"]).optional(),
+  calibration_due_date: z.string().optional(),
+  last_calibration_date: z.string().optional(),
+  calibration_certificate_ref: z.string().optional(),
+});
+type EditFormData = z.infer<typeof editSchema>;
 
 // ─── Add calibration record schema ───────────────────────────────────────────
 
@@ -258,6 +273,7 @@ function CalibrationHistoryModal({
 export default function EquipmentPage() {
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
+  const [editEquipment, setEditEquipment] = useState<Equipment | null>(null);
   const [historyEquipment, setHistoryEquipment] = useState<Equipment | null>(null);
 
   const { data: equipment = [], isLoading } = useQuery({
@@ -279,7 +295,19 @@ export default function EquipmentPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["equipment"] }); },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Partial<Equipment> }) => equipmentApi.update(id, data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["equipment"] }); setEditEquipment(null); editReset(); },
+  });
+
   const { register, handleSubmit, formState: { errors }, reset } = useForm<AddFormData>({ resolver: zodResolver(addSchema) });
+
+  const {
+    register: editReg,
+    handleSubmit: editSubmit,
+    reset: editReset,
+    formState: { errors: editErrors },
+  } = useForm<EditFormData>({ resolver: zodResolver(editSchema) });
 
   const columns = [
     { key: "equipment_id", header: "Equipment ID", render: (r: Equipment) => <span className="font-mono font-medium text-primary-600">{r.equipment_id}</span> },
@@ -308,6 +336,28 @@ export default function EquipmentPage() {
     {
       key: "actions", header: "", render: (r: Equipment) => (
         <div className="flex items-center gap-1 justify-end">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setEditEquipment(r);
+              editReset({
+                name: r.name,
+                model: r.model ?? "",
+                manufacturer: r.manufacturer ?? "",
+                serial_number: r.serial_number ?? "",
+                location: r.location ?? "",
+                status: r.status,
+                calibration_due_date: r.calibration_due_date ?? "",
+                last_calibration_date: r.last_calibration_date ?? "",
+                calibration_certificate_ref: r.calibration_certificate_ref ?? "",
+              });
+            }}
+            className="flex items-center gap-1 text-xs text-gray-600 hover:text-primary-600 font-medium px-2 py-1 rounded hover:bg-primary-50 transition-colors"
+            title="Edit equipment"
+          >
+            <Pencil className="w-3.5 h-3.5" />
+            Edit
+          </button>
           <button
             onClick={(e) => { e.stopPropagation(); toggleMutation.mutate(r.id); }}
             className={`flex items-center gap-1 text-xs font-medium px-2 py-1 rounded transition-colors ${r.is_active ? "text-red-600 hover:bg-red-50" : "text-green-600 hover:bg-green-50"}`}
@@ -377,6 +427,56 @@ export default function EquipmentPage() {
             <Button type="submit" loading={createMutation.isPending}>Add Equipment</Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Edit Equipment modal */}
+      <Modal
+        open={!!editEquipment}
+        onClose={() => { setEditEquipment(null); editReset(); }}
+        title={`Edit Equipment — ${editEquipment?.equipment_id ?? ""}`}
+        size="lg"
+      >
+        {editEquipment && (
+          <form
+            onSubmit={editSubmit((data) =>
+              updateMutation.mutate({ id: editEquipment.id, data: data as Partial<Equipment> })
+            )}
+            className="space-y-4"
+          >
+            <div className="grid grid-cols-2 gap-4">
+              <Input label="Name" error={editErrors.name?.message} {...editReg("name")} placeholder="e.g. pH Meter" />
+              <Input label="Manufacturer" {...editReg("manufacturer")} placeholder="e.g. Hach" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Input label="Model" {...editReg("model")} placeholder="e.g. HQ40d" />
+              <Input label="Serial Number" {...editReg("serial_number")} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Input label="Location" {...editReg("location")} placeholder="e.g. Lab Room A" />
+              <Select label="Status" {...editReg("status")}>
+                <option value="active">Active</option>
+                <option value="in_calibration">In Calibration</option>
+                <option value="out_of_service">Out of Service</option>
+                <option value="decommissioned">Decommissioned</option>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Input label="Last Calibration Date" type="date" {...editReg("last_calibration_date")} />
+              <Input label="Calibration Due Date" type="date" {...editReg("calibration_due_date")} />
+            </div>
+            <Input
+              label="Calibration Certificate Ref."
+              {...editReg("calibration_certificate_ref")}
+              placeholder="e.g. CERT-2024-0042"
+            />
+            <div className="flex gap-3 justify-end pt-2">
+              <Button type="button" variant="secondary" onClick={() => { setEditEquipment(null); editReset(); }}>
+                Cancel
+              </Button>
+              <Button type="submit" loading={updateMutation.isPending}>Save Changes</Button>
+            </div>
+          </form>
+        )}
       </Modal>
 
       {/* Calibration history modal */}

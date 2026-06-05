@@ -7,6 +7,9 @@ from app.database import Base
 class DocumentCategory(str, enum.Enum):
     sop = "sop"
     masterlist = "masterlist"
+    user_guide = "user_guide"
+    forms = "forms"
+    external_documents = "external_documents"
 
 
 class DocumentStatus(str, enum.Enum):

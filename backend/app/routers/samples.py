@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.deps import get_db, get_current_user
 from app.models.user import User, UserRole
 from app.models.contract import Contract
+from app.models.customer import Customer
 from app.models.sample import Sample
 from app.schemas.sample import SampleCreate, SampleUpdate, SampleOut, CustodyEntry
 from app.services.audit import log_action
@@ -80,6 +81,52 @@ def create_sample(
         ],
     )
     db.add(sample)
+    db.flush()  # get sample.id without committing
+
+    # Auto-generate a draft invoice for this sample
+    try:
+        from app.models.invoice import Invoice
+        from app.routers.invoices import _next_invoice_number
+
+        # Determine customer_id from contract or direct assignment
+        cust_id = sample.customer_id
+        if not cust_id and payload.contract_id:
+            c = db.query(Contract).filter(Contract.id == payload.contract_id).first()
+            cust_id = c.customer_id if c else None
+
+        # Build a placeholder description item
+        inv_items = [{
+            "name": f"Analysis of sample: {sample_code}",
+            "quantity": 1,
+            "unit_price": 0,
+            "total": 0,
+        }]
+        # Determine VAT rate from customer preference (fallback to 16%)
+        vat_rate = 16
+        if cust_id:
+            cust = db.query(Customer).filter(Customer.id == cust_id).first()
+            currency = (cust.currency if cust else None) or "KES"
+        else:
+            currency = "KES"
+
+        invoice = Invoice(
+            invoice_number=_next_invoice_number(db),
+            sample_id=sample.id,
+            customer_id=cust_id,
+            contract_id=payload.contract_id,
+            items=inv_items,
+            subtotal=0,
+            vat_rate=vat_rate,
+            vat_amount=0,
+            total=0,
+            currency=currency,
+            created_by=current_user.id,
+        )
+        db.add(invoice)
+    except Exception as exc:
+        # Invoice creation is non-critical — log and continue
+        print(f"[LIMS] Warning: could not auto-create invoice for sample {sample_code}: {exc}")
+
     db.commit()
     db.refresh(sample)
     log_action(db, current_user.id, "CREATE_SAMPLE", "sample", str(sample.id))

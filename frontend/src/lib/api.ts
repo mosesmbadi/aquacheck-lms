@@ -6,7 +6,7 @@ import type {
   PaginatedResponse, LoginResponse, QualityDashboard, TestCatalogItem, TestCategory,
   Method, Document, DocumentCategory, Quotation, QuotationItem,
   InventoryItem, InventoryTransaction, InventoryStats, InventoryCategory,
-  TestReagentUsage, CsvImportResult,
+  TestReagentUsage, CsvImportResult, Invoice,
 } from "./types";
 
 const baseApiUrl = process.env.NEXT_PUBLIC_API_URL ??
@@ -122,6 +122,8 @@ export const reportsApi = {
   list: () => api.get<Report[]>("/reports"),
   get: (id: number) => api.get<Report>(`/reports/${id}`),
   create: (data: Partial<Report>) => api.post<Report>("/reports", data),
+  update: (id: number, data: { content?: Report["content"]; status?: string; amendment_reason?: string }) =>
+    api.put<Report>(`/reports/${id}`, data),
   issue: (id: number) => api.post<Report>(`/reports/${id}/issue`),
   pdfUrl: (id: number) => `${BASE_URL}/reports/${id}/pdf`,
 };
@@ -289,6 +291,16 @@ export const testCatalogApi = {
     api.get<TestCatalogItem[]>("/test-catalog/suggested", {
       params: { industry_type, discharge_destination },
     }),
+};
+
+// ─── Invoices ─────────────────────────────────────────────────────────────────
+export const invoicesApi = {
+  list: () => api.get<Invoice[]>("/invoices"),
+  get: (id: number) => api.get<Invoice>(`/invoices/${id}`),
+  create: (data: Partial<Invoice>) => api.post<Invoice>("/invoices", data),
+  update: (id: number, data: Partial<Invoice>) => api.put<Invoice>(`/invoices/${id}`, data),
+  issue: (id: number) => api.post<Invoice>(`/invoices/${id}/issue`),
+  markPaid: (id: number) => api.post<Invoice>(`/invoices/${id}/mark-paid`),
 };
 
 // ─── Calibration Records ──────────────────────────────────────────────────────

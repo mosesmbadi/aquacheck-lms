@@ -433,14 +433,126 @@ WASTE_SCHEDULE_TESTS = [
 ]
 
 
+# ─── Potable water tests — Kenya Standard KS 459 / EAS 12 / WHO ──────────────
+
+POTABLE_WATER_TESTS = [
+    # ── Physicochemical ──────────────────────────────────────────────────────
+    {"name": "pH", "category": "physicochemical", "unit": "", "method_name": "Direct Method", "standard_limit": "6.5 – 8.5", "sort_order": 1},
+    {"name": "Conductivity µS/cm", "category": "physicochemical", "unit": "µS/cm", "method_name": "Direct Method", "standard_limit": "2500", "sort_order": 2},
+    {"name": "Total Dissolved Solids mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "Direct Method", "standard_limit": "1000", "sort_order": 3},
+    {"name": "Turbidity NTU", "category": "physicochemical", "unit": "NTU", "method_name": "Absorptometric Method: 8237", "standard_limit": "5", "sort_order": 4},
+    {"name": "Colour TCU", "category": "physicochemical", "unit": "TCU", "method_name": "Platinum-Cobalt Method", "standard_limit": "15", "sort_order": 5},
+    {"name": "Odour", "category": "physicochemical", "unit": "", "method_name": "Organoleptic", "standard_limit": "Unobjectionable", "sort_order": 6},
+    {"name": "Taste", "category": "physicochemical", "unit": "", "method_name": "Organoleptic", "standard_limit": "Unobjectionable", "sort_order": 7},
+    {"name": "Total Hardness as CaCO₃ mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "APHA Method: 2340 C", "standard_limit": "500", "sort_order": 8},
+    {"name": "Calcium as Ca mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "APHA Method: 3500-Ca B", "standard_limit": "150", "sort_order": 9},
+    {"name": "Magnesium as Mg mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "APHA Method: 3500-Mg B", "standard_limit": "100", "sort_order": 10},
+    {"name": "Sodium as Na mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "APHA Method: 3500-Na", "standard_limit": "200", "sort_order": 11},
+    {"name": "Potassium as K mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "APHA Method: 3500-K", "standard_limit": "50", "sort_order": 12},
+    {"name": "Fluoride as F mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "SPADNS Method: 8029", "standard_limit": "1.5", "sort_order": 13},
+    {"name": "Chloride as Cl mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "APHA 4500-Cl B", "standard_limit": "250", "sort_order": 14},
+    {"name": "Sulphates as SO₄ mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "SulfaVer 4 Method: 8051", "standard_limit": "250", "sort_order": 15},
+    {"name": "Nitrate as NO₃⁻ mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "Cadmium reduction: 8039", "standard_limit": "50", "sort_order": 16},
+    {"name": "Nitrite as NO₂⁻ mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "Diazotization Method", "standard_limit": "0.5", "sort_order": 17},
+    {"name": "Ammonia as NH₃-N mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "Salicylate Method: 8155", "standard_limit": "1.5", "sort_order": 18},
+    {"name": "Total Alkalinity as CaCO₃ mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "APHA Method: 2340 C", "standard_limit": "—", "sort_order": 19},
+    {"name": "Phosphates as PO₄³⁻ mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "Orthophosphate Method: 8048", "standard_limit": "0.5", "sort_order": 20},
+    {"name": "Free Chlorine mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "DPD Method: 8021", "standard_limit": "0.2 – 0.5", "sort_order": 21},
+    {"name": "Total Chlorine mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "DPD Method: 8167", "standard_limit": "5.0", "sort_order": 22},
+    {"name": "Dissolved Oxygen mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "Winkler/Membrane Electrode", "standard_limit": "≥ 5", "sort_order": 23},
+    # Trace metals (µg/L)
+    {"name": "Aluminium as Al µg/L", "category": "physicochemical", "unit": "µg/L", "method_name": "Eriochrome Cyanine R Method: 8012", "standard_limit": "200", "sort_order": 30},
+    {"name": "Iron as Fe µg/L", "category": "physicochemical", "unit": "µg/L", "method_name": "Ferrover Method: 8008", "standard_limit": "300", "sort_order": 31},
+    {"name": "Manganese as Mn µg/L", "category": "physicochemical", "unit": "µg/L", "method_name": "PAN Method: 8034", "standard_limit": "100", "sort_order": 32},
+    {"name": "Copper as Cu µg/L", "category": "physicochemical", "unit": "µg/L", "method_name": "Bicinchoninate Method: 8506", "standard_limit": "2000", "sort_order": 33},
+    {"name": "Zinc as Zn µg/L", "category": "physicochemical", "unit": "µg/L", "method_name": "Zincon Method: 8009", "standard_limit": "3000", "sort_order": 34},
+    {"name": "Lead as Pb µg/L", "category": "physicochemical", "unit": "µg/L", "method_name": "AAS Method", "standard_limit": "10", "sort_order": 35},
+    {"name": "Arsenic as As µg/L", "category": "physicochemical", "unit": "µg/L", "method_name": "Arsenic Method: 8013", "standard_limit": "10", "sort_order": 36},
+    {"name": "Chromium as Cr µg/L", "category": "physicochemical", "unit": "µg/L", "method_name": "AAS Method", "standard_limit": "50", "sort_order": 37},
+    {"name": "Cadmium as Cd µg/L", "category": "physicochemical", "unit": "µg/L", "method_name": "AAS Method", "standard_limit": "3", "sort_order": 38},
+    {"name": "Mercury as Hg µg/L", "category": "physicochemical", "unit": "µg/L", "method_name": "Cold Vapour AAS", "standard_limit": "1", "sort_order": 39},
+    {"name": "Cyanide as CN⁻ µg/L", "category": "physicochemical", "unit": "µg/L", "method_name": "Pyridine-Barbituric Acid", "standard_limit": "70", "sort_order": 40},
+    {"name": "Selenium as Se µg/L", "category": "physicochemical", "unit": "µg/L", "method_name": "AAS Method", "standard_limit": "40", "sort_order": 41},
+    # ── Microbiological ──────────────────────────────────────────────────────
+    {"name": "E.coli CFU/100ml sample", "category": "microbiological", "unit": "CFU/100mL", "method_name": "KS ISO 9308-1:2014", "standard_limit": "Not Detectable", "sort_order": 50},
+    {"name": "Total Coliforms CFU/100ml sample", "category": "microbiological", "unit": "CFU/100mL", "method_name": "KS ISO 9308-1:2014", "standard_limit": "Not Detectable", "sort_order": 51},
+    {"name": "Total Viable Count CFU/ml at 22°C", "category": "microbiological", "unit": "CFU/mL", "method_name": "KS ISO 6222:1999", "standard_limit": "100", "sort_order": 52},
+    {"name": "Total Viable Count CFU/ml at 37°C", "category": "microbiological", "unit": "CFU/mL", "method_name": "KS ISO 6222:1999", "standard_limit": "20", "sort_order": 53},
+    {"name": "Pseudomonas aeruginosa CFU/100ml sample", "category": "microbiological", "unit": "CFU/100mL", "method_name": "KS ISO 16266:2006", "standard_limit": "Not Detectable", "sort_order": 54},
+    {"name": "Salmonella spp CFU/100ml sample", "category": "microbiological", "unit": "CFU/100mL", "method_name": "KS ISO 6340:1995", "standard_limit": "Not Detectable", "sort_order": 55},
+    {"name": "Streptococcus faecalis CFU/100ml sample", "category": "microbiological", "unit": "CFU/100mL", "method_name": "KS ISO 7899-2:1984", "standard_limit": "Not Detectable", "sort_order": 56},
+]
+
+
+# ─── Packaged drinking water — KS EAS 12 / Kenya Bureau of Standards ─────────
+
+PACKAGED_DRINKING_WATER_TESTS = [
+    # ── Physicochemical ──────────────────────────────────────────────────────
+    {"name": "pH", "category": "physicochemical", "unit": "", "method_name": "Direct Method", "standard_limit": "6.5 – 8.5", "sort_order": 1},
+    {"name": "Conductivity µS/cm", "category": "physicochemical", "unit": "µS/cm", "method_name": "Direct Method", "standard_limit": "2500", "sort_order": 2},
+    {"name": "Total Dissolved Solids mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "Direct Method", "standard_limit": "1000", "sort_order": 3},
+    {"name": "Turbidity NTU", "category": "physicochemical", "unit": "NTU", "method_name": "Absorptometric Method: 8237", "standard_limit": "4", "sort_order": 4},
+    {"name": "Colour TCU", "category": "physicochemical", "unit": "TCU", "method_name": "Platinum-Cobalt Method", "standard_limit": "15", "sort_order": 5},
+    {"name": "Odour", "category": "physicochemical", "unit": "", "method_name": "Organoleptic", "standard_limit": "Unobjectionable", "sort_order": 6},
+    {"name": "Taste", "category": "physicochemical", "unit": "", "method_name": "Organoleptic", "standard_limit": "Unobjectionable", "sort_order": 7},
+    {"name": "Total Hardness as CaCO₃ mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "APHA Method: 2340 C", "standard_limit": "500", "sort_order": 8},
+    {"name": "Calcium as Ca mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "APHA Method: 3500-Ca B", "standard_limit": "150", "sort_order": 9},
+    {"name": "Magnesium as Mg mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "APHA Method: 3500-Mg B", "standard_limit": "100", "sort_order": 10},
+    {"name": "Sodium as Na mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "APHA Method: 3500-Na", "standard_limit": "200", "sort_order": 11},
+    {"name": "Potassium as K mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "APHA Method: 3500-K", "standard_limit": "50", "sort_order": 12},
+    {"name": "Fluoride as F mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "SPADNS Method: 8029", "standard_limit": "1.5", "sort_order": 13},
+    {"name": "Chloride as Cl mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "APHA 4500-Cl B", "standard_limit": "250", "sort_order": 14},
+    {"name": "Sulphates as SO₄ mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "SulfaVer 4 Method: 8051", "standard_limit": "250", "sort_order": 15},
+    {"name": "Nitrate as NO₃⁻ mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "Cadmium reduction: 8039", "standard_limit": "50", "sort_order": 16},
+    {"name": "Nitrite as NO₂⁻ mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "Diazotization Method", "standard_limit": "0.1", "sort_order": 17},
+    {"name": "Ammonia as NH₃-N mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "Salicylate Method: 8155", "standard_limit": "0.5", "sort_order": 18},
+    {"name": "Bicarbonates as CaCO₃ mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "APHA Method: 2340 B", "standard_limit": "—", "sort_order": 19},
+    {"name": "Phosphates as PO₄³⁻ mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "Orthophosphate Method: 8048", "standard_limit": "0.5", "sort_order": 20},
+    {"name": "Total Organic Carbon mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "Combustion Method", "standard_limit": "2.0", "sort_order": 21},
+    {"name": "Dissolved Oxygen mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "Membrane Electrode Method", "standard_limit": "≥ 5", "sort_order": 22},
+    # Trace metals (µg/L)
+    {"name": "Aluminium as Al µg/L", "category": "physicochemical", "unit": "µg/L", "method_name": "Eriochrome Cyanine R Method: 8012", "standard_limit": "200", "sort_order": 30},
+    {"name": "Iron as Fe µg/L", "category": "physicochemical", "unit": "µg/L", "method_name": "Ferrover Method: 8008", "standard_limit": "300", "sort_order": 31},
+    {"name": "Manganese as Mn µg/L", "category": "physicochemical", "unit": "µg/L", "method_name": "PAN Method: 8034", "standard_limit": "100", "sort_order": 32},
+    {"name": "Copper as Cu µg/L", "category": "physicochemical", "unit": "µg/L", "method_name": "Bicinchoninate Method: 8506", "standard_limit": "2000", "sort_order": 33},
+    {"name": "Zinc as Zn µg/L", "category": "physicochemical", "unit": "µg/L", "method_name": "Zincon Method: 8009", "standard_limit": "3000", "sort_order": 34},
+    {"name": "Lead as Pb µg/L", "category": "physicochemical", "unit": "µg/L", "method_name": "AAS Method", "standard_limit": "10", "sort_order": 35},
+    {"name": "Arsenic as As µg/L", "category": "physicochemical", "unit": "µg/L", "method_name": "Arsenic Method: 8013", "standard_limit": "10", "sort_order": 36},
+    {"name": "Chromium as Cr µg/L", "category": "physicochemical", "unit": "µg/L", "method_name": "AAS Method", "standard_limit": "50", "sort_order": 37},
+    {"name": "Cadmium as Cd µg/L", "category": "physicochemical", "unit": "µg/L", "method_name": "AAS Method", "standard_limit": "3", "sort_order": 38},
+    {"name": "Mercury as Hg µg/L", "category": "physicochemical", "unit": "µg/L", "method_name": "Cold Vapour AAS", "standard_limit": "1", "sort_order": 39},
+    {"name": "Antimony as Sb µg/L", "category": "physicochemical", "unit": "µg/L", "method_name": "AAS Method", "standard_limit": "20", "sort_order": 40},
+    {"name": "Selenium as Se µg/L", "category": "physicochemical", "unit": "µg/L", "method_name": "AAS Method", "standard_limit": "40", "sort_order": 41},
+    {"name": "Cyanide as CN⁻ µg/L", "category": "physicochemical", "unit": "µg/L", "method_name": "Pyridine-Barbituric Acid", "standard_limit": "70", "sort_order": 42},
+    # ── Microbiological ──────────────────────────────────────────────────────
+    {"name": "E.coli CFU/100ml sample", "category": "microbiological", "unit": "CFU/100mL", "method_name": "KS ISO 9308-1:2014", "standard_limit": "Not Detectable", "sort_order": 50},
+    {"name": "Total Coliforms CFU/100ml sample", "category": "microbiological", "unit": "CFU/100mL", "method_name": "KS ISO 9308-1:2014", "standard_limit": "Not Detectable", "sort_order": 51},
+    {"name": "Total Viable Count CFU/ml at 22°C", "category": "microbiological", "unit": "CFU/mL", "method_name": "KS ISO 6222:1999", "standard_limit": "100", "sort_order": 52},
+    {"name": "Total Viable Count CFU/ml at 37°C", "category": "microbiological", "unit": "CFU/mL", "method_name": "KS ISO 6222:1999", "standard_limit": "20", "sort_order": 53},
+    {"name": "Pseudomonas aeruginosa CFU/100ml sample", "category": "microbiological", "unit": "CFU/100mL", "method_name": "KS ISO 16266:2006", "standard_limit": "Not Detectable", "sort_order": 54},
+    {"name": "Salmonella spp CFU/100ml sample", "category": "microbiological", "unit": "CFU/100mL", "method_name": "KS ISO 6340:1995", "standard_limit": "Not Detectable", "sort_order": 55},
+    {"name": "Streptococcus faecalis CFU/100ml sample", "category": "microbiological", "unit": "CFU/100mL", "method_name": "KS ISO 7899-2:1984", "standard_limit": "Not Detectable", "sort_order": 56},
+    {"name": "Staphylococcus aureus CFU/100ml sample", "category": "microbiological", "unit": "CFU/100mL", "method_name": "ISO 6888", "standard_limit": "Not Detectable", "sort_order": 57},
+]
+
+
+_CHLORINE_NAMES = {"Free Chlorine mg/L", "Total Chlorine mg/L", "Chloramine as Cl₂ mg/L"}
+
 def seed_catalog(db: Session) -> int:
     """Insert default catalog tests if not already present. Keyed by (name, water_type). Returns count added."""
     existing_pairs = {
         (row[0], row[1] or "dialysis_potable")
         for row in db.query(TestCatalogItem.name, TestCatalogItem.water_type).all()
     }
+    # potable_treated  = full potable set (incl. residual chlorine for chlorinated sources)
+    # potable_natural  = potable set minus chlorine/disinfection (borehole, spring, river, rain)
+    potable_natural = [i for i in POTABLE_WATER_TESTS if i["name"] not in _CHLORINE_NAMES]
     all_items = (
         [{**item, "water_type": "dialysis_potable"} for item in DIALYSIS_WATER_TESTS]
+        + [{**item, "water_type": "potable"} for item in POTABLE_WATER_TESTS]
+        + [{**item, "water_type": "potable_treated"} for item in POTABLE_WATER_TESTS]
+        + [{**item, "water_type": "potable_natural"} for item in potable_natural]
+        + [{**item, "water_type": "packaged_drinking_water"} for item in PACKAGED_DRINKING_WATER_TESTS]
         + WASTE_SCHEDULE_TESTS
     )
     added = 0

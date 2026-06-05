@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Download, Send } from "lucide-react";
+import { Plus, Download, Send, Pencil, History, Clock } from "lucide-react";
 import { format } from "date-fns";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/Button";
@@ -54,6 +54,8 @@ type FormData = z.infer<typeof schema>;
 export default function ReportsPage() {
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
+  const [editReport, setEditReport] = useState<Report | null>(null);
+  const [historyReport, setHistoryReport] = useState<Report | null>(null);
   const currentUser = getCurrentUser();
   const isCustomer = currentUser?.role === "customer";
 
@@ -72,6 +74,12 @@ export default function ReportsPage() {
   const issueMutation = useMutation({
     mutationFn: (id: number) => reportsApi.issue(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["reports"] }),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (data: { id: number; payload: Parameters<typeof reportsApi.update>[1] }) =>
+      reportsApi.update(data.id, data.payload),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["reports"] }); setEditReport(null); },
   });
 
   const SCHEDULE_SPEC_HEADERS: Record<number, string> = {
@@ -146,16 +154,34 @@ export default function ReportsPage() {
     {
       key: "actions", header: "Actions",
       render: (r: Report) => (
-        <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+        <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
           {!isCustomer && r.status === "draft" && (
             <Button size="sm" onClick={() => issueMutation.mutate(r.id)} loading={issueMutation.isPending}>
               <Send className="w-3.5 h-3.5" /> Issue
             </Button>
           )}
-          {r.status === "issued" && (
+          {(r.status === "issued" || r.status === "amended") && (
             <Button size="sm" variant="secondary" onClick={() => downloadPdf(r.id)}>
               <Download className="w-3.5 h-3.5" /> PDF
             </Button>
+          )}
+          {!isCustomer && (r.status === "issued" || r.status === "amended" || r.status === "draft") && (
+            <button
+              onClick={() => setEditReport(r)}
+              className="p-1.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded"
+              title="Edit report"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {r.revision_history && r.revision_history.length > 0 && (
+            <button
+              onClick={() => setHistoryReport(r)}
+              className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded"
+              title="View revision history"
+            >
+              <History className="w-3.5 h-3.5" />
+            </button>
           )}
         </div>
       ),
@@ -172,6 +198,61 @@ export default function ReportsPage() {
         )}
         <Table<Report> columns={columns} data={reports} loading={isLoading} emptyMessage="No reports generated." keyExtractor={(r) => r.id} />
       </div>
+
+      {/* ── Edit Report Modal ──────────────────────────────────────────────── */}
+      {editReport && (
+        <ReportEditModal
+          report={editReport}
+          samples={samples}
+          onClose={() => setEditReport(null)}
+          onSaved={(updated) => {
+            qc.invalidateQueries({ queryKey: ["reports"] });
+            setEditReport(null);
+          }}
+          updateMutation={updateMutation}
+        />
+      )}
+
+      {/* ── Revision History Modal ─────────────────────────────────────────── */}
+      {historyReport && (
+        <Modal open onClose={() => setHistoryReport(null)} title={`Revision History — ${historyReport.report_number}`} size="md">
+          <div className="space-y-3">
+            {(historyReport.revision_history ?? []).length === 0 ? (
+              <p className="text-sm text-gray-400 italic">No revision history.</p>
+            ) : (
+              [...(historyReport.revision_history ?? [])].reverse().map((entry, i) => (
+                <div key={i} className="flex gap-3 pb-3 border-b border-gray-100 last:border-0">
+                  <div className="flex-shrink-0 mt-1">
+                    <Clock className="w-4 h-4 text-gray-400" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                        entry.action === "issued" ? "bg-green-100 text-green-700" :
+                        entry.action === "amended" ? "bg-amber-100 text-amber-700" :
+                        "bg-gray-100 text-gray-600"
+                      }`}>
+                        {entry.action.toUpperCase()}
+                      </span>
+                      <span className="text-xs text-gray-500">
+                        {format(new Date(entry.timestamp), "dd MMM yyyy HH:mm")}
+                      </span>
+                    </div>
+                    {entry.reason && (
+                      <p className="text-sm text-gray-700 mt-1">
+                        <span className="font-medium text-gray-500">Reason: </span>{entry.reason}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+            <div className="flex justify-end pt-2">
+              <Button variant="secondary" onClick={() => setHistoryReport(null)}>Close</Button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       <Modal open={showCreate} onClose={() => { setShowCreate(false); reset(); }} title="Create Report" size="lg">
         <form onSubmit={handleSubmit(async (data) => {
@@ -249,5 +330,119 @@ export default function ReportsPage() {
         </form>
       </Modal>
     </DashboardLayout>
+  );
+}
+
+// ─── Report Edit Modal ────────────────────────────────────────────────────────
+
+function ReportEditModal({
+  report,
+  samples,
+  onClose,
+  onSaved,
+  updateMutation,
+}: {
+  report: Report;
+  samples: Sample[];
+  onClose: () => void;
+  onSaved: (r: Report) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  updateMutation: any;
+}) {
+  const isIssued = report.status === "issued" || report.status === "amended";
+  const content = report.content || {};
+
+  const [fields, setFields] = useState({
+    report_title: String(content.report_title ?? "TEST REPORT"),
+    overall_status: String(content.overall_status ?? "COMPLETE"),
+    classification: String(content.classification ?? ""),
+    submitted_by: String(content.submitted_by ?? ""),
+    client_contact: String(content.client_contact ?? ""),
+    sampled_by: String(content.sampled_by ?? "AQUACHECK LABORATORIES LTD"),
+    sample_lab_id: String(content.sample_lab_id ?? ""),
+    analysis_date: String(content.analysis_date ?? ""),
+    specification_title: String(content.specification_title ?? ""),
+    authorizer_name: String(content.authorizer_name ?? "Victor Mutai"),
+    authorizer_title: String(content.authorizer_title ?? "Water Chemist"),
+    analyst_name: String(content.analyst_name ?? ""),
+    analyst_title: String(content.analyst_title ?? "Lab analyst"),
+    final_comment: String(content.final_comment ?? ""),
+    disclaimer: String(content.disclaimer ?? ""),
+  });
+  const [amendmentReason, setAmendmentReason] = useState("");
+  const [error, setError] = useState("");
+
+  const set = (key: keyof typeof fields) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+    setFields((f) => ({ ...f, [key]: e.target.value }));
+
+  const handleSave = () => {
+    setError("");
+    if (isIssued && !amendmentReason.trim()) {
+      setError("Please provide a reason for this amendment.");
+      return;
+    }
+    updateMutation.mutate({
+      id: report.id,
+      payload: {
+        content: { ...content, ...Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== "")) },
+        amendment_reason: amendmentReason || undefined,
+      },
+    }, { onSuccess: (r) => onSaved(r) });
+  };
+
+  return (
+    <Modal open onClose={onClose} title={`Edit Report — ${report.report_number}`} size="lg">
+      <div className="space-y-4">
+        {error && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded border border-red-200">{error}</p>}
+
+        {isIssued && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+            <p className="text-xs text-amber-800 font-semibold mb-1">This report has been issued. Editing will mark it as AMENDED.</p>
+            <Textarea
+              label="Reason for Amendment *"
+              rows={2}
+              value={amendmentReason}
+              onChange={(e) => setAmendmentReason(e.target.value)}
+              placeholder="e.g. Corrected pH result value, updated client reference"
+            />
+          </div>
+        )}
+
+        <Input label="Report Title" value={fields.report_title} onChange={set("report_title")} />
+        <div className="grid grid-cols-2 gap-4">
+          <Input label="Overall Status" value={fields.overall_status} onChange={set("overall_status")} />
+          <Input label="Classification / Verdict" value={fields.classification} onChange={set("classification")} />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <Input label="Submitted By" value={fields.submitted_by} onChange={set("submitted_by")} />
+          <Input label="Client Contact" value={fields.client_contact} onChange={set("client_contact")} />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <Input label="Sampled By" value={fields.sampled_by} onChange={set("sampled_by")} />
+          <Input label="Sample Lab ID" value={fields.sample_lab_id} onChange={set("sample_lab_id")} />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <Input label="Analysis Date" type="date" value={fields.analysis_date} onChange={set("analysis_date")} />
+          <Input label="Specification Header" value={fields.specification_title} onChange={set("specification_title")} />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <Input label="Authorizer Name" value={fields.authorizer_name} onChange={set("authorizer_name")} />
+          <Input label="Authorizer Title" value={fields.authorizer_title} onChange={set("authorizer_title")} />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <Input label="Analyst Name" value={fields.analyst_name} onChange={set("analyst_name")} />
+          <Input label="Analyst Title" value={fields.analyst_title} onChange={set("analyst_title")} />
+        </div>
+        <Textarea label="Conclusion / Remarks" rows={3} value={fields.final_comment} onChange={set("final_comment")} />
+        <Textarea label="Disclaimer Override" rows={2} value={fields.disclaimer} onChange={set("disclaimer")} />
+
+        <div className="flex gap-3 justify-end pt-2 border-t">
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button onClick={handleSave} loading={updateMutation.isPending}>
+            {isIssued ? "Save Amendment" : "Save Changes"}
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
