@@ -63,7 +63,7 @@ export default function InvoicesPage() {
     {
       key: "customer_name",
       header: "Client",
-      render: (r: Invoice) => <span className="text-xs">{r.customer_name ?? `#${r.customer_id}` ?? "—"}</span>,
+      render: (r: Invoice) => <span className="text-xs">{r.customer_name ?? (r.customer_id ? `#${r.customer_id}` : "—")}</span>,
     },
     {
       key: "total",

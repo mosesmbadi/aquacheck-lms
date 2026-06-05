@@ -387,7 +387,7 @@ function ReportEditModal({
         content: { ...content, ...Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== "")) },
         amendment_reason: amendmentReason || undefined,
       },
-    }, { onSuccess: (r) => onSaved(r) });
+    }, { onSuccess: (r: Report) => onSaved(r) });
   };
 
   return (
