@@ -68,7 +68,7 @@ export default function CatalogTestsPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: FormData) => testCatalogApi.create(data),
+    mutationFn: (data: FormData) => testCatalogApi.create(data as Partial<TestCatalogItem>),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["test-catalog"] });
       closeModal();
@@ -77,7 +77,7 @@ export default function CatalogTestsPage() {
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: FormData }) =>
-      testCatalogApi.update(id, data),
+      testCatalogApi.update(id, data as Partial<TestCatalogItem>),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["test-catalog"] });
       closeModal();

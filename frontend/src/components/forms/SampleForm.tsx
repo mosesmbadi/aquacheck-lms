@@ -279,6 +279,9 @@ function CategoryCard({
     orange: selected
       ? "border-orange-500 bg-orange-50 text-orange-700"
       : "border-gray-200 hover:border-orange-300 hover:bg-orange-50 text-gray-600",
+    purple: selected
+      ? "border-purple-500 bg-purple-50 text-purple-700"
+      : "border-gray-200 hover:border-purple-300 hover:bg-purple-50 text-gray-600",
   } as const;
 
   return (
