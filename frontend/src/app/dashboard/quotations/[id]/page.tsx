@@ -28,6 +28,8 @@ export default function QuotationDetailPage() {
   const qc = useQueryClient();
 
   const [showSend, setShowSend] = useState(false);
+  const [editingTerms, setEditingTerms] = useState(false);
+  const [termsText, setTermsText] = useState("");
   const [error, setError] = useState("");
 
   const { data: quote, isLoading } = useQuery({
@@ -47,6 +49,15 @@ export default function QuotationDetailPage() {
       qc.invalidateQueries({ queryKey: ["quotations"] });
       router.push("/dashboard/quotations");
     },
+  });
+
+  const updateTermsMut = useMutation({
+    mutationFn: (terms: string) => quotationsApi.update(id, { terms }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["quotation", id] });
+      setEditingTerms(false);
+    },
+    onError: () => setError("Failed to save terms."),
   });
 
   if (isLoading || !quote) {
@@ -100,28 +111,7 @@ export default function QuotationDetailPage() {
       <div className="grid grid-cols-3 gap-6">
         <div className="col-span-2 bg-white border rounded-lg p-6">
           <h2 className="font-semibold mb-3">Line Items</h2>
-          <table className="w-full text-sm">
-            <thead className="border-b">
-              <tr className="text-left text-gray-500">
-                <th className="py-2">Test / Service</th>
-                <th className="py-2">Unit</th>
-                <th className="py-2 text-right">Qty</th>
-                <th className="py-2 text-right">Unit Price</th>
-                <th className="py-2 text-right">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {q.items.map((it, idx) => (
-                <tr key={idx} className="border-b">
-                  <td className="py-2">{it.name}</td>
-                  <td className="py-2">{it.unit ?? "—"}</td>
-                  <td className="py-2 text-right">{it.quantity}</td>
-                  <td className="py-2 text-right">{q.currency} {Number(it.unit_price).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                  <td className="py-2 text-right">{q.currency} {Number(it.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <QuotationItemsTable items={q.items} currency={q.currency} />
 
           <div className="flex justify-end mt-4">
             <div className="w-64 text-sm space-y-1">
@@ -137,12 +127,44 @@ export default function QuotationDetailPage() {
               <p className="text-sm text-gray-600 whitespace-pre-wrap">{q.notes}</p>
             </div>
           )}
-          {q.terms && (
-            <div className="mt-3">
+          <div className="mt-3">
+            <div className="flex items-center justify-between">
               <h3 className="font-semibold text-sm">Terms &amp; Conditions</h3>
-              <p className="text-sm text-gray-600 whitespace-pre-wrap">{q.terms}</p>
+              {!editingTerms && (
+                <button
+                  onClick={() => { setTermsText(q.terms ?? ""); setEditingTerms(true); }}
+                  className="text-xs text-primary-600 hover:text-primary-700 underline"
+                >
+                  {q.terms ? "Edit" : "Add terms"}
+                </button>
+              )}
             </div>
-          )}
+            {editingTerms ? (
+              <div className="mt-2 space-y-2">
+                <textarea
+                  value={termsText}
+                  onChange={(e) => setTermsText(e.target.value)}
+                  rows={6}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-primary-400 focus:ring-1 focus:ring-primary-400 outline-none"
+                  placeholder="Enter terms and conditions…"
+                />
+                <div className="flex gap-2 justify-end">
+                  <button onClick={() => setEditingTerms(false)} className="text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5 border border-gray-300 rounded-lg">Cancel</button>
+                  <button
+                    onClick={() => updateTermsMut.mutate(termsText)}
+                    disabled={updateTermsMut.isPending}
+                    className="text-xs text-white bg-primary-600 hover:bg-primary-700 px-3 py-1.5 rounded-lg disabled:opacity-50"
+                  >
+                    {updateTermsMut.isPending ? "Saving…" : "Save"}
+                  </button>
+                </div>
+              </div>
+            ) : q.terms ? (
+              <p className="text-sm text-gray-600 whitespace-pre-wrap mt-1">{q.terms}</p>
+            ) : (
+              <p className="text-xs text-gray-400 italic mt-1">No terms and conditions set.</p>
+            )}
+          </div>
         </div>
 
         <div className="bg-white border rounded-lg p-6 space-y-3 h-fit">
@@ -183,6 +205,70 @@ export default function QuotationDetailPage() {
       )}
       {error && <p className="text-red-500 text-sm mt-3">{error}</p>}
     </DashboardLayout>
+  );
+}
+
+function QuotationItemsTable({ items, currency }: { items: import("@/lib/types").QuotationItem[]; currency: string }) {
+  const packaged = items.filter((i) => i.package_name);
+  const standalone = items.filter((i) => !i.package_name);
+  const packageNames = Array.from(new Set(packaged.map((i) => i.package_name!)));
+
+  return (
+    <table className="w-full text-sm">
+      <thead className="border-b">
+        <tr className="text-left text-gray-500">
+          <th className="py-2">Test / Service</th>
+          <th className="py-2">Unit</th>
+          <th className="py-2 text-right">Qty</th>
+          <th className="py-2 text-right">Unit Price</th>
+          <th className="py-2 text-right">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {/* Standalone items */}
+        {standalone.map((it, idx) => (
+          <tr key={`s-${idx}`} className="border-b">
+            <td className="py-2">{it.name}</td>
+            <td className="py-2">{it.unit ?? "—"}</td>
+            <td className="py-2 text-right">{it.quantity}</td>
+            <td className="py-2 text-right">{currency} {Number(it.unit_price).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+            <td className="py-2 text-right">{currency} {Number(it.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+          </tr>
+        ))}
+        {/* Package groups */}
+        {packageNames.map((pkgName) => {
+          const pkgItems = packaged.filter((i) => i.package_name === pkgName);
+          const pkgTotal = pkgItems.reduce((s, i) => s + Number(i.package_price ?? i.total), 0);
+          const sumIndividual = pkgItems.reduce((s, i) => s + Number(i.total), 0);
+          const showPackagePrice = pkgItems.some((i) => i.package_price != null);
+          return (
+            <>
+              <tr key={`pkg-hdr-${pkgName}`} className="bg-blue-50 border-b">
+                <td colSpan={4} className="py-2 pl-2 font-semibold text-blue-800 text-xs uppercase tracking-wide">
+                  📦 {pkgName}
+                </td>
+                <td className="py-2 text-right text-blue-800 font-semibold">
+                  {currency} {(showPackagePrice ? pkgTotal : sumIndividual).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </td>
+              </tr>
+              {pkgItems.map((it, idx) => (
+                <tr key={`pkg-${pkgName}-${idx}`} className="border-b bg-blue-50/30">
+                  <td className="py-1.5 pl-6 text-gray-600 text-xs">{it.name}</td>
+                  <td className="py-1.5 text-xs text-gray-500">{it.unit ?? "—"}</td>
+                  <td className="py-1.5 text-right text-xs text-gray-500">{it.quantity}</td>
+                  <td className="py-1.5 text-right text-xs text-gray-500">{currency} {Number(it.unit_price).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                  <td className="py-1.5 text-right text-xs text-gray-400 italic">
+                    {it.package_price != null
+                      ? `(ind. ${currency} ${Number(it.total).toLocaleString(undefined, { minimumFractionDigits: 2 })})`
+                      : `${currency} ${Number(it.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
+                  </td>
+                </tr>
+              ))}
+            </>
+          );
+        })}
+      </tbody>
+    </table>
   );
 }
 

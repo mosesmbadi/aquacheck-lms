@@ -17,6 +17,7 @@ from app.models.inventory import (
 )
 from app.models.quotation import Quotation, QuotationStatus
 from app.models.calibration_record import CalibrationRecord, CalibrationResult
+from app.models.invoice import Invoice, InvoiceStatus
 
 __all__ = [
     "User", "UserRole",
@@ -36,4 +37,5 @@ __all__ = [
     "TestReagentUsage",
     "Quotation", "QuotationStatus",
     "CalibrationRecord", "CalibrationResult",
+    "Invoice", "InvoiceStatus",
 ]

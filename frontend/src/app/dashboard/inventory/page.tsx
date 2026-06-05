@@ -46,6 +46,7 @@ const itemSchema = z.object({
   storage_location: z.string().optional(),
   storage_conditions: z.string().optional(),
   unit_cost: z.coerce.number().optional(),
+  expiry_date: z.string().optional(),
   description: z.string().optional(),
 });
 type ItemForm = z.infer<typeof itemSchema>;
@@ -85,6 +86,7 @@ const TX_COLOR: Record<TransactionType, string> = {
 export default function InventoryPage() {
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
+  const [editItem, setEditItem] = useState<InventoryItem | null>(null);
   const [txItem, setTxItem] = useState<InventoryItem | null>(null);
   const [ledgerItem, setLedgerItem] = useState<InventoryItem | null>(null);
   const [showMappings, setShowMappings] = useState(false);
@@ -154,7 +156,24 @@ export default function InventoryPage() {
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Partial<InventoryItem> }) =>
+      inventoryApi.update(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["inventory"] });
+      qc.invalidateQueries({ queryKey: ["inventory-stats"] });
+      qc.invalidateQueries({ queryKey: ["inventory-low"] });
+      setEditItem(null);
+      editForm.reset();
+    },
+  });
+
   const itemForm = useForm<ItemForm>({
+    resolver: zodResolver(itemSchema),
+    defaultValues: { category: "reagent", minimum_stock: 0, unit: "mL" },
+  });
+
+  const editForm = useForm<ItemForm>({
     resolver: zodResolver(itemSchema),
     defaultValues: { category: "reagent", minimum_stock: 0, unit: "mL" },
   });
@@ -170,7 +189,28 @@ export default function InventoryPage() {
         key: "item_code",
         header: "Code",
         render: (r: InventoryItem) => (
-          <span className="font-mono font-medium text-primary-600">{r.item_code}</span>
+          <button
+            onClick={() => {
+              editForm.reset({
+                item_code: r.item_code,
+                name: r.name,
+                category: r.category,
+                unit: r.unit,
+                minimum_stock: r.minimum_stock,
+                supplier: r.supplier ?? "",
+                catalog_number: r.catalog_number ?? "",
+                storage_location: r.storage_location ?? "",
+                storage_conditions: r.storage_conditions ?? "",
+                unit_cost: r.unit_cost ?? undefined,
+                description: r.description ?? "",
+              });
+              setEditItem(r);
+            }}
+            className="font-mono font-medium text-primary-600 hover:underline cursor-pointer"
+            title="Click to edit item"
+          >
+            {r.item_code}
+          </button>
         ),
       },
       { key: "name", header: "Name" },
@@ -206,6 +246,39 @@ export default function InventoryPage() {
             {r.minimum_stock} {r.unit}
           </span>
         ),
+      },
+      {
+        key: "unit_cost",
+        header: "Unit Cost",
+        render: (r: InventoryItem) => (
+          <span className="text-xs text-gray-700 font-mono">
+            {r.unit_cost != null ? `KES ${Number(r.unit_cost).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "—"}
+          </span>
+        ),
+      },
+      {
+        key: "stock_value",
+        header: "Stock Value",
+        render: (r: InventoryItem) => {
+          if (r.unit_cost == null) return <span className="text-xs text-gray-400">—</span>;
+          const val = r.current_stock * r.unit_cost;
+          return <span className="text-xs text-gray-700 font-mono">KES {val.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>;
+        },
+      },
+      {
+        key: "expiry_date",
+        header: "Expiry",
+        render: (r: InventoryItem) => {
+          if (!r.expiry_date) return <span className="text-xs text-gray-400">—</span>;
+          const d = new Date(r.expiry_date);
+          const isExpired = d < new Date();
+          return (
+            <span className={`text-xs font-mono ${isExpired ? "text-red-600 font-semibold" : "text-gray-700"}`}>
+              {format(d, "dd MMM yyyy")}
+              {isExpired && " (expired)"}
+            </span>
+          );
+        },
       },
       {
         key: "storage_location",
@@ -512,6 +585,57 @@ export default function InventoryPage() {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* ── Edit item modal ───────────────────────────────────────────────── */}
+      <Modal
+        open={!!editItem}
+        onClose={() => { setEditItem(null); editForm.reset(); }}
+        title={editItem ? `Edit Item — ${editItem.item_code}` : ""}
+        size="lg"
+      >
+        {editItem && (
+          <form
+            onSubmit={editForm.handleSubmit((data) =>
+              updateMutation.mutateAsync({ id: editItem.id, data: data as Partial<InventoryItem> })
+            )}
+            className="space-y-4"
+          >
+            <div className="grid grid-cols-2 gap-4">
+              <Input label="Item Code *" error={editForm.formState.errors.item_code?.message} {...editForm.register("item_code")} />
+              <Input label="Name *" error={editForm.formState.errors.name?.message} {...editForm.register("name")} />
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <Select label="Category *" {...editForm.register("category")}>
+                {CATEGORIES.map((c) => (<option key={c} value={c} className="capitalize">{c}</option>))}
+              </Select>
+              <Select label="Unit *" {...editForm.register("unit")}>
+                {UNITS.map((u) => (<option key={u} value={u}>{u}</option>))}
+              </Select>
+              <Input label="Min. Stock *" type="number" step="any" {...editForm.register("minimum_stock")} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Input label="Unit Cost / Buying Price (KES)" type="number" step="any" {...editForm.register("unit_cost")} placeholder="e.g. 1500.00" />
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Expiry Date</label>
+                <input type="date" {...editForm.register("expiry_date")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-primary-400 focus:ring-1 focus:ring-primary-400 outline-none" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Input label="Supplier" {...editForm.register("supplier")} />
+              <Input label="Catalog #" {...editForm.register("catalog_number")} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Input label="Storage Location" {...editForm.register("storage_location")} placeholder="e.g. Shelf A2" />
+              <Input label="Storage Conditions" {...editForm.register("storage_conditions")} placeholder="e.g. 2-8°C" />
+            </div>
+            <Textarea label="Description / Notes" rows={2} {...editForm.register("description")} />
+            <div className="flex gap-3 justify-end pt-2">
+              <Button type="button" variant="secondary" onClick={() => { setEditItem(null); editForm.reset(); }}>Cancel</Button>
+              <Button type="submit" loading={updateMutation.isPending}>Save Changes</Button>
+            </div>
+          </form>
+        )}
       </Modal>
 
       {/* ── Transaction modal ──────────────────────────────────────────────── */}

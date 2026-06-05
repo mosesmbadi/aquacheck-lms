@@ -17,13 +17,27 @@ import { Plus, Pencil, ToggleLeft, ToggleRight, FlaskConical, Microscope } from 
 
 // ─── Form schema ─────────────────────────────────────────────────────────────
 
+const WATER_TYPE_OPTIONS = [
+  { value: "dialysis_potable",        label: "Dialysis Water" },
+  { value: "potable",                 label: "Potable Water (KS 459)" },
+  { value: "packaged_drinking_water", label: "Packaged Drinking Water" },
+  { value: "waste_1",                 label: "Waste Water (Schedule 1)" },
+  { value: "waste_2",                 label: "Waste Water (Schedule 2)" },
+  { value: "waste_3",                 label: "Waste Water (Schedule 3)" },
+  { value: "waste_4",                 label: "Waste Water (Schedule 4)" },
+  { value: "waste_5",                 label: "Waste Water (Schedule 5)" },
+  { value: "waste_6",                 label: "Waste Water (Schedule 6)" },
+] as const;
+
 const schema = z.object({
   name: z.string().min(1, "Name is required"),
   category: z.enum(["physicochemical", "microbiological"]),
+  water_type: z.string().default("dialysis_potable"),
   unit: z.string().optional(),
   method_name: z.string().optional(),
   standard_limit: z.string().optional(),
   description: z.string().optional(),
+  price: z.coerce.number().min(0).default(0),
   sort_order: z.coerce.number().int().min(0).default(0),
   is_active: z.boolean().default(true),
 });
@@ -82,7 +96,7 @@ export default function CatalogTestsPage() {
   } = useForm<FormData>({ resolver: zodResolver(schema) });
 
   function openCreate() {
-    reset({ category: "physicochemical", sort_order: 0, is_active: true });
+    reset({ category: "physicochemical", water_type: "dialysis_potable", sort_order: 0, is_active: true, price: 0 });
     setEditing(null);
     setShowModal(true);
   }
@@ -91,10 +105,12 @@ export default function CatalogTestsPage() {
     reset({
       name: item.name,
       category: item.category,
+      water_type: item.water_type ?? "dialysis_potable",
       unit: item.unit ?? "",
       method_name: item.method_name ?? "",
       standard_limit: item.standard_limit ?? "",
       description: item.description ?? "",
+      price: item.price ?? 0,
       sort_order: item.sort_order,
       is_active: item.is_active,
     });
@@ -217,7 +233,15 @@ export default function CatalogTestsPage() {
               <option value="physicochemical">Physio-Chemical</option>
               <option value="microbiological">Microbiological</option>
             </Select>
+            <Select label="Water Type" error={errors.water_type?.message} {...register("water_type")}>
+              {WATER_TYPE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </Select>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
             <Input label="Unit" error={errors.unit?.message} {...register("unit")} placeholder="e.g. mg/L, µg/L, CFU/mL" />
+            <Input label="Price (KES)" type="number" step="0.01" error={errors.price?.message} {...register("price")} placeholder="0.00" />
           </div>
 
           <div className="grid grid-cols-2 gap-4">

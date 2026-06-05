@@ -1,4 +1,5 @@
 import enum
+import uuid
 from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, DateTime, Enum as SAEnum, ForeignKey, JSON, Text
 from sqlalchemy.orm import relationship
@@ -32,6 +33,7 @@ class Report(Base):
     issued_at = Column(DateTime(timezone=True), nullable=True)
     pdf_path = Column(String, nullable=True)
     digital_signature = Column(String, nullable=True)
+    public_token = Column(String, unique=True, nullable=True, default=lambda: str(uuid.uuid4()))
     revision_history = Column(JSON, default=list)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(

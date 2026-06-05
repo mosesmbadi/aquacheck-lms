@@ -18,6 +18,7 @@ import {
   Library,
   Package,
   Receipt,
+  FileSpreadsheet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getCurrentUser, logout } from "@/lib/auth";
@@ -31,6 +32,7 @@ const navItems = [
   { label: "Inventory", href: "/dashboard/inventory", icon: Package },
   { label: "Reports", href: "/dashboard/reports", icon: ClipboardList },
   { label: "Quotations", href: "/dashboard/quotations", icon: Receipt },
+  { label: "Invoices", href: "/dashboard/invoices", icon: FileSpreadsheet },
   { label: "Complaints", href: "/dashboard/complaints", icon: MessageSquareWarning },
   { label: "Non-Conformities", href: "/dashboard/nonconformities", icon: AlertTriangle },
   { label: "Quality", href: "/dashboard/quality", icon: ShieldCheck },
@@ -40,6 +42,7 @@ const customerNavItems = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Samples", href: "/dashboard/samples", icon: FlaskConical },
   { label: "Reports", href: "/dashboard/reports", icon: ClipboardList },
+  { label: "Invoices", href: "/dashboard/invoices", icon: FileSpreadsheet },
   { label: "Complaints", href: "/dashboard/complaints", icon: MessageSquareWarning },
 ];
 

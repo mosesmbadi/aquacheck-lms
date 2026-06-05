@@ -44,6 +44,7 @@ class InventoryItem(Base):
     storage_location = Column(String, nullable=True)
     storage_conditions = Column(String, nullable=True)
     unit_cost = Column(Float, nullable=True)
+    expiry_date = Column(Date, nullable=True)
     is_active = Column(Integer, nullable=False, default=1)
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

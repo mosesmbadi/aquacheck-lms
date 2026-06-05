@@ -19,6 +19,7 @@ class SampleCategory(str, enum.Enum):
     dialysis = "dialysis"
     potable = "potable"
     waste = "waste"
+    packaged_drinking_water = "packaged_drinking_water"
 
 
 class Sample(Base):

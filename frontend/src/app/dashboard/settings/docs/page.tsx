@@ -388,14 +388,17 @@ function DocumentCard({ doc, isAdmin }: { doc: Document; isAdmin: boolean }) {
 
 // ─── Document list ────────────────────────────────────────────────────────────
 
-function DocumentList({ staticDocs, isAdmin }: { staticDocs: Document[]; isAdmin: boolean }) {
-  const category = staticDocs[0]?.category;
+function DocumentList({ staticDocs, isAdmin, category: catOverride }: { staticDocs: Document[]; isAdmin: boolean; category?: string }) {
+  const category = (catOverride ?? staticDocs[0]?.category) as import("@/lib/types").DocumentCategory | undefined;
   const { data: apiDocs = [] } = useQuery({
     queryKey: ["documents", category],
     queryFn: () => documentsApi.list(category).then((r) => r.data),
     retry: false,
   });
-  const docs = mergeWithApi(staticDocs, apiDocs);
+  const docs = staticDocs.length > 0 ? mergeWithApi(staticDocs, apiDocs) : apiDocs;
+  if (docs.length === 0) {
+    return <p className="text-sm text-gray-400 italic py-4">No documents in this category yet.</p>;
+  }
   return (
     <div className="space-y-3">
       {docs.map((doc) => (
@@ -479,7 +482,7 @@ function renderMd(text: string) {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-type Tab = "guide" | "sops" | "masterlists";
+type Tab = "guide" | "sops" | "masterlists" | "forms" | "external_documents";
 
 export default function DocsPage() {
   const [activeTab, setActiveTab] = useState<Tab>("guide");
@@ -487,9 +490,11 @@ export default function DocsPage() {
   const isAdmin = currentUser?.role === "admin";
 
   const tabs: { id: Tab; label: string }[] = [
-    { id: "guide",       label: "User Guide" },
-    { id: "sops",        label: "SOPs" },
-    { id: "masterlists", label: "Master List" },
+    { id: "guide",              label: "User Guide" },
+    { id: "sops",               label: "SOPs" },
+    { id: "masterlists",        label: "Master List" },
+    { id: "forms",              label: "Forms" },
+    { id: "external_documents", label: "External Documents" },
   ];
 
   return (
@@ -593,6 +598,38 @@ export default function DocsPage() {
               </p>
             </div>
             <DocumentList staticDocs={STATIC_MASTERLISTS} isAdmin={isAdmin} />
+          </div>
+        )}
+
+        {/* ── Forms ──────────────────────────────────────────────────────── */}
+        {activeTab === "forms" && (
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-base font-bold text-gray-900">Forms</h2>
+              <p className="text-sm text-gray-500 mt-0.5">
+                Laboratory forms and templates used in daily operations.{" "}
+                {isAdmin
+                  ? "Click the pencil icon to edit any document's content."
+                  : "Click the eye icon to preview, or the download icon to save a PDF copy."}
+              </p>
+            </div>
+            <DocumentList staticDocs={[]} isAdmin={isAdmin} category="forms" />
+          </div>
+        )}
+
+        {/* ── External Documents ─────────────────────────────────────────── */}
+        {activeTab === "external_documents" && (
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-base font-bold text-gray-900">External Documents</h2>
+              <p className="text-sm text-gray-500 mt-0.5">
+                External standards, regulations, and reference documents (KEBS, NEMA, WHO, etc.).{" "}
+                {isAdmin
+                  ? "Click the pencil icon to edit any document's content."
+                  : "Click the eye icon to preview, or the download icon to save a PDF copy."}
+              </p>
+            </div>
+            <DocumentList staticDocs={[]} isAdmin={isAdmin} category="external_documents" />
           </div>
         )}
       </div>

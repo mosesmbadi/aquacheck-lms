@@ -23,6 +23,8 @@ from app.routers import (
     documents,
     inventory,
     quotations,
+    public,
+    invoices,
 )
 from app.routers import calibration_records
 
@@ -53,7 +55,7 @@ API_PREFIX = "/api/v1"
 for router_module in [
     auth, users, customers, contracts, samples,
     test_results, equipment, calibration_records, reports, complaints, nonconformities, quality,
-    test_catalog, documents, inventory, quotations,
+    test_catalog, documents, inventory, quotations, public, invoices,
 ]:
     app.include_router(router_module.router, prefix=API_PREFIX)
 
@@ -275,6 +277,64 @@ def ensure_schema_compatibility():
                 "ALTER TABLE samples ADD COLUMN customer_id INTEGER REFERENCES customers(id)"
             ))
             print("[LIMS] Added samples.customer_id column.")
+
+        # Extend documentcategory enum with new values if not present
+        for new_val in ("user_guide", "forms", "external_documents"):
+            exists = connection.execute(
+                text(
+                    "SELECT 1 FROM pg_enum e JOIN pg_type t ON e.enumtypid = t.oid "
+                    "WHERE t.typname = 'documentcategory' AND e.enumlabel = :val"
+                ),
+                {"val": new_val},
+            ).scalar()
+            if not exists:
+                connection.execute(
+                    text(f"ALTER TYPE documentcategory ADD VALUE IF NOT EXISTS '{new_val}'")
+                )
+                print(f"[LIMS] Added '{new_val}' to documentcategory enum.")
+
+        # Extend samplecategory enum with packaged_drinking_water
+        pdw_exists = connection.execute(
+            text(
+                "SELECT 1 FROM pg_enum e JOIN pg_type t ON e.enumtypid = t.oid "
+                "WHERE t.typname = 'samplecategory' AND e.enumlabel = 'packaged_drinking_water'"
+            )
+        ).scalar()
+        if not pdw_exists:
+            connection.execute(
+                text("ALTER TYPE samplecategory ADD VALUE IF NOT EXISTS 'packaged_drinking_water'")
+            )
+            print("[LIMS] Added 'packaged_drinking_water' to samplecategory enum.")
+
+        # reports.public_token — UUID for public QR code access
+        pub_token_exists = connection.execute(
+            text(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'reports' AND column_name = 'public_token'
+                """
+            )
+        ).scalar()
+        if not pub_token_exists:
+            connection.execute(text(
+                "ALTER TABLE reports ADD COLUMN public_token VARCHAR UNIQUE"
+            ))
+            print("[LIMS] Added reports.public_token column.")
+
+        # inventory_items.expiry_date — item-level expiry
+        item_expiry_exists = connection.execute(
+            text(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'inventory_items' AND column_name = 'expiry_date'
+                """
+            )
+        ).scalar()
+        if not item_expiry_exists:
+            connection.execute(text(
+                "ALTER TABLE inventory_items ADD COLUMN expiry_date DATE"
+            ))
+            print("[LIMS] Added inventory_items.expiry_date column.")
 
 
 @app.on_event("startup")

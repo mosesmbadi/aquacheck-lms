@@ -25,6 +25,7 @@ const SAMPLE_CATEGORIES = [
   { value: "dialysis", label: "Dialysis Water", icon: Droplets, color: "blue" },
   { value: "potable", label: "Potable Water", icon: Waves, color: "teal" },
   { value: "waste", label: "Waste Water", icon: Factory, color: "orange" },
+  { value: "packaged_drinking_water", label: "Packaged Drinking Water", icon: FlaskConical, color: "purple" },
 ] as const;
 
 const DISCHARGE_DESTINATIONS = [
@@ -47,7 +48,9 @@ const DISCHARGE_DESTINATIONS = [
 ] as const;
 
 function getWaterType(category: string): string {
-  if (category === "dialysis" || category === "potable") return "dialysis_potable";
+  if (category === "dialysis") return "dialysis_potable";
+  if (category === "potable") return "potable";
+  if (category === "packaged_drinking_water") return "packaged_drinking_water";
   return "";
 }
 
@@ -63,7 +66,7 @@ const schema = z
       (v) => (v === "" || v === null || v === undefined ? undefined : v),
       z.coerce.number().int().positive().optional()
     ),
-    sample_category: z.enum(["dialysis", "potable", "waste"], {
+    sample_category: z.enum(["dialysis", "potable", "waste", "packaged_drinking_water"], {
       required_error: "Sample category is required",
     }),
     waste_industry_type: z.string().optional().nullable(),
@@ -410,7 +413,7 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
       ? wasteParamsReady
       : !!nonWasteWaterType;
 
-  function handleCategoryChange(value: "dialysis" | "potable" | "waste") {
+  function handleCategoryChange(value: "dialysis" | "potable" | "waste" | "packaged_drinking_water") {
     setValue("sample_category", value, { shouldValidate: true });
     setValue("waste_industry_type", null);
     setValue("discharge_destination", null);

@@ -131,7 +131,9 @@ function CreateQuotationModal({
   const vatAmount = (subtotal * vatRate) / 100;
   const total = subtotal + vatAmount;
 
-  const addItem = (catalogItemId?: number) => {
+  const [packageNameInput, setPackageNameInput] = useState<string>("");
+
+  const addItem = (catalogItemId?: number, pkgName?: string) => {
     if (catalogItemId) {
       const t = catalog.find((c) => c.id === catalogItemId);
       if (!t) return;
@@ -144,12 +146,13 @@ function CreateQuotationModal({
           quantity: 1,
           unit_price: Number(t.price ?? 0),
           total: Number(t.price ?? 0),
+          package_name: pkgName ?? null,
         },
       ]);
     } else {
       setItems((prev) => [
         ...prev,
-        { catalog_item_id: null, name: "", unit: "", quantity: 1, unit_price: 0, total: 0 },
+        { catalog_item_id: null, name: "", unit: "", quantity: 1, unit_price: 0, total: 0, package_name: pkgName ?? null },
       ]);
     }
   };
@@ -235,7 +238,7 @@ function CreateQuotationModal({
                 value=""
                 onChange={(e) => {
                   if (e.target.value) {
-                    addItem(Number(e.target.value));
+                    addItem(Number(e.target.value), packageNameInput || undefined);
                     e.target.value = "";
                   }
                 }}
@@ -247,18 +250,32 @@ function CreateQuotationModal({
                   </option>
                 ))}
               </Select>
-              <Button type="button" variant="outline" size="sm" onClick={() => addItem()}>
+              <Button type="button" variant="outline" size="sm" onClick={() => addItem(undefined, packageNameInput || undefined)}>
                 + Custom
               </Button>
             </div>
+          </div>
+
+          {/* Package name input for new items */}
+          <div className="flex gap-2 items-center mb-2">
+            <span className="text-xs text-gray-500">Package (optional):</span>
+            <input
+              type="text"
+              value={packageNameInput}
+              onChange={(e) => setPackageNameInput(e.target.value)}
+              className="px-2 py-1 border border-gray-300 rounded text-xs w-48"
+              placeholder="e.g. Physical Parameters"
+            />
+            <span className="text-xs text-gray-400">Assign new items to this package</span>
           </div>
 
           <table className="w-full text-sm border border-gray-200">
             <thead className="bg-gray-50">
               <tr>
                 <th className="text-left px-2 py-1">Name</th>
-                <th className="px-2 py-1 w-20">Unit</th>
-                <th className="px-2 py-1 w-20">Qty</th>
+                <th className="px-2 py-1 w-32">Package</th>
+                <th className="px-2 py-1 w-16">Unit</th>
+                <th className="px-2 py-1 w-16">Qty</th>
                 <th className="px-2 py-1 w-28">Unit Price</th>
                 <th className="px-2 py-1 w-28 text-right">Total</th>
                 <th className="w-8"></th>
@@ -266,14 +283,22 @@ function CreateQuotationModal({
             </thead>
             <tbody>
               {items.length === 0 ? (
-                <tr><td colSpan={6} className="px-2 py-4 text-center text-gray-400">No items</td></tr>
+                <tr><td colSpan={7} className="px-2 py-4 text-center text-gray-400">No items</td></tr>
               ) : items.map((it, idx) => (
-                <tr key={idx} className="border-t">
+                <tr key={idx} className={`border-t ${it.package_name ? "bg-blue-50/30" : ""}`}>
                   <td className="px-1 py-1">
                     <input
                       className="w-full px-2 py-1 border rounded text-sm"
                       value={it.name}
                       onChange={(e) => updateItem(idx, { name: e.target.value })}
+                    />
+                  </td>
+                  <td className="px-1 py-1">
+                    <input
+                      className="w-full px-2 py-1 border rounded text-xs"
+                      value={it.package_name ?? ""}
+                      onChange={(e) => updateItem(idx, { package_name: e.target.value || null })}
+                      placeholder="Package…"
                     />
                   </td>
                   <td className="px-1 py-1">

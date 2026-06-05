@@ -18,6 +18,7 @@ class InventoryItemBase(BaseModel):
     storage_location: Optional[str] = None
     storage_conditions: Optional[str] = None
     unit_cost: Optional[float] = None
+    expiry_date: Optional[date] = None
     notes: Optional[str] = None
 
 
@@ -26,6 +27,7 @@ class InventoryItemCreate(InventoryItemBase):
 
 
 class InventoryItemUpdate(BaseModel):
+    item_code: Optional[str] = None
     name: Optional[str] = None
     category: Optional[InventoryCategory] = None
     description: Optional[str] = None
@@ -36,6 +38,7 @@ class InventoryItemUpdate(BaseModel):
     storage_location: Optional[str] = None
     storage_conditions: Optional[str] = None
     unit_cost: Optional[float] = None
+    expiry_date: Optional[date] = None
     is_active: Optional[int] = None
     notes: Optional[str] = None
 
@@ -44,6 +47,7 @@ class InventoryItemOut(InventoryItemBase):
     id: int
     current_stock: float
     is_active: int
+    expiry_date: Optional[date] = None
     created_at: datetime
     updated_at: datetime
     is_low_stock: bool = False

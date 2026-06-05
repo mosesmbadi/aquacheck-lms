@@ -66,21 +66,52 @@ def build_quotation_pdf(quotation, customer) -> bytes:
     story.append(info_table)
     story.append(Spacer(1, 0.3 * cm))
 
-    # Items table
-    rows = [["#", "TEST / SERVICE", "UNIT", "QTY", "UNIT PRICE", "TOTAL"]]
+    # Items table — with package grouping support
     items = quotation.items or []
-    for idx, item in enumerate(items, start=1):
+    rows = [["#", "TEST / SERVICE", "UNIT", "QTY", "UNIT PRICE", "TOTAL"]]
+    package_row_styles = []  # track which rows are package headers
+
+    standalone = [i for i in items if not i.get("package_name")]
+    packaged = [i for i in items if i.get("package_name")]
+    pkg_names = list(dict.fromkeys(i["package_name"] for i in packaged))  # preserve order
+
+    row_idx = 1  # data rows start at index 1 (0 is header)
+    item_counter = 1
+
+    for item in standalone:
         rows.append([
-            str(idx),
+            str(item_counter),
             item.get("name", "—"),
             item.get("unit") or "—",
             f"{float(item.get('quantity', 0)):g}",
             _fmt_money(item.get("unit_price", 0), currency),
             _fmt_money(item.get("total", 0), currency),
         ])
+        row_idx += 1
+        item_counter += 1
 
-    items_table = Table(rows, colWidths=[1 * cm, 7.5 * cm, 2 * cm, 1.5 * cm, 2.5 * cm, 2.5 * cm])
-    items_table.setStyle(TableStyle([
+    for pkg_name in pkg_names:
+        pkg_items = [i for i in packaged if i.get("package_name") == pkg_name]
+        pkg_total = sum(float(i.get("package_price") or i.get("total", 0)) for i in pkg_items)
+        # Package header row
+        rows.append(["", f"[PACKAGE] {pkg_name}", "", "", "Package Total:", _fmt_money(pkg_total, currency)])
+        package_row_styles.append(row_idx)
+        row_idx += 1
+        for item in pkg_items:
+            rows.append([
+                str(item_counter),
+                f"  {item.get('name', '—')}",
+                item.get("unit") or "—",
+                f"{float(item.get('quantity', 0)):g}",
+                _fmt_money(item.get("unit_price", 0), currency),
+                f"(ind. {_fmt_money(item.get('total', 0), currency)})",
+            ])
+            row_idx += 1
+            item_counter += 1
+
+    col_widths = [1 * cm, 7.5 * cm, 2 * cm, 1.5 * cm, 2.5 * cm, 2.5 * cm]
+    items_table = Table(rows, colWidths=col_widths)
+    table_style_cmds = [
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e5e7eb")),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#9ca3af")),
@@ -88,7 +119,12 @@ def build_quotation_pdf(quotation, customer) -> bytes:
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("ALIGN", (3, 1), (-1, -1), "RIGHT"),
         ("PADDING", (0, 0), (-1, -1), 4),
-    ]))
+    ]
+    for pr in package_row_styles:
+        table_style_cmds.append(("BACKGROUND", (0, pr), (-1, pr), colors.HexColor("#dbeafe")))
+        table_style_cmds.append(("FONTNAME", (0, pr), (-1, pr), "Helvetica-Bold"))
+        table_style_cmds.append(("TEXTCOLOR", (0, pr), (-1, pr), colors.HexColor("#1d4ed8")))
+    items_table.setStyle(TableStyle(table_style_cmds))
     story.append(items_table)
     story.append(Spacer(1, 0.2 * cm))
 

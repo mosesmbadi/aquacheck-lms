@@ -38,8 +38,8 @@ services:
       dockerfile: Dockerfile
     container_name: aquacheck_migrations
     command: alembic upgrade head
-    environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://lims_user:lims_pass@db:5432/lims_db}
+    env_file:
+      - .env
     depends_on:
       db:
         condition: service_healthy
@@ -56,13 +56,13 @@ services:
       - .env
     ports:
       - "8088:8000"
-    environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://lims_user:lims_pass@db:5432/lims_db}
-      SECRET_KEY: ${SECRET_KEY:-change-me-in-production-super-secret-key-123}
-      ALGORITHM: ${ALGORITHM:-HS256}
-      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-480}
-      ADMIN_EMAIL: ${ADMIN_EMAIL}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+    # environment:
+    #   DATABASE_URL: ${DATABASE_URL:-postgresql://lims_user:lims_pass@db:5432/lims_db}
+    #   SECRET_KEY: ${SECRET_KEY:-change-me-in-production-super-secret-key-123}
+    #   ALGORITHM: ${ALGORITHM:-HS256}
+    #   ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-480}
+    #   ADMIN_EMAIL: admin@aquacheck.com
+    #   ADMIN_PASSWORD: admin123
     volumes:
       - ./backend:/app
       - ./docs:/app/docs_source:ro # read-only source for initial content import
