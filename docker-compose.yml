@@ -72,7 +72,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://lim.aquachecklab.com/api}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://lim.aquachecklab.com}
     container_name: aquacheck_frontend
     restart: unless-stopped
     env_file:
@@ -80,7 +80,7 @@ services:
     ports:
       - "3002:3000"
     environment:
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://lim.aquachecklab.com/api}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://lim.aquachecklab.com}
     volumes:
       - ./frontend/src:/app/src
       - ./frontend/public:/app/public

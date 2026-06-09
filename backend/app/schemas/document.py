@@ -9,6 +9,17 @@ class DocumentSection(BaseModel):
     body: str = ""
 
 
+class DocumentCreate(BaseModel):
+    code: str
+    title: str
+    category: DocumentCategory
+    version: str = "1.0"
+    status: DocumentStatus = DocumentStatus.active
+    effective_date: Optional[date] = None
+    description: Optional[str] = None
+    content: Optional[List[DocumentSection]] = None
+
+
 class DocumentUpdate(BaseModel):
     title: Optional[str] = None
     version: Optional[str] = None
@@ -28,6 +39,7 @@ class DocumentOut(BaseModel):
     effective_date: Optional[date] = None
     description: Optional[str] = None
     content: List[Dict[str, Any]] = []
+    uploaded_file: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

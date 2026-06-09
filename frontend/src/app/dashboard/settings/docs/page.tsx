@@ -1,15 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
-import { Pencil, X, Check, Download, Eye, ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
+import { Pencil, X, Check, Download, Eye, ChevronDown, ChevronUp, Plus, Trash2, FilePlus, Upload, FileUp } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/Button";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 import { documentsApi } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
-import type { Document, DocumentSection, DocumentStatus } from "@/lib/types";
+import type { Document, DocumentCategory, DocumentSection, DocumentStatus } from "@/lib/types";
 
 // ─── Static catalogue — shown immediately, overridden by live API data ────────
 
@@ -44,7 +44,10 @@ const STATIC_MASTERLISTS: Document[] = [
 function mergeWithApi(staticList: Document[], apiList: Document[]): Document[] {
   if (!apiList.length) return staticList;
   const byCode = Object.fromEntries(apiList.map((d) => [d.code, d]));
-  return staticList.map((s) => byCode[s.code] ?? s);
+  const staticCodes = new Set(staticList.map((s) => s.code));
+  const merged = staticList.map((s) => byCode[s.code] ?? s);
+  const apiOnly = apiList.filter((d) => !staticCodes.has(d.code));
+  return [...merged, ...apiOnly];
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -219,13 +222,255 @@ function SectionEditor({
   );
 }
 
+// ─── Add Document Modal ───────────────────────────────────────────────────────
+
+const CATEGORY_LABELS: Record<DocumentCategory, string> = {
+  sop: "SOP",
+  masterlist: "Master List",
+  user_guide: "User Guide",
+  forms: "Forms",
+  external_documents: "External Documents",
+};
+
+function AddDocumentModal({
+  defaultCategory,
+  onClose,
+}: {
+  defaultCategory: DocumentCategory;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [mode, setMode] = useState<"write" | "upload">("write");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const [form, setForm] = useState({
+    code: "",
+    title: "",
+    category: defaultCategory,
+    version: "1.0",
+    status: "active" as DocumentStatus,
+    effective_date: "",
+    description: "",
+    content: [] as DocumentSection[],
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const created = await documentsApi.create({
+        code: form.code.trim(),
+        title: form.title.trim(),
+        category: form.category,
+        version: form.version.trim() || "1.0",
+        status: form.status,
+        effective_date: form.effective_date || undefined,
+        description: form.description.trim() || undefined,
+        content: mode === "write" ? form.content : [],
+      });
+      if (mode === "upload" && selectedFile) {
+        await documentsApi.uploadFile(created.data.id, selectedFile);
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["documents"] });
+      onClose();
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setError(msg ?? "Failed to save document. Please try again.");
+    },
+  });
+
+  function handleSubmit() {
+    setError(null);
+    if (!form.code.trim()) return setError("Document code is required.");
+    if (!form.title.trim()) return setError("Title is required.");
+    if (mode === "upload" && !selectedFile) return setError("Please select a file to upload.");
+    createMutation.mutate();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <FilePlus className="w-5 h-5 text-primary-600" />
+            <h2 className="text-base font-bold text-gray-900">Add Document</h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Mode switcher */}
+        <div className="px-6 pt-4 flex-shrink-0">
+          <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
+            <button
+              onClick={() => setMode("write")}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                mode === "write" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              <Pencil className="w-3.5 h-3.5" /> Write Document
+            </button>
+            <button
+              onClick={() => setMode("upload")}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                mode === "upload" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              <Upload className="w-3.5 h-3.5" /> Upload File
+            </button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="overflow-y-auto px-6 py-4 space-y-4 flex-1">
+          {/* Metadata */}
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Document Code *"
+              value={form.code}
+              onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))}
+              placeholder="e.g. SOP-20"
+            />
+            <Select
+              label="Category"
+              value={form.category}
+              onChange={(e) => setForm((f) => ({ ...f, category: e.target.value as DocumentCategory }))}
+            >
+              {(Object.keys(CATEGORY_LABELS) as DocumentCategory[]).map((cat) => (
+                <option key={cat} value={cat}>{CATEGORY_LABELS[cat]}</option>
+              ))}
+            </Select>
+            <div className="col-span-2">
+              <Input
+                label="Title *"
+                value={form.title}
+                onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+                placeholder="e.g. Sample Disposal Procedure"
+              />
+            </div>
+            <Input
+              label="Version"
+              value={form.version}
+              onChange={(e) => setForm((f) => ({ ...f, version: e.target.value }))}
+              placeholder="1.0"
+            />
+            <Select
+              label="Status"
+              value={form.status}
+              onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as DocumentStatus }))}
+            >
+              <option value="active">Active</option>
+              <option value="under_review">Under Review</option>
+              <option value="superseded">Superseded</option>
+            </Select>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Effective Date</label>
+              <input
+                type="date"
+                value={form.effective_date}
+                onChange={(e) => setForm((f) => ({ ...f, effective_date: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-primary-400 focus:ring-1 focus:ring-primary-400 outline-none"
+              />
+            </div>
+            <div className="col-span-2">
+              <Textarea
+                label="Description"
+                value={form.description}
+                rows={2}
+                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                placeholder="Brief description of this document…"
+              />
+            </div>
+          </div>
+
+          {/* Write mode: section editor */}
+          {mode === "write" && (
+            <div>
+              <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Content Sections</p>
+              <SectionEditor
+                sections={form.content}
+                onChange={(content) => setForm((f) => ({ ...f, content }))}
+              />
+            </div>
+          )}
+
+          {/* Upload mode: file picker */}
+          {mode === "upload" && (
+            <div>
+              <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">File</p>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".pdf,.docx"
+                className="hidden"
+                onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
+              />
+              {selectedFile ? (
+                <div className="flex items-center justify-between gap-3 px-4 py-3 bg-primary-50 border border-primary-200 rounded-xl">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">{selectedFile.name}</p>
+                    <p className="text-xs text-gray-500">{(selectedFile.size / 1024).toFixed(1)} KB</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setSelectedFile(null); if (fileRef.current) fileRef.current.value = ""; }}
+                    className="p-1 text-gray-400 hover:text-red-500 rounded transition-colors flex-shrink-0"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  className="w-full border-2 border-dashed border-gray-300 hover:border-primary-400 rounded-xl px-6 py-8 flex flex-col items-center gap-2 text-gray-400 hover:text-primary-600 transition-colors group"
+                >
+                  <Upload className="w-8 h-8" />
+                  <span className="text-sm font-medium">Click to select a file</span>
+                  <span className="text-xs">PDF or DOCX — max 20 MB</span>
+                </button>
+              )}
+              <p className="text-xs text-gray-500 mt-2">
+                PDF files are served as-is. DOCX files are parsed and content is extracted automatically.
+              </p>
+            </div>
+          )}
+
+          {error && (
+            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-gray-200 flex-shrink-0">
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button loading={createMutation.isPending} onClick={handleSubmit}>
+            {mode === "upload" ? "Create & Upload" : "Create Document"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Document card ────────────────────────────────────────────────────────────
 
 function DocumentCard({ doc, isAdmin }: { doc: Document; isAdmin: boolean }) {
   const qc = useQueryClient();
+  const replaceFileRef = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<"view" | "edit">("view");
   const [previewing, setPreviewing] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [replaceFile, setReplaceFile] = useState<File | null>(null);
 
   const [form, setForm] = useState({
     title:          doc.title,
@@ -249,15 +494,20 @@ function DocumentCard({ doc, isAdmin }: { doc: Document; isAdmin: boolean }) {
   }, [doc]);
 
   const saveMutation = useMutation({
-    mutationFn: () => documentsApi.update(doc.id, {
-      title:          form.title,
-      version:        form.version,
-      status:         form.status,
-      effective_date: form.effective_date || undefined,
-      description:    form.description || undefined,
-      content:        form.content,
-    }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["documents"] }); setMode("view"); },
+    mutationFn: async () => {
+      await documentsApi.update(doc.id, {
+        title:          form.title,
+        version:        form.version,
+        status:         form.status,
+        effective_date: form.effective_date || undefined,
+        description:    form.description || undefined,
+        content:        form.content,
+      });
+      if (replaceFile) {
+        await documentsApi.uploadFile(doc.id, replaceFile);
+      }
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["documents"] }); setMode("view"); setReplaceFile(null); },
   });
 
   function handleDownload() {
@@ -310,6 +560,48 @@ function DocumentCard({ doc, isAdmin }: { doc: Document; isAdmin: boolean }) {
           </div>
         </div>
 
+        {/* Uploaded file — replace */}
+        {doc.uploaded_file && (
+          <div>
+            <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Uploaded PDF</p>
+            <input
+              ref={replaceFileRef}
+              type="file"
+              accept=".pdf,.docx"
+              className="hidden"
+              onChange={(e) => setReplaceFile(e.target.files?.[0] ?? null)}
+            />
+            {replaceFile ? (
+              <div className="flex items-center justify-between gap-3 px-3 py-2.5 bg-indigo-50 border border-indigo-200 rounded-lg">
+                <div className="flex items-center gap-2 min-w-0">
+                  <FileUp className="w-4 h-4 text-indigo-500 flex-shrink-0" />
+                  <span className="text-sm font-medium text-gray-900 truncate">{replaceFile.name}</span>
+                  <span className="text-xs text-gray-500 flex-shrink-0">{(replaceFile.size / 1024).toFixed(1)} KB</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setReplaceFile(null); if (replaceFileRef.current) replaceFileRef.current.value = ""; }}
+                  className="p-1 text-gray-400 hover:text-red-500 rounded transition-colors flex-shrink-0"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3 px-3 py-2.5 bg-indigo-50 border border-indigo-200 rounded-lg">
+                <FileUp className="w-4 h-4 text-indigo-500 flex-shrink-0" />
+                <span className="text-sm text-indigo-700">A PDF file is attached to this document.</span>
+                <button
+                  type="button"
+                  onClick={() => replaceFileRef.current?.click()}
+                  className="ml-auto text-xs font-medium text-indigo-600 hover:text-indigo-800 underline flex-shrink-0"
+                >
+                  Replace file
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Content sections */}
         <div>
           <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Content Sections</p>
@@ -323,6 +615,8 @@ function DocumentCard({ doc, isAdmin }: { doc: Document; isAdmin: boolean }) {
   }
 
   // ── View mode ──────────────────────────────────────────────────────────────
+  const hasUploadedFile = Boolean(doc.uploaded_file);
+
   return (
     <>
       <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:border-gray-300 transition-colors">
@@ -340,17 +634,22 @@ function DocumentCard({ doc, isAdmin }: { doc: Document; isAdmin: boolean }) {
           </div>
 
           <div className="flex items-center gap-1.5 flex-shrink-0">
+            {hasUploadedFile && (
+              <span className="flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                <FileUp className="w-3 h-3" /> Uploaded PDF
+              </span>
+            )}
             <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_COLORS[doc.status]}`}>
               {STATUS_LABELS[doc.status]}
             </span>
 
             <button onClick={() => setPreviewing(true)}
-              title="Preview as PDF"
+              title="Preview PDF"
               className="p-1.5 rounded-lg transition-colors text-gray-400 hover:text-primary-600 hover:bg-primary-50">
               <Eye className="w-3.5 h-3.5" />
             </button>
 
-            <button onClick={handleDownload} disabled={downloading}
+            <button onClick={handleDownload} disabled={downloading || doc.id === 0}
               title="Download PDF"
               className="p-1.5 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed text-gray-400 hover:text-primary-600 hover:bg-primary-50">
               <Download className="w-3.5 h-3.5" />
@@ -374,9 +673,11 @@ function DocumentCard({ doc, isAdmin }: { doc: Document; isAdmin: boolean }) {
             </span>
           )}
           <span className="ml-auto">
-            {doc.content.length > 0
-              ? `${doc.content.length} sections`
-              : <span className="text-gray-400 italic">No content yet</span>}
+            {hasUploadedFile
+              ? <span className="flex items-center gap-1 text-indigo-600"><FileUp className="w-3 h-3" /> Uploaded PDF</span>
+              : doc.content.length > 0
+                ? `${doc.content.length} sections`
+                : <span className="text-gray-400 italic">No content yet</span>}
           </span>
         </div>
       </div>
@@ -484,8 +785,16 @@ function renderMd(text: string) {
 
 type Tab = "guide" | "sops" | "masterlists" | "forms" | "external_documents";
 
+const TAB_CATEGORY: Partial<Record<Tab, DocumentCategory>> = {
+  sops: "sop",
+  masterlists: "masterlist",
+  forms: "forms",
+  external_documents: "external_documents",
+};
+
 export default function DocsPage() {
   const [activeTab, setActiveTab] = useState<Tab>("guide");
+  const [showAddModal, setShowAddModal] = useState(false);
   const currentUser = getCurrentUser();
   const isAdmin = currentUser?.role === "admin";
 
@@ -572,14 +881,21 @@ export default function DocsPage() {
         {/* ── SOPs ───────────────────────────────────────────────────────── */}
         {activeTab === "sops" && (
           <div className="space-y-4">
-            <div>
-              <h2 className="text-base font-bold text-gray-900">Standard Operating Procedures</h2>
-              <p className="text-sm text-gray-500 mt-0.5">
-                Controlled documents governing laboratory operations per ISO/IEC 17025.{" "}
-                {isAdmin
-                  ? "Click the pencil icon to edit any document's content."
-                  : "Click the eye icon to preview, or the download icon to save a PDF copy."}
-              </p>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-base font-bold text-gray-900">Standard Operating Procedures</h2>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  Controlled documents governing laboratory operations per ISO/IEC 17025.{" "}
+                  {isAdmin
+                    ? "Click the pencil icon to edit any document's content."
+                    : "Click the eye icon to preview, or the download icon to save a PDF copy."}
+                </p>
+              </div>
+              {isAdmin && (
+                <Button size="sm" onClick={() => setShowAddModal(true)}>
+                  <FilePlus className="w-3.5 h-3.5" /> Add Document
+                </Button>
+              )}
             </div>
             <DocumentList staticDocs={STATIC_SOPS} isAdmin={isAdmin} />
           </div>
@@ -588,14 +904,21 @@ export default function DocsPage() {
         {/* ── Master List ────────────────────────────────────────────────── */}
         {activeTab === "masterlists" && (
           <div className="space-y-4">
-            <div>
-              <h2 className="text-base font-bold text-gray-900">Master Lists</h2>
-              <p className="text-sm text-gray-500 mt-0.5">
-                Registry of controlled documents, equipment, forms, and procedures.{" "}
-                {isAdmin
-                  ? "Click the pencil icon to edit any document's content."
-                  : "Click the eye icon to preview, or the download icon to save a PDF copy."}
-              </p>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-base font-bold text-gray-900">Master Lists</h2>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  Registry of controlled documents, equipment, forms, and procedures.{" "}
+                  {isAdmin
+                    ? "Click the pencil icon to edit any document's content."
+                    : "Click the eye icon to preview, or the download icon to save a PDF copy."}
+                </p>
+              </div>
+              {isAdmin && (
+                <Button size="sm" onClick={() => setShowAddModal(true)}>
+                  <FilePlus className="w-3.5 h-3.5" /> Add Document
+                </Button>
+              )}
             </div>
             <DocumentList staticDocs={STATIC_MASTERLISTS} isAdmin={isAdmin} />
           </div>
@@ -604,14 +927,21 @@ export default function DocsPage() {
         {/* ── Forms ──────────────────────────────────────────────────────── */}
         {activeTab === "forms" && (
           <div className="space-y-4">
-            <div>
-              <h2 className="text-base font-bold text-gray-900">Forms</h2>
-              <p className="text-sm text-gray-500 mt-0.5">
-                Laboratory forms and templates used in daily operations.{" "}
-                {isAdmin
-                  ? "Click the pencil icon to edit any document's content."
-                  : "Click the eye icon to preview, or the download icon to save a PDF copy."}
-              </p>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-base font-bold text-gray-900">Forms</h2>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  Laboratory forms and templates used in daily operations.{" "}
+                  {isAdmin
+                    ? "Click the pencil icon to edit any document's content."
+                    : "Click the eye icon to preview, or the download icon to save a PDF copy."}
+                </p>
+              </div>
+              {isAdmin && (
+                <Button size="sm" onClick={() => setShowAddModal(true)}>
+                  <FilePlus className="w-3.5 h-3.5" /> Add Document
+                </Button>
+              )}
             </div>
             <DocumentList staticDocs={[]} isAdmin={isAdmin} category="forms" />
           </div>
@@ -620,19 +950,33 @@ export default function DocsPage() {
         {/* ── External Documents ─────────────────────────────────────────── */}
         {activeTab === "external_documents" && (
           <div className="space-y-4">
-            <div>
-              <h2 className="text-base font-bold text-gray-900">External Documents</h2>
-              <p className="text-sm text-gray-500 mt-0.5">
-                External standards, regulations, and reference documents (KEBS, NEMA, WHO, etc.).{" "}
-                {isAdmin
-                  ? "Click the pencil icon to edit any document's content."
-                  : "Click the eye icon to preview, or the download icon to save a PDF copy."}
-              </p>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-base font-bold text-gray-900">External Documents</h2>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  External standards, regulations, and reference documents (KEBS, NEMA, WHO, etc.).{" "}
+                  {isAdmin
+                    ? "Click the pencil icon to edit any document's content."
+                    : "Click the eye icon to preview, or the download icon to save a PDF copy."}
+                </p>
+              </div>
+              {isAdmin && (
+                <Button size="sm" onClick={() => setShowAddModal(true)}>
+                  <FilePlus className="w-3.5 h-3.5" /> Add Document
+                </Button>
+              )}
             </div>
             <DocumentList staticDocs={[]} isAdmin={isAdmin} category="external_documents" />
           </div>
         )}
       </div>
+
+      {showAddModal && TAB_CATEGORY[activeTab] && (
+        <AddDocumentModal
+          defaultCategory={TAB_CATEGORY[activeTab]!}
+          onClose={() => setShowAddModal(false)}
+        />
+      )}
     </DashboardLayout>
   );
 }

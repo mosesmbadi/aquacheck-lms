@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
-import { Plus, Pencil, ToggleLeft, ToggleRight, FlaskConical, Microscope } from "lucide-react";
+import { Plus, Pencil, ToggleLeft, ToggleRight, FlaskConical, Microscope, Droplets } from "lucide-react";
 
 // ─── Form schema ─────────────────────────────────────────────────────────────
 
@@ -52,6 +52,26 @@ const CATEGORY_LABELS: Record<TestCategory, string> = {
   microbiological: "Microbiological",
 };
 
+type WaterTypeFilter = "all" | "dialysis" | "waste_water" | "packaged_drinking_water" | "potable";
+
+const WATER_TYPE_FILTERS: { value: WaterTypeFilter; label: string }[] = [
+  { value: "all",                      label: "All Water Types" },
+  { value: "dialysis",                 label: "Dialysis Water" },
+  { value: "waste_water",              label: "Waste Water" },
+  { value: "packaged_drinking_water",  label: "Packaged Drinking Water" },
+  { value: "potable",                  label: "Potable Water" },
+];
+
+function matchesWaterType(waterType: string | undefined | null, filter: WaterTypeFilter): boolean {
+  if (filter === "all") return true;
+  const wt = waterType ?? "";
+  if (filter === "dialysis")                return wt.startsWith("dialysis");
+  if (filter === "waste_water")             return wt.startsWith("waste");
+  if (filter === "packaged_drinking_water") return wt === "packaged_drinking_water";
+  if (filter === "potable")                 return wt.startsWith("potable");
+  return false;
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function CatalogTestsPage() {
@@ -59,6 +79,7 @@ export default function CatalogTestsPage() {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<TestCatalogItem | null>(null);
   const [filterCategory, setFilterCategory] = useState<TestCategory | "all">("all");
+  const [filterWaterType, setFilterWaterType] = useState<WaterTypeFilter>("all");
   const [showInactive, setShowInactive] = useState(false);
 
   const { data: items = [], isLoading } = useQuery<TestCatalogItem[]>({
@@ -134,10 +155,9 @@ export default function CatalogTestsPage() {
     }
   }
 
-  const filtered =
-    filterCategory === "all"
-      ? items
-      : items.filter((i) => i.category === filterCategory);
+  const filtered = items
+    .filter((i) => filterCategory === "all" || i.category === filterCategory)
+    .filter((i) => matchesWaterType(i.water_type, filterWaterType));
 
   const physioItems = filtered.filter((i) => i.category === "physicochemical");
   const microItems = filtered.filter((i) => i.category === "microbiological");
@@ -151,7 +171,7 @@ export default function CatalogTestsPage() {
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm text-gray-500 mt-0.5">
-            Dialysis water tests (ISO 23500 / AAMI / Kenya standards) — {items.length} entries
+            Water quality tests (ISO / AAMI / Kenya standards) — {items.length} entries
           </p>
         </div>
         <Button onClick={openCreate} className="gap-2">
@@ -160,29 +180,50 @@ export default function CatalogTestsPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-3 flex-wrap">
-        {(["all", "physicochemical", "microbiological"] as const).map((cat) => (
-          <button
-            key={cat}
-            onClick={() => setFilterCategory(cat)}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
-              filterCategory === cat
-                ? "bg-primary-500 text-white border-primary-500"
-                : "bg-white text-gray-600 border-gray-200 hover:border-primary-300"
-            }`}
-          >
-            {cat === "all" ? "All Tests" : CATEGORY_LABELS[cat]}
-          </button>
-        ))}
-        <label className="flex items-center gap-2 ml-auto text-sm text-gray-600 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={showInactive}
-            onChange={(e) => setShowInactive(e.target.checked)}
-            className="rounded border-gray-300"
-          />
-          Show inactive
-        </label>
+      <div className="space-y-2">
+        {/* Water type filter */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <Droplets className="w-4 h-4 text-gray-400 shrink-0" />
+          {WATER_TYPE_FILTERS.map((wt) => (
+            <button
+              key={wt.value}
+              onClick={() => setFilterWaterType(wt.value)}
+              className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                filterWaterType === wt.value
+                  ? "bg-teal-600 text-white border-teal-600"
+                  : "bg-white text-gray-600 border-gray-200 hover:border-teal-400"
+              }`}
+            >
+              {wt.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Category filter */}
+        <div className="flex items-center gap-3 flex-wrap">
+          {(["all", "physicochemical", "microbiological"] as const).map((cat) => (
+            <button
+              key={cat}
+              onClick={() => setFilterCategory(cat)}
+              className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                filterCategory === cat
+                  ? "bg-primary-500 text-white border-primary-500"
+                  : "bg-white text-gray-600 border-gray-200 hover:border-primary-300"
+              }`}
+            >
+              {cat === "all" ? "All Tests" : CATEGORY_LABELS[cat]}
+            </button>
+          ))}
+          <label className="flex items-center gap-2 ml-auto text-sm text-gray-600 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={showInactive}
+              onChange={(e) => setShowInactive(e.target.checked)}
+              className="rounded border-gray-300"
+            />
+            Show inactive
+          </label>
+        </div>
       </div>
 
       {isLoading ? (

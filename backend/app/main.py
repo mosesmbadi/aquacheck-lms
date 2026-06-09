@@ -173,6 +173,21 @@ def ensure_schema_compatibility():
             ))
             print("[LIMS] Added documents.content column.")
 
+        # documents.uploaded_file — path to uploaded PDF (served directly)
+        uploaded_file_exists = connection.execute(
+            text(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'documents' AND column_name = 'uploaded_file'
+                """
+            )
+        ).scalar()
+        if not uploaded_file_exists:
+            connection.execute(text(
+                "ALTER TABLE documents ADD COLUMN uploaded_file TEXT"
+            ))
+            print("[LIMS] Added documents.uploaded_file column.")
+
         # users.customer_id — link customer-role users to a customer
         user_cust_exists = connection.execute(
             text(

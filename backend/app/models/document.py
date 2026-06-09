@@ -31,6 +31,8 @@ class Document(Base):
     description = Column(Text, nullable=True)
     # List of {"heading": str, "body": str} dicts stored as JSON
     content = Column(JSON, default=list, nullable=False)
+    # Path to an uploaded PDF file (served directly instead of generating from content)
+    uploaded_file = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(
         DateTime(timezone=True),
