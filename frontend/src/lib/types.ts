@@ -439,6 +439,7 @@ export interface Document {
   effective_date?: string;
   description?: string;
   content: DocumentSection[];
+  uploaded_file?: string | null;
   created_at: string;
   updated_at: string;
 }

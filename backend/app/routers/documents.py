@@ -1,14 +1,20 @@
 import os
+import uuid
+import tempfile
+from pathlib import Path
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from app.deps import get_db, get_current_user, require_role
 from app.models.user import User, UserRole
 from app.models.document import Document, DocumentCategory, DocumentStatus
-from app.schemas.document import DocumentOut, DocumentUpdate
+from app.schemas.document import DocumentOut, DocumentCreate, DocumentUpdate
 from app.services.audit import log_action
 from app.services.document_service import extract_sections, generate_pdf
+
+UPLOAD_BASE = Path(os.environ.get("UPLOAD_DIR", str(Path(__file__).parent.parent.parent / "uploads")))
+DOCS_UPLOAD_DIR = UPLOAD_BASE / "documents"
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
@@ -100,6 +106,76 @@ def seed_documents(db: Session) -> int:
 
 # ─── Endpoints ────────────────────────────────────────────────────────────────
 
+@router.post("", response_model=DocumentOut, status_code=201)
+def create_document(
+    payload: DocumentCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    if db.query(Document).filter(Document.code == payload.code).first():
+        raise HTTPException(status_code=400, detail="A document with this code already exists.")
+    content = [s.model_dump() for s in payload.content] if payload.content else []
+    doc = Document(
+        code=payload.code,
+        title=payload.title,
+        category=payload.category,
+        version=payload.version,
+        status=payload.status,
+        effective_date=payload.effective_date,
+        description=payload.description,
+        content=content,
+    )
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
+    log_action(db, current_user.id, "CREATE_DOCUMENT", "document", str(doc.id))
+    return doc
+
+
+@router.post("/{document_id}/upload", response_model=DocumentOut)
+async def upload_document_file(
+    document_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    doc = db.query(Document).filter(Document.id == document_id).first()
+    if not doc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in (".pdf", ".docx"):
+        raise HTTPException(status_code=400, detail="Only PDF and DOCX files are accepted.")
+
+    data = await file.read()
+
+    if ext == ".docx":
+        with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
+            tmp.write(data)
+            tmp_path = tmp.name
+        try:
+            doc.content = extract_sections(tmp_path)
+        finally:
+            os.unlink(tmp_path)
+        doc.uploaded_file = None
+    else:
+        DOCS_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        safe_name = f"{document_id}_{uuid.uuid4().hex}.pdf"
+        dest = DOCS_UPLOAD_DIR / safe_name
+        dest.write_bytes(data)
+        if doc.uploaded_file and os.path.exists(doc.uploaded_file):
+            try:
+                os.unlink(doc.uploaded_file)
+            except OSError:
+                pass
+        doc.uploaded_file = str(dest)
+
+    db.commit()
+    db.refresh(doc)
+    log_action(db, current_user.id, "UPLOAD_DOCUMENT_FILE", "document", str(document_id))
+    return doc
+
+
 @router.get("", response_model=List[DocumentOut])
 def list_documents(
     category: Optional[DocumentCategory] = None,
@@ -131,19 +207,23 @@ def get_document_pdf(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    """Generate and stream a PDF for inline preview or download."""
+    """Stream a PDF for inline preview or download. Serves uploaded file if present."""
     doc = db.query(Document).filter(Document.id == document_id).first()
     if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
-    pdf_bytes = generate_pdf(
-        code=doc.code,
-        title=doc.title,
-        version=doc.version,
-        status=doc.status.value,
-        effective_date=str(doc.effective_date) if doc.effective_date else None,
-        sections=doc.content or [],
-    )
+    if doc.uploaded_file and os.path.exists(doc.uploaded_file):
+        with open(doc.uploaded_file, "rb") as f:
+            pdf_bytes = f.read()
+    else:
+        pdf_bytes = generate_pdf(
+            code=doc.code,
+            title=doc.title,
+            version=doc.version,
+            status=doc.status.value,
+            effective_date=str(doc.effective_date) if doc.effective_date else None,
+            sections=doc.content or [],
+        )
 
     disposition = "attachment" if download else "inline"
     filename = f"{doc.code}_v{doc.version}.pdf"

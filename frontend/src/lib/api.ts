@@ -161,7 +161,24 @@ export const documentsApi = {
   list: (category?: DocumentCategory) =>
     api.get<Document[]>("/documents", { params: category ? { category } : undefined }),
   get: (id: number) => api.get<Document>(`/documents/${id}`),
+  create: (data: {
+    code: string;
+    title: string;
+    category: DocumentCategory;
+    version?: string;
+    status?: string;
+    effective_date?: string;
+    description?: string;
+    content?: { heading: string; body: string }[];
+  }) => api.post<Document>("/documents", data),
   update: (id: number, data: Partial<Document>) => api.put<Document>(`/documents/${id}`, data),
+  uploadFile: (id: number, file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return api.post<Document>(`/documents/${id}/upload`, fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
   /** Fetch the generated PDF as a blob URL for iframe preview. */
   previewBlobUrl: (id: number): Promise<string> =>
     api.get(`/documents/${id}/pdf`, { responseType: "blob" }).then((res) =>
