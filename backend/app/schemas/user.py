@@ -11,6 +11,7 @@ class UserBase(BaseModel):
     is_active: bool = True
     customer_id: Optional[int] = None
     is_contact_person: bool = False
+    job_title: Optional[str] = None
 
 
 class UserCreate(UserBase):
@@ -24,10 +25,14 @@ class UserUpdate(BaseModel):
     password: Optional[str] = None
     customer_id: Optional[int] = None
     is_contact_person: Optional[bool] = None
+    job_title: Optional[str] = None
+    signature_b64: Optional[str] = None
 
 
 class UserOut(UserBase):
     id: int
+    job_title: Optional[str] = None
+    signature_b64: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

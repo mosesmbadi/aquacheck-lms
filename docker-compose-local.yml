@@ -74,21 +74,21 @@ services:
     networks:
       - lims_network
 
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    container_name: aquacheck_pgadmin
-    restart: unless-stopped
-    env_file:
-      - .env
-    ports:
-      - "5050:80"
-    volumes:
-      - pgadmin_data:/var/lib/pgadmin
-    depends_on:
-      db:
-        condition: service_healthy
-    networks:
-      - lims_network
+  # pgadmin:
+  #   image: dpage/pgadmin4:latest
+  #   container_name: aquacheck_pgadmin
+  #   restart: unless-stopped
+  #   env_file:
+  #     - .env
+  #   ports:
+  #     - "5050:80"
+  #   volumes:
+  #     - pgadmin_data:/var/lib/pgadmin
+  #   depends_on:
+  #     db:
+  #       condition: service_healthy
+  #   networks:
+  #     - lims_network
 
   # frontend:
   #   build:

@@ -351,6 +351,36 @@ def ensure_schema_compatibility():
             ))
             print("[LIMS] Added inventory_items.expiry_date column.")
 
+        # users.job_title — display title shown on printed reports
+        job_title_exists = connection.execute(
+            text(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'users' AND column_name = 'job_title'
+                """
+            )
+        ).scalar()
+        if not job_title_exists:
+            connection.execute(text(
+                "ALTER TABLE users ADD COLUMN job_title VARCHAR"
+            ))
+            print("[LIMS] Added users.job_title column.")
+
+        # users.signature_b64 — base64-encoded PNG signature image for reports
+        sig_exists = connection.execute(
+            text(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'users' AND column_name = 'signature_b64'
+                """
+            )
+        ).scalar()
+        if not sig_exists:
+            connection.execute(text(
+                "ALTER TABLE users ADD COLUMN signature_b64 TEXT"
+            ))
+            print("[LIMS] Added users.signature_b64 column.")
+
 
 @app.on_event("startup")
 def on_startup():

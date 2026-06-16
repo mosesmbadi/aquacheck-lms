@@ -1,6 +1,6 @@
 import enum
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum as SAEnum, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum as SAEnum, ForeignKey, Text
 from app.database import Base
 
 
@@ -24,6 +24,8 @@ class User(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=True)
     is_contact_person = Column(Boolean, default=False, nullable=False)
+    job_title = Column(String, nullable=True)
+    signature_b64 = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(
         DateTime(timezone=True),

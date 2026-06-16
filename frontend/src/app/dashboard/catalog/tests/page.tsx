@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
-import { Plus, Pencil, ToggleLeft, ToggleRight, FlaskConical, Microscope, Droplets } from "lucide-react";
+import { Plus, Pencil, ToggleLeft, ToggleRight, FlaskConical, Microscope, Droplets, Search, Trash2 } from "lucide-react";
 
 // ─── Form schema ─────────────────────────────────────────────────────────────
 
@@ -81,6 +81,8 @@ export default function CatalogTestsPage() {
   const [filterCategory, setFilterCategory] = useState<TestCategory | "all">("all");
   const [filterWaterType, setFilterWaterType] = useState<WaterTypeFilter>("all");
   const [showInactive, setShowInactive] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
   const { data: items = [], isLoading } = useQuery<TestCatalogItem[]>({
     queryKey: ["test-catalog", showInactive],
@@ -109,6 +111,15 @@ export default function CatalogTestsPage() {
     mutationFn: (item: TestCatalogItem) =>
       testCatalogApi.update(item.id, { is_active: !item.is_active }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["test-catalog"] }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (ids: number[]) =>
+      Promise.all(ids.map((id) => testCatalogApi.delete(id))),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["test-catalog"] });
+      setSelectedIds(new Set());
+    },
   });
 
   const {
@@ -147,6 +158,27 @@ export default function CatalogTestsPage() {
     reset();
   }
 
+  function toggleSelect(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll(items: TestCatalogItem[], checked: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      items.forEach((i) => (checked ? next.add(i.id) : next.delete(i.id)));
+      return next;
+    });
+  }
+
+  async function handleBulkDelete() {
+    if (!window.confirm(`Permanently delete ${selectedIds.size} test(s)? This cannot be undone.`)) return;
+    await deleteMutation.mutateAsync([...selectedIds]);
+  }
+
   async function onSubmit(data: FormData) {
     if (editing) {
       await updateMutation.mutateAsync({ id: editing.id, data });
@@ -155,9 +187,18 @@ export default function CatalogTestsPage() {
     }
   }
 
+  const searchLower = searchQuery.toLowerCase();
   const filtered = items
     .filter((i) => filterCategory === "all" || i.category === filterCategory)
-    .filter((i) => matchesWaterType(i.water_type, filterWaterType));
+    .filter((i) => matchesWaterType(i.water_type, filterWaterType))
+    .filter(
+      (i) =>
+        !searchQuery ||
+        i.name.toLowerCase().includes(searchLower) ||
+        (i.unit ?? "").toLowerCase().includes(searchLower) ||
+        (i.method_name ?? "").toLowerCase().includes(searchLower) ||
+        (i.standard_limit ?? "").toLowerCase().includes(searchLower)
+    );
 
   const physioItems = filtered.filter((i) => i.category === "physicochemical");
   const microItems = filtered.filter((i) => i.category === "microbiological");
@@ -168,13 +209,21 @@ export default function CatalogTestsPage() {
     <DashboardLayout title="Test Catalog">
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Water quality tests (ISO / AAMI / Kenya standards) — {items.length} entries
-          </p>
+      <div className="flex items-center justify-between gap-4">
+        <p className="text-sm text-gray-500 shrink-0">
+          Water quality tests (ISO / AAMI / Kenya standards) — {items.length} entries
+        </p>
+        <div className="relative flex-1 max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Search tests…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+          />
         </div>
-        <Button onClick={openCreate} className="gap-2">
+        <Button onClick={openCreate} className="gap-2 shrink-0">
           <Plus className="w-4 h-4" /> Add Test
         </Button>
       </div>
@@ -226,6 +275,30 @@ export default function CatalogTestsPage() {
         </div>
       </div>
 
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 px-4 py-2.5 bg-red-50 border border-red-200 rounded-lg">
+          <span className="text-sm font-medium text-red-700">
+            {selectedIds.size} test{selectedIds.size > 1 ? "s" : ""} selected
+          </span>
+          <Button
+            variant="danger"
+            size="sm"
+            className="gap-1.5 ml-auto"
+            onClick={handleBulkDelete}
+            loading={deleteMutation.isPending}
+          >
+            <Trash2 className="w-3.5 h-3.5" /> Delete Selected
+          </Button>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="text-sm text-gray-500 hover:text-gray-700"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
       {isLoading ? (
         <div className="text-center py-12 text-gray-400">Loading catalog…</div>
       ) : (
@@ -239,7 +312,14 @@ export default function CatalogTestsPage() {
                   <h2 className="font-semibold text-blue-800">Physio-Chemical Tests</h2>
                   <span className="ml-auto text-xs text-blue-500">{physioItems.length} tests</span>
                 </div>
-                <TestTable items={physioItems} onEdit={openEdit} onToggle={(i) => toggleMutation.mutate(i)} />
+                <TestTable
+                  items={physioItems}
+                  onEdit={openEdit}
+                  onToggle={(i) => toggleMutation.mutate(i)}
+                  selectedIds={selectedIds}
+                  onSelect={toggleSelect}
+                  onSelectAll={(checked) => toggleSelectAll(physioItems, checked)}
+                />
               </Card>
             )}
 
@@ -252,7 +332,14 @@ export default function CatalogTestsPage() {
                   <h2 className="font-semibold text-green-800">Microbiological Tests</h2>
                   <span className="ml-auto text-xs text-green-500">{microItems.length} tests</span>
                 </div>
-                <TestTable items={microItems} onEdit={openEdit} onToggle={(i) => toggleMutation.mutate(i)} />
+                <TestTable
+                  items={microItems}
+                  onEdit={openEdit}
+                  onToggle={(i) => toggleMutation.mutate(i)}
+                  selectedIds={selectedIds}
+                  onSelect={toggleSelect}
+                  onSelectAll={(checked) => toggleSelectAll(microItems, checked)}
+                />
               </Card>
             )}
 
@@ -319,16 +406,34 @@ function TestTable({
   items,
   onEdit,
   onToggle,
+  selectedIds,
+  onSelect,
+  onSelectAll,
 }: {
   items: TestCatalogItem[];
   onEdit: (item: TestCatalogItem) => void;
   onToggle: (item: TestCatalogItem) => void;
+  selectedIds: Set<number>;
+  onSelect: (id: number, checked: boolean) => void;
+  onSelectAll: (checked: boolean) => void;
 }) {
+  const allSelected = items.length > 0 && items.every((i) => selectedIds.has(i.id));
+  const someSelected = !allSelected && items.some((i) => selectedIds.has(i.id));
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-gray-100 text-left">
+            <th className="px-4 py-3 w-8">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                ref={(el) => { if (el) el.indeterminate = someSelected; }}
+                onChange={(e) => onSelectAll(e.target.checked)}
+                className="rounded border-gray-300"
+              />
+            </th>
             <th className="px-5 py-3 font-medium text-gray-500 w-8">#</th>
             <th className="px-5 py-3 font-medium text-gray-500">Test / Parameter</th>
             <th className="px-5 py-3 font-medium text-gray-500">Unit</th>
@@ -339,42 +444,56 @@ function TestTable({
           </tr>
         </thead>
         <tbody>
-          {items.map((item, idx) => (
-            <tr key={item.id} className="border-b border-gray-50 hover:bg-gray-50/50">
-              <td className="px-5 py-2.5 text-gray-400 text-xs">{idx + 1}</td>
-              <td className="px-5 py-2.5 font-medium text-gray-800">{item.name}</td>
-              <td className="px-5 py-2.5 text-gray-500">{item.unit || "—"}</td>
-              <td className="px-5 py-2.5 text-gray-500 text-xs">{item.method_name || "—"}</td>
-              <td className="px-5 py-2.5 text-gray-600">{item.standard_limit || "—"}</td>
-              <td className="px-5 py-2.5 text-center">
-                <Badge variant={item.is_active ? "success" : "gray"}>
-                  {item.is_active ? "Active" : "Inactive"}
-                </Badge>
-              </td>
-              <td className="px-5 py-2.5 text-right">
-                <div className="flex items-center justify-end gap-1">
-                  <button
-                    onClick={() => onEdit(item)}
-                    className="p-1.5 text-gray-400 hover:text-gray-700 rounded"
-                    title="Edit"
-                  >
-                    <Pencil className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => onToggle(item)}
-                    className={`p-1.5 rounded ${item.is_active ? "text-green-500 hover:text-red-400" : "text-gray-400 hover:text-green-500"}`}
-                    title={item.is_active ? "Deactivate" : "Activate"}
-                  >
-                    {item.is_active ? (
-                      <ToggleRight className="w-4 h-4" />
-                    ) : (
-                      <ToggleLeft className="w-4 h-4" />
-                    )}
-                  </button>
-                </div>
-              </td>
-            </tr>
-          ))}
+          {items.map((item, idx) => {
+            const isSelected = selectedIds.has(item.id);
+            return (
+              <tr
+                key={item.id}
+                className={`border-b border-gray-50 hover:bg-gray-50/50 ${isSelected ? "bg-red-50/40" : ""}`}
+              >
+                <td className="px-4 py-2.5">
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={(e) => onSelect(item.id, e.target.checked)}
+                    className="rounded border-gray-300"
+                  />
+                </td>
+                <td className="px-5 py-2.5 text-gray-400 text-xs">{idx + 1}</td>
+                <td className="px-5 py-2.5 font-medium text-gray-800">{item.name}</td>
+                <td className="px-5 py-2.5 text-gray-500">{item.unit || "—"}</td>
+                <td className="px-5 py-2.5 text-gray-500 text-xs">{item.method_name || "—"}</td>
+                <td className="px-5 py-2.5 text-gray-600">{item.standard_limit || "—"}</td>
+                <td className="px-5 py-2.5 text-center">
+                  <Badge variant={item.is_active ? "success" : "gray"}>
+                    {item.is_active ? "Active" : "Inactive"}
+                  </Badge>
+                </td>
+                <td className="px-5 py-2.5 text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <button
+                      onClick={() => onEdit(item)}
+                      className="p-1.5 text-gray-400 hover:text-gray-700 rounded"
+                      title="Edit"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => onToggle(item)}
+                      className={`p-1.5 rounded ${item.is_active ? "text-green-500 hover:text-red-400" : "text-gray-400 hover:text-green-500"}`}
+                      title={item.is_active ? "Deactivate" : "Activate"}
+                    >
+                      {item.is_active ? (
+                        <ToggleRight className="w-4 h-4" />
+                      ) : (
+                        <ToggleLeft className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

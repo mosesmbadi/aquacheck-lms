@@ -3,14 +3,15 @@
 import { useState, useCallback, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Save, CheckCircle, Clock, FlaskConical, MapPin, Calendar } from "lucide-react";
+import { ArrowLeft, Save, CheckCircle, Clock, FlaskConical, MapPin, Calendar, Printer } from "lucide-react";
 import { format } from "date-fns";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { SampleStatusBadge, TestStatusBadge } from "@/components/ui/Badge";
-import { samplesApi, testResultsApi, testCatalogApi } from "@/lib/api";
-import type { TestResult, TestCatalogItem } from "@/lib/types";
+import { samplesApi, testResultsApi, testCatalogApi, usersApi } from "@/lib/api";
+import type { TestResult, TestCatalogItem, User } from "@/lib/types";
+import TestReportPrint from "@/components/TestReportPrint";
 
 type ResultDraft = {
   result_value: string;
@@ -26,6 +27,8 @@ export default function SampleDetailPage() {
   // Local draft state: keyed by catalog_item_id
   const [drafts, setDrafts] = useState<Record<number, ResultDraft>>({});
   const [dirty, setDirty] = useState(false);
+  const [printOpen, setPrintOpen] = useState(false);
+  const [signatories, setSignatories] = useState<User[]>([]);
 
   const { data: sample, isLoading: sampleLoading } = useQuery({
     queryKey: ["sample", sampleId],
@@ -42,6 +45,11 @@ export default function SampleDetailPage() {
   const { data: catalogItems = [] } = useQuery({
     queryKey: ["test-catalog"],
     queryFn: () => testCatalogApi.list({ active_only: true }).then((r) => r.data),
+  });
+
+  const { data: staffUsers = [] } = useQuery({
+    queryKey: ["users"],
+    queryFn: () => usersApi.list().then((r) => r.data.filter((u) => u.role !== "customer" && u.is_active)),
   });
 
   // Build a map of catalog_item_id -> existing test result
@@ -102,6 +110,14 @@ export default function SampleDetailPage() {
       qc.invalidateQueries({ queryKey: ["samples"] });
     },
   });
+
+  function toggleSignatory(user: User) {
+    setSignatories((prev) =>
+      prev.find((u) => u.id === user.id)
+        ? prev.filter((u) => u.id !== user.id)
+        : [...prev, user]
+    );
+  }
 
   const handleSaveAll = () => {
     const rows = Object.entries(drafts)
@@ -195,9 +211,14 @@ export default function SampleDetailPage() {
               </div>
             </div>
           </div>
-          <Button onClick={handleSaveAll} loading={bulkSaveMutation.isPending} disabled={!dirty}>
-            <Save className="w-4 h-4" /> Save Results {filledCount > 0 && `(${filledCount})`}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" onClick={() => setPrintOpen(true)}>
+              <Printer className="w-4 h-4" /> Print Report
+            </Button>
+            <Button onClick={handleSaveAll} loading={bulkSaveMutation.isPending} disabled={!dirty}>
+              <Save className="w-4 h-4" /> Save Results {filledCount > 0 && `(${filledCount})`}
+            </Button>
+          </div>
         </div>
 
         {/* Sample details cards */}
@@ -389,6 +410,71 @@ export default function SampleDetailPage() {
           </CardBody>
         </Card>
       </div>
+
+      {/* ── Signatories ──────────────────────────────────────────────── */}
+        <Card>
+          <CardHeader
+            title="Signed by"
+            subtitle="Select the staff members whose names and signatures will appear on the printed report"
+          />
+          <CardBody>
+            {staffUsers.length === 0 ? (
+              <p className="text-sm text-gray-400 italic">No staff users found.</p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                {staffUsers.map((user) => {
+                  const selected = signatories.some((u) => u.id === user.id);
+                  return (
+                    <button
+                      key={user.id}
+                      type="button"
+                      onClick={() => toggleSignatory(user)}
+                      className={`flex flex-col items-center gap-2 p-3 rounded-lg border-2 text-center transition-all ${
+                        selected
+                          ? "border-teal-500 bg-teal-50"
+                          : "border-gray-200 hover:border-teal-300 hover:bg-gray-50"
+                      }`}
+                    >
+                      <div className="w-14 h-14 rounded border border-gray-200 bg-white flex items-center justify-center overflow-hidden flex-shrink-0">
+                        {user.signature_b64 ? (
+                          <img
+                            src={`data:image/png;base64,${user.signature_b64}`}
+                            alt="sig"
+                            className="w-full h-full object-contain"
+                          />
+                        ) : (
+                          <span className="text-[10px] text-gray-300">No sig</span>
+                        )}
+                      </div>
+                      <div>
+                        <p className={`text-xs font-semibold leading-tight ${selected ? "text-teal-800" : "text-gray-800"}`}>
+                          {user.full_name}
+                        </p>
+                        <p className="text-[10px] text-gray-400 italic leading-tight">
+                          {user.job_title || user.role.replace("_", " ")}
+                        </p>
+                      </div>
+                      {selected && (
+                        <span className="text-[10px] font-medium text-teal-600 bg-teal-100 px-2 py-0.5 rounded-full">
+                          Selected
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {signatories.length > 0 && (
+              <p className="text-xs text-gray-500 mt-3">
+                {signatories.length} signator{signatories.length > 1 ? "ies" : "y"} selected — will appear on the printed report.
+              </p>
+            )}
+          </CardBody>
+        </Card>
+
+      {printOpen && (
+        <TestReportPrint sampleId={sampleId} onClose={() => setPrintOpen(false)} signatories={signatories} />
+      )}
     </DashboardLayout>
   );
 }
