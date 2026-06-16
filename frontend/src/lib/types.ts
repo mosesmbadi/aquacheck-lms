@@ -155,6 +155,8 @@ export interface User {
   is_active: boolean;
   customer_id?: number;
   is_contact_person?: boolean;
+  job_title?: string;
+  signature_b64?: string;
   created_at: string;
   updated_at: string;
 }

@@ -5,11 +5,12 @@ import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Printer, X } from "lucide-react";
 import { samplesApi, testResultsApi, testCatalogApi, contractsApi, customersApi } from "@/lib/api";
-import type { Sample, TestResult, TestCatalogItem, Contract, Customer } from "@/lib/types";
+import type { Sample, TestResult, TestCatalogItem, Contract, Customer, User } from "@/lib/types";
 
 interface TestReportPrintProps {
   sampleId: number;
   onClose: () => void;
+  signatories?: User[];
 }
 
 function getCompliance(item: TestCatalogItem, value: string): string {
@@ -35,7 +36,7 @@ function getCompliance(item: TestCatalogItem, value: string): string {
   return "";
 }
 
-export default function TestReportPrint({ sampleId, onClose }: TestReportPrintProps) {
+export default function TestReportPrint({ sampleId, onClose, signatories = [] }: TestReportPrintProps) {
   const printRef = useRef<HTMLDivElement>(null);
   const [printing, setPrinting] = useState(false);
 
@@ -137,6 +138,7 @@ export default function TestReportPrint({ sampleId, onClose }: TestReportPrintPr
             .signature-block .name { font-weight: bold; text-transform: uppercase; }
             .signature-block .title-text { font-style: italic; }
             .report-date { text-align: center; margin-top: 15px; font-size: 12px; font-weight: bold; }
+            img { max-width: 100%; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           </style>
         </head>
         <body>
@@ -373,19 +375,37 @@ export default function TestReportPrint({ sampleId, onClose }: TestReportPrintPr
             )}
 
             {/* Signatures */}
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: "40px", fontSize: "11px" }}>
-              <div style={{ textAlign: "center" }}>
-                <div style={{ borderTop: "1px solid #000", width: "180px", paddingTop: "4px" }}>
-                  <div style={{ fontWeight: "bold", textTransform: "uppercase" }}>VICTOR MUTAI</div>
-                  <div style={{ fontStyle: "italic" }}>Water Chemist</div>
+            <div style={{ display: "flex", justifyContent: signatories.length > 0 ? "space-around" : "space-between", marginTop: "40px", fontSize: "11px", flexWrap: "wrap", gap: "16px" }}>
+              {signatories.length > 0 ? signatories.map((sig) => (
+                <div key={sig.id} style={{ textAlign: "center" }}>
+                  {sig.signature_b64 && (
+                    <img
+                      src={`data:image/png;base64,${sig.signature_b64}`}
+                      alt="signature"
+                      style={{ width: "100px", height: "60px", objectFit: "contain", display: "block", margin: "0 auto 4px" }}
+                    />
+                  )}
+                  <div style={{ borderTop: "1px solid #000", width: "180px", paddingTop: "4px" }}>
+                    <div style={{ fontWeight: "bold", textTransform: "uppercase" }}>{sig.full_name}</div>
+                    <div style={{ fontStyle: "italic" }}>{sig.job_title || sig.role.replace("_", " ")}</div>
+                  </div>
                 </div>
-              </div>
-              <div style={{ textAlign: "center" }}>
-                <div style={{ borderTop: "1px solid #000", width: "180px", paddingTop: "4px" }}>
-                  <div style={{ fontWeight: "bold", textTransform: "uppercase" }}>KIPKEMOI JOSPHAT</div>
-                  <div style={{ fontStyle: "italic" }}>Lab analyst</div>
-                </div>
-              </div>
+              )) : (
+                <>
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ borderTop: "1px solid #000", width: "180px", paddingTop: "4px" }}>
+                      <div style={{ fontWeight: "bold", textTransform: "uppercase" }}>___________________</div>
+                      <div style={{ fontStyle: "italic" }}>Authorised Signatory</div>
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ borderTop: "1px solid #000", width: "180px", paddingTop: "4px" }}>
+                      <div style={{ fontWeight: "bold", textTransform: "uppercase" }}>___________________</div>
+                      <div style={{ fontStyle: "italic" }}>Authorised Signatory</div>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Date stamp */}

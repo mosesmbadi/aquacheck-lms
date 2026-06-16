@@ -17,6 +17,7 @@ import {
   Waves,
   Leaf,
   Building2,
+  AlertCircle,
 } from "lucide-react";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -60,6 +61,9 @@ function getWaterType(category: string, potableType?: string | null): string {
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
+// Empty string → undefined so optional fields are never sent as "" to the API
+const optStr = z.preprocess((v) => (v === "" ? undefined : v), z.string().optional());
+
 const schema = z
   .object({
     customer_id: z.preprocess(
@@ -79,12 +83,12 @@ const schema = z
       .enum(["environment", "public_sewer"])
       .optional()
       .nullable(),
-    description: z.string().optional(),
-    sample_type: z.string().optional(),
-    collection_date: z.string().optional(),
-    collection_location: z.string().optional(),
-    gps_coordinates: z.string().optional(),
-    storage_condition: z.string().optional(),
+    description: optStr,
+    sample_type: optStr,
+    collection_date: optStr,
+    collection_location: optStr,
+    gps_coordinates: optStr,
+    storage_condition: optStr,
     requested_test_ids: z.array(z.number().int().positive()).default([]),
   })
   .superRefine((data, ctx) => {
@@ -342,6 +346,7 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
     control,
     watch,
     setValue,
+    setError,
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -451,8 +456,56 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
     setSuggestionsApplied(false);
   }
 
+  function friendlyMessage(raw: string): string {
+    const map: Record<string, string> = {
+      "input is too short": "This field appears incomplete — please check and re-enter",
+      "field required": "This field is required",
+      "value is not a valid date": "Please enter a valid date",
+      "none is not an allowed value": "This field is required",
+    };
+    return map[raw.toLowerCase()] ?? raw;
+  }
+
+  const FORM_FIELDS = new Set([
+    "customer_id", "contract_id", "sample_category", "potable_type",
+    "waste_industry_type", "discharge_destination", "description", "sample_type",
+    "collection_date", "collection_location", "gps_coordinates", "storage_condition",
+    "requested_test_ids",
+  ]);
+
+  async function handleFormSubmit(data: FormData) {
+    try {
+      await onSubmit(data);
+    } catch (err: unknown) {
+      type ApiDetail = { loc?: string[]; msg?: string; error?: string };
+      const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+
+      if (Array.isArray(detail)) {
+        let mapped = 0;
+        (detail as ApiDetail[]).forEach(({ loc, msg, error: apiErr }) => {
+          const field = loc?.at(-1);
+          const message = friendlyMessage(msg ?? apiErr ?? "Invalid value");
+          if (field && FORM_FIELDS.has(field)) {
+            setError(field as keyof FormData, { type: "server", message });
+            mapped++;
+          }
+        });
+        if (!mapped) {
+          const summary = (detail as ApiDetail[])
+            .map((d) => friendlyMessage(d.msg ?? d.error ?? "Error"))
+            .join(". ");
+          setError("root", { message: summary });
+        }
+      } else if (typeof detail === "string") {
+        setError("root", { message: detail });
+      } else {
+        setError("root", { message: "Submission failed. Please check your inputs and try again." });
+      }
+    }
+  }
+
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+    <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-4">
       {/* Customer selector */}
       {!isCustomer && (
         <Select
@@ -675,13 +728,13 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
 
           <div className="grid grid-cols-2 gap-4">
             <Input
-              label="Collection Date"
+              label="Collection Date (optional)"
               type="date"
               error={errors.collection_date?.message}
               {...register("collection_date")}
             />
             <Input
-              label="Collection Location"
+              label="Collection Location (optional)"
               error={errors.collection_location?.message}
               {...register("collection_location")}
               placeholder="e.g. Nairobi, East Gate Rd"
@@ -690,13 +743,13 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
 
           <div className="grid grid-cols-2 gap-4">
             <Input
-              label="GPS Coordinates"
+              label="GPS Coordinates (optional)"
               error={errors.gps_coordinates?.message}
               {...register("gps_coordinates")}
               placeholder="-1.2921, 36.8219"
             />
             <Input
-              label="Storage Condition"
+              label="Storage Condition (optional)"
               error={errors.storage_condition?.message}
               {...register("storage_condition")}
               placeholder="e.g. 4°C, dark"
@@ -709,6 +762,13 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
             suggestedIds={sampleCategory === "waste" ? suggestedIds : undefined}
           />
         </>
+      )}
+
+      {errors.root && (
+        <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+          <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+          <span>{errors.root.message}</span>
+        </div>
       )}
 
       <div className="flex gap-3 justify-end pt-2">
