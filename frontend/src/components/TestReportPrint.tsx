@@ -104,6 +104,7 @@ export default function TestReportPrint({ sampleId, onClose, signatories = [] }:
       win.document.write(`
         <html>
         <head>
+          <base href="${window.location.origin}/" />
           <title>Test Report - ${sample?.sample_code || ""}</title>
           <style>
             @page { size: A4; margin: 15mm; }
@@ -210,8 +211,8 @@ export default function TestReportPrint({ sampleId, onClose, signatories = [] }:
             {/* Header */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "10px" }}>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: "20px", fontWeight: "bold", letterSpacing: "2px" }}>AQUACHECK</div>
-                <div style={{ fontSize: "9px", color: "#555", fontStyle: "italic" }}>Trusted Quality Check Partner</div>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/Images/aquacheck_logo_report.png" alt="AquaCheck Logo" style={{ height: "60px", objectFit: "contain", display: "block" }} />
               </div>
               <div style={{ textAlign: "right", fontSize: "9px", lineHeight: "1.5", color: "#333" }}>
                 <div style={{ fontWeight: "bold" }}>AQUACHECK LABORATORIES LIMITED</div>
