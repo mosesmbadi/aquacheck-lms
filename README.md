@@ -119,7 +119,5 @@ docker compose up --build -d
 ```
 
 
-docker compose pull secure_vision_backend secure_vision_frontend
-docker compose up -d --no-deps secure_vision_backend secure_vision_frontend
 
 docker image prune -f

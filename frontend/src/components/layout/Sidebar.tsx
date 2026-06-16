@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
@@ -64,16 +65,15 @@ export function Sidebar() {
   return (
     <aside className="flex flex-col w-64 bg-dark text-white min-h-screen fixed left-0 top-0 z-40">
       {/* Logo */}
-      <div className="px-6 py-5 border-b border-dark-700">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-primary-400 rounded-lg flex items-center justify-center flex-shrink-0">
-            <FlaskConical className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <p className="font-bold text-sm leading-tight">AquaCheck</p>
-            <p className="text-primary-400 text-xs">LIMS</p>
-          </div>
-        </div>
+      <div className="px-4 py-4 border-b border-dark-700">
+        <Image
+          src="/Images/aquacheck_logo.png"
+          alt="AquaCheck Logo"
+          width={140}
+          height={56}
+          className="object-contain"
+          priority
+        />
       </div>
 
       {/* Nav */}

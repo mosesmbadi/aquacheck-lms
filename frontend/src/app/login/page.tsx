@@ -6,7 +6,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { login } from "@/lib/auth";
-import { FlaskConical } from "lucide-react";
+import Image from "next/image";
 
 const loginSchema = z.object({
   email: z.string().email("Enter a valid email"),
@@ -44,10 +44,16 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         {/* Logo / Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-primary-400 rounded-2xl mb-4 shadow-lg">
-            <FlaskConical className="w-9 h-9 text-white" />
+          <div className="flex justify-center mb-4">
+            <Image
+              src="/Images/aquacheck_logo.png"
+              alt="AquaCheck Logo"
+              width={160}
+              height={80}
+              className="object-contain"
+              priority
+            />
           </div>
-          <h1 className="text-3xl font-bold text-white">AquaCheck LIMS</h1>
           <p className="text-primary-300 mt-1 text-sm">Aquacheck Laboratories Ltd. — ISO/IEC 17025</p>
         </div>
 
