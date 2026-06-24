@@ -8,6 +8,9 @@ class SampleBase(BaseModel):
     customer_id: Optional[int] = None
     contract_id: Optional[int] = Field(None, gt=0)
     description: Optional[str] = None
+    notes: Optional[str] = None
+    contact_person: Optional[str] = None
+    submitted_by: Optional[str] = None
     sample_type: Optional[str] = None
     sample_category: Optional[SampleCategory] = None
     waste_schedule: Optional[int] = None
@@ -34,6 +37,9 @@ class SampleCreate(SampleBase):
 class SampleUpdate(BaseModel):
     contract_id: Optional[int] = Field(None, gt=0)
     description: Optional[str] = None
+    notes: Optional[str] = None
+    contact_person: Optional[str] = None
+    submitted_by: Optional[str] = None
     sample_type: Optional[str] = None
     sample_category: Optional[SampleCategory] = None
     waste_schedule: Optional[int] = None
@@ -71,6 +77,9 @@ class SampleOut(SampleBase):
     disposal_method: Optional[str] = None
     chain_of_custody: Optional[List[Any]] = []
     requested_test_ids: Optional[List[int]] = Field(default_factory=list)
+    notes: Optional[str] = None
+    contact_person: Optional[str] = None
+    submitted_by: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

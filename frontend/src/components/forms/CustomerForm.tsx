@@ -30,9 +30,11 @@ interface CustomerFormProps {
   onSubmit: (data: CustomerFormData) => Promise<void>;
   onCancel: () => void;
   loading?: boolean;
+  initialValues?: Partial<CustomerFormData>;
+  submitLabel?: string;
 }
 
-export function CustomerForm({ onSubmit, onCancel, loading }: CustomerFormProps) {
+export function CustomerForm({ onSubmit, onCancel, loading, initialValues, submitLabel }: CustomerFormProps) {
   const {
     register,
     handleSubmit,
@@ -40,13 +42,13 @@ export function CustomerForm({ onSubmit, onCancel, loading }: CustomerFormProps)
   } = useForm<CustomerFormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      name: "",
-      contact_person: "",
-      email: "",
-      phone: "",
-      address: "",
-      organization_type: "",
-      currency: "KES",
+      name: initialValues?.name ?? "",
+      contact_person: initialValues?.contact_person ?? "",
+      email: initialValues?.email ?? "",
+      phone: initialValues?.phone ?? "",
+      address: initialValues?.address ?? "",
+      organization_type: initialValues?.organization_type ?? "",
+      currency: initialValues?.currency ?? "KES",
     },
   });
 
@@ -75,7 +77,7 @@ export function CustomerForm({ onSubmit, onCancel, loading }: CustomerFormProps)
           Cancel
         </Button>
         <Button type="submit" loading={loading}>
-          Create Customer
+          {submitLabel ?? "Create Customer"}
         </Button>
       </div>
     </form>

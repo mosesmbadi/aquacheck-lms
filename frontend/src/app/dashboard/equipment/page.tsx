@@ -28,7 +28,10 @@ const addSchema = z.object({
   calibration_due_date: z.string().optional(),
   last_calibration_date: z.string().optional(),
   calibration_certificate_ref: z.string().optional(),
-});
+}).refine(
+  (d) => !d.last_calibration_date || !d.calibration_due_date || d.calibration_due_date >= d.last_calibration_date,
+  { message: "Calibration due date must be after the last calibration date", path: ["calibration_due_date"] }
+);
 type AddFormData = z.infer<typeof addSchema>;
 
 // ─── Edit equipment schema ────────────────────────────────────────────────────
@@ -43,7 +46,10 @@ const editSchema = z.object({
   calibration_due_date: z.string().optional(),
   last_calibration_date: z.string().optional(),
   calibration_certificate_ref: z.string().optional(),
-});
+}).refine(
+  (d) => !d.last_calibration_date || !d.calibration_due_date || d.calibration_due_date >= d.last_calibration_date,
+  { message: "Calibration due date must be after the last calibration date", path: ["calibration_due_date"] }
+);
 type EditFormData = z.infer<typeof editSchema>;
 
 // ─── Add calibration record schema ───────────────────────────────────────────
@@ -275,6 +281,8 @@ export default function EquipmentPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [editEquipment, setEditEquipment] = useState<Equipment | null>(null);
   const [historyEquipment, setHistoryEquipment] = useState<Equipment | null>(null);
+  const [createError, setCreateError] = useState("");
+  const [editError, setEditError] = useState("");
 
   const { data: equipment = [], isLoading } = useQuery({
     queryKey: ["equipment"],
@@ -287,7 +295,11 @@ export default function EquipmentPage() {
 
   const createMutation = useMutation({
     mutationFn: (data: Partial<Equipment>) => equipmentApi.create(data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["equipment"] }); setShowCreate(false); reset(); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["equipment"] }); setShowCreate(false); setCreateError(""); reset(); },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setCreateError(msg || "Failed to add equipment. Check for duplicate Equipment ID.");
+    },
   });
 
   const toggleMutation = useMutation({
@@ -297,7 +309,11 @@ export default function EquipmentPage() {
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Partial<Equipment> }) => equipmentApi.update(id, data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["equipment"] }); setEditEquipment(null); editReset(); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["equipment"] }); setEditEquipment(null); setEditError(""); editReset(); },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setEditError(msg || "Failed to update equipment. Please try again.");
+    },
   });
 
   const { register, handleSubmit, formState: { errors }, reset } = useForm<AddFormData>({ resolver: zodResolver(addSchema) });
@@ -403,8 +419,9 @@ export default function EquipmentPage() {
       </div>
 
       {/* Add Equipment modal */}
-      <Modal open={showCreate} onClose={() => { setShowCreate(false); reset(); }} title="Add Equipment" size="lg">
-        <form onSubmit={handleSubmit(async (data) => { await createMutation.mutateAsync(data as Partial<Equipment>); })} className="space-y-4">
+      <Modal open={showCreate} onClose={() => { setShowCreate(false); setCreateError(""); reset(); }} title="Add Equipment" size="lg">
+        <form onSubmit={handleSubmit(async (data) => { setCreateError(""); await createMutation.mutateAsync(data as Partial<Equipment>); })} className="space-y-4">
+          {createError && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded border border-red-200">{createError}</p>}
           <div className="grid grid-cols-2 gap-4">
             <Input label="Equipment ID" error={errors.equipment_id?.message} {...register("equipment_id")} placeholder="e.g. EQ-001" />
             <Input label="Name" error={errors.name?.message} {...register("name")} placeholder="e.g. pH Meter" />
@@ -419,7 +436,7 @@ export default function EquipmentPage() {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <Input label="Last Calibration Date" type="date" {...register("last_calibration_date")} />
-            <Input label="Calibration Due Date" type="date" {...register("calibration_due_date")} />
+            <Input label="Calibration Due Date" type="date" error={errors.calibration_due_date?.message} {...register("calibration_due_date")} />
           </div>
           <Input label="Calibration Certificate Ref." {...register("calibration_certificate_ref")} placeholder="e.g. CERT-2024-0042" />
           <div className="flex gap-3 justify-end pt-2">
@@ -432,17 +449,19 @@ export default function EquipmentPage() {
       {/* Edit Equipment modal */}
       <Modal
         open={!!editEquipment}
-        onClose={() => { setEditEquipment(null); editReset(); }}
+        onClose={() => { setEditEquipment(null); setEditError(""); editReset(); }}
         title={`Edit Equipment — ${editEquipment?.equipment_id ?? ""}`}
         size="lg"
       >
         {editEquipment && (
           <form
-            onSubmit={editSubmit((data) =>
-              updateMutation.mutate({ id: editEquipment.id, data: data as Partial<Equipment> })
-            )}
+            onSubmit={editSubmit((data) => {
+              setEditError("");
+              updateMutation.mutate({ id: editEquipment.id, data: data as Partial<Equipment> });
+            })}
             className="space-y-4"
           >
+            {editError && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded border border-red-200">{editError}</p>}
             <div className="grid grid-cols-2 gap-4">
               <Input label="Name" error={editErrors.name?.message} {...editReg("name")} placeholder="e.g. pH Meter" />
               <Input label="Manufacturer" {...editReg("manufacturer")} placeholder="e.g. Hach" />
@@ -462,7 +481,7 @@ export default function EquipmentPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <Input label="Last Calibration Date" type="date" {...editReg("last_calibration_date")} />
-              <Input label="Calibration Due Date" type="date" {...editReg("calibration_due_date")} />
+              <Input label="Calibration Due Date" type="date" error={editErrors.calibration_due_date?.message} {...editReg("calibration_due_date")} />
             </div>
             <Input
               label="Calibration Certificate Ref."

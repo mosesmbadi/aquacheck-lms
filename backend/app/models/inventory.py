@@ -26,6 +26,11 @@ class TransactionType(str, enum.Enum):
     return_stock = "return_stock"
 
 
+class PricingType(str, enum.Enum):
+    individual = "individual"
+    package = "package"
+
+
 class InventoryItem(Base):
     __tablename__ = "inventory_items"
 
@@ -44,6 +49,7 @@ class InventoryItem(Base):
     storage_location = Column(String, nullable=True)
     storage_conditions = Column(String, nullable=True)
     unit_cost = Column(Float, nullable=True)
+    pricing_type = Column(SAEnum(PricingType), default=PricingType.individual, nullable=False)
     expiry_date = Column(Date, nullable=True)
     is_active = Column(Integer, nullable=False, default=1)
     notes = Column(Text, nullable=True)

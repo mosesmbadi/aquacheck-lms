@@ -63,6 +63,7 @@ export const customersApi = {
   get: (id: number) => api.get<Customer>(`/customers/${id}`),
   create: (data: Partial<Customer>) => api.post<Customer>("/customers", data),
   update: (id: number, data: Partial<Customer>) => api.put<Customer>(`/customers/${id}`, data),
+  delete: (id: number) => api.delete(`/customers/${id}`),
 };
 
 // ─── Contracts ────────────────────────────────────────────────────────────────
@@ -135,7 +136,8 @@ export const complaintsApi = {
   create: (data: Partial<Complaint>) => api.post<Complaint>("/complaints", data),
   update: (id: number, data: Partial<Complaint>) => api.put<Complaint>(`/complaints/${id}`, data),
   investigate: (id: number) => api.post<Complaint>(`/complaints/${id}/investigate`),
-  close: (id: number) => api.post<Complaint>(`/complaints/${id}/close`),
+  close: (id: number, corrective_action?: string) =>
+    api.post<Complaint>(`/complaints/${id}/close`, { corrective_action: corrective_action || null }),
 };
 
 // ─── Nonconformities ──────────────────────────────────────────────────────────
@@ -259,6 +261,7 @@ export const quotationsApi = {
   get: (id: number) => api.get<Quotation>(`/quotations/${id}`),
   create: (data: {
     customer_id: number;
+    quotation_type?: string;
     items: QuotationItem[];
     vat_rate?: number;
     currency?: string;

@@ -5,12 +5,14 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useQuery } from "@tanstack/react-query";
 import { Input, Select, Textarea } from "@/components/ui/Input";
+import type { ComplaintCategory } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { customersApi, contractsApi } from "@/lib/api";
 
 const schema = z.object({
   customer_id: z.coerce.number().min(1, "Select a customer"),
   contract_id: z.coerce.number().optional(),
+  category: z.enum(["complaint", "feedback"]).default("complaint"),
   description: z.string().min(10, "Please provide a detailed description (min 10 characters)"),
   reported_by: z.string().optional(),
 });
@@ -44,7 +46,7 @@ export function ComplaintForm({ onSubmit, onCancel, loading, customerId }: Compl
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: isCustomer ? { customer_id: customerId } : undefined,
+    defaultValues: isCustomer ? { customer_id: customerId, category: "complaint" } : { category: "complaint" },
   });
 
   const handleFormSubmit = (data: FormData) => {
@@ -52,6 +54,7 @@ export function ComplaintForm({ onSubmit, onCancel, loading, customerId }: Compl
       ...data,
       customer_id: isCustomer ? customerId! : data.customer_id,
       contract_id: data.contract_id || undefined,
+      category: (data.category || "complaint") as ComplaintCategory,
     };
     return onSubmit(cleaned as FormData);
   };
@@ -78,6 +81,11 @@ export function ComplaintForm({ onSubmit, onCancel, loading, customerId }: Compl
         ))}
       </Select>
 
+      <Select label="Category" error={errors.category?.message} {...register("category")}>
+        <option value="complaint">Complaint</option>
+        <option value="feedback">Feedback</option>
+      </Select>
+
       <Input label="Reported By" error={errors.reported_by?.message} {...register("reported_by")} placeholder="Name of the person reporting" />
 
       <Textarea
@@ -93,7 +101,7 @@ export function ComplaintForm({ onSubmit, onCancel, loading, customerId }: Compl
           Cancel
         </Button>
         <Button type="submit" loading={loading}>
-          Submit Complaint
+          Submit
         </Button>
       </div>
     </form>

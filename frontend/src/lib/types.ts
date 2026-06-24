@@ -78,6 +78,8 @@ export type ReportType =
 
 export type ReportStatus = "draft" | "under_review" | "issued" | "amended";
 
+export type ComplaintCategory = "complaint" | "feedback";
+
 export type ComplaintStatus =
   | "received"
   | "under_investigation"
@@ -124,11 +126,14 @@ export interface QuotationItem {
   is_package_header?: boolean;
 }
 
+export type QuotationType = "individual" | "package";
+
 export interface Quotation {
   id: number;
   quote_number: string;
   customer_id: number;
   customer_name?: string | null;
+  quotation_type?: QuotationType;
   items: QuotationItem[];
   subtotal: number;
   vat_rate: number;
@@ -214,6 +219,9 @@ export interface Sample {
   customer_id?: number;
   contract_id?: number;
   description?: string;
+  notes?: string;
+  contact_person?: string;
+  submitted_by?: string;
   sample_type?: string;
   sample_category?: SampleCategory;
   waste_schedule?: number;
@@ -360,6 +368,7 @@ export interface Complaint {
   complaint_number: string;
   customer_id: number;
   contract_id?: number;
+  category: ComplaintCategory;
   description: string;
   reported_by?: string;
   status: ComplaintStatus;
@@ -478,6 +487,7 @@ export interface InventoryItem {
   storage_location?: string;
   storage_conditions?: string;
   unit_cost?: number;
+  pricing_type?: "individual" | "package";
   expiry_date?: string;
   is_active: number;
   is_low_stock: boolean;
@@ -544,6 +554,8 @@ export interface InvoiceItem {
   quantity: number;
   unit_price: number;
   total: number;
+  package_name?: string | null;
+  is_package?: boolean;
 }
 
 export interface Invoice {

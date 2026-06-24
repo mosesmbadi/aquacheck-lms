@@ -34,7 +34,7 @@ const navItems = [
   { label: "Reports", href: "/dashboard/reports", icon: ClipboardList },
   { label: "Quotations", href: "/dashboard/quotations", icon: Receipt },
   { label: "Invoices", href: "/dashboard/invoices", icon: FileSpreadsheet },
-  { label: "Complaints", href: "/dashboard/complaints", icon: MessageSquareWarning },
+  { label: "Complaints & Feedback", href: "/dashboard/complaints", icon: MessageSquareWarning },
   { label: "Non-Conformities", href: "/dashboard/nonconformities", icon: AlertTriangle },
   { label: "Quality", href: "/dashboard/quality", icon: ShieldCheck },
 ];
@@ -44,7 +44,7 @@ const customerNavItems = [
   { label: "Samples", href: "/dashboard/samples", icon: FlaskConical },
   { label: "Reports", href: "/dashboard/reports", icon: ClipboardList },
   { label: "Invoices", href: "/dashboard/invoices", icon: FileSpreadsheet },
-  { label: "Complaints", href: "/dashboard/complaints", icon: MessageSquareWarning },
+  { label: "Complaints & Feedback", href: "/dashboard/complaints", icon: MessageSquareWarning },
 ];
 
 const adminItems = [{ label: "Admin", href: "/dashboard/admin", icon: Settings }];

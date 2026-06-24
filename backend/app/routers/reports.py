@@ -3,7 +3,9 @@ from datetime import datetime, timezone
 from typing import List
 import io
 import base64
+import os
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm.attributes import flag_modified
 from fastapi.responses import StreamingResponse, JSONResponse
 from sqlalchemy.orm import Session
 from reportlab.lib.pagesizes import A4
@@ -227,6 +229,8 @@ def update_report(
     update_data["revision_history"] = revision
     for k, v in update_data.items():
         setattr(report, k, v)
+    flag_modified(report, "content")
+    flag_modified(report, "revision_history")
 
     db.commit()
     db.refresh(report)
@@ -300,7 +304,8 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
     # Build QR code image if report has a public_token
     qr_image = None
     if report.public_token:
-        public_url = _content_value(content, "public_base_url", "https://app.aquachecklab.com")
+        default_base = os.environ.get("PUBLIC_BASE_URL", "https://app.aquachecklab.com")
+        public_url = _content_value(content, "public_base_url", default_base)
         qr_url = f"{public_url}/public/reports/{report.public_token}"
         qr_b64 = generate_barcode(qr_url)
         qr_bytes = io.BytesIO(base64.b64decode(qr_b64))

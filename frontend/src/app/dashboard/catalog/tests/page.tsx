@@ -83,6 +83,7 @@ export default function CatalogTestsPage() {
   const [showInactive, setShowInactive] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [mutationError, setMutationError] = useState("");
 
   const { data: items = [], isLoading } = useQuery<TestCatalogItem[]>({
     queryKey: ["test-catalog", showInactive],
@@ -96,6 +97,10 @@ export default function CatalogTestsPage() {
       qc.invalidateQueries({ queryKey: ["test-catalog"] });
       closeModal();
     },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setMutationError(msg || "Failed to save test. You may not have permission.");
+    },
   });
 
   const updateMutation = useMutation({
@@ -104,6 +109,10 @@ export default function CatalogTestsPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["test-catalog"] });
       closeModal();
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setMutationError(msg || "Failed to save changes. You may not have permission (admin/manager required).");
     },
   });
 
@@ -119,6 +128,11 @@ export default function CatalogTestsPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["test-catalog"] });
       setSelectedIds(new Set());
+      setMutationError("");
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setMutationError(msg || "Failed to delete. Admin or manager role required.");
     },
   });
 
@@ -155,6 +169,7 @@ export default function CatalogTestsPage() {
   function closeModal() {
     setShowModal(false);
     setEditing(null);
+    setMutationError("");
     reset();
   }
 
@@ -275,6 +290,14 @@ export default function CatalogTestsPage() {
         </div>
       </div>
 
+      {/* Error banner */}
+      {mutationError && (
+        <div className="flex items-center justify-between px-4 py-2.5 bg-red-50 border border-red-200 rounded-lg">
+          <span className="text-sm text-red-700">{mutationError}</span>
+          <button onClick={() => setMutationError("")} className="text-red-400 hover:text-red-600 text-xs ml-4">Dismiss</button>
+        </div>
+      )}
+
       {/* Bulk action bar */}
       {selectedIds.size > 0 && (
         <div className="flex items-center gap-3 px-4 py-2.5 bg-red-50 border border-red-200 rounded-lg">
@@ -356,6 +379,9 @@ export default function CatalogTestsPage() {
         title={editing ? "Edit Catalog Test" : "Add Catalog Test"}
       >
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          {mutationError && (
+            <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded border border-red-200">{mutationError}</p>
+          )}
           <Input label="Test Name" error={errors.name?.message} {...register("name")} placeholder="e.g. Fluoride as F mg/L" />
 
           <div className="grid grid-cols-2 gap-4">

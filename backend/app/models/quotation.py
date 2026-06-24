@@ -15,6 +15,11 @@ class QuotationStatus(str, enum.Enum):
     expired = "expired"
 
 
+class QuotationType(str, enum.Enum):
+    individual = "individual"
+    package = "package"
+
+
 class Quotation(Base):
     __tablename__ = "quotations"
 
@@ -22,7 +27,9 @@ class Quotation(Base):
     quote_number = Column(String, nullable=False, unique=True, index=True)
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
 
-    # line items: [{catalog_item_id, name, unit, quantity, unit_price, total}]
+    quotation_type = Column(SAEnum(QuotationType), nullable=False, default=QuotationType.individual)
+
+    # line items: [{catalog_item_id, name, unit, quantity, unit_price, total, package_name}]
     items = Column(JSON, nullable=False, default=list)
 
     subtotal = Column(Numeric(14, 2), nullable=False, default=0)

@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.deps import get_db, get_current_user
 from app.models.user import User, UserRole
 from app.models.complaint import Complaint, ComplaintStatus
-from app.schemas.complaint import ComplaintCreate, ComplaintUpdate, ComplaintOut
+from app.schemas.complaint import ComplaintCreate, ComplaintUpdate, ComplaintOut, ComplaintCloseRequest
 from app.services.audit import log_action
 
 router = APIRouter(prefix="/complaints", tags=["Complaints"])
@@ -93,6 +93,7 @@ def investigate_complaint(
 @router.post("/{complaint_id}/close", response_model=ComplaintOut)
 def close_complaint(
     complaint_id: int,
+    payload: ComplaintCloseRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -102,6 +103,8 @@ def close_complaint(
     complaint.status = ComplaintStatus.closed
     complaint.closed_at = datetime.now(timezone.utc)
     complaint.closed_by = current_user.id
+    if payload.corrective_action:
+        complaint.corrective_action = payload.corrective_action
     db.commit()
     db.refresh(complaint)
     log_action(db, current_user.id, "CLOSE_COMPLAINT", "complaint", str(complaint_id))

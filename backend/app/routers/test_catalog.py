@@ -660,7 +660,7 @@ def update_catalog_item(
 
 
 @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
-def deactivate_catalog_item(
+def delete_catalog_item(
     item_id: int,
     db: Session = Depends(get_db),
     _=Depends(require_role(UserRole.admin, UserRole.manager)),
@@ -668,7 +668,7 @@ def deactivate_catalog_item(
     item = db.query(TestCatalogItem).filter(TestCatalogItem.id == item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Catalog item not found")
-    item.is_active = False
+    db.delete(item)
     db.commit()
 
 

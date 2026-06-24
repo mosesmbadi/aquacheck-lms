@@ -12,6 +12,11 @@ class ComplaintStatus(str, enum.Enum):
     closed = "closed"
 
 
+class ComplaintCategory(str, enum.Enum):
+    complaint = "complaint"
+    feedback = "feedback"
+
+
 class Complaint(Base):
     __tablename__ = "complaints"
 
@@ -19,6 +24,7 @@ class Complaint(Base):
     complaint_number = Column(String, unique=True, index=True, nullable=False)
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
     contract_id = Column(Integer, ForeignKey("contracts.id"), nullable=True)
+    category = Column(SAEnum(ComplaintCategory), default=ComplaintCategory.complaint, nullable=False)
     description = Column(Text, nullable=False)
     reported_by = Column(String, nullable=True)
     received_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

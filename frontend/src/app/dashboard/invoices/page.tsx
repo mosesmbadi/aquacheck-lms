@@ -233,41 +233,93 @@ function InvoiceEditModal({
             <h3 className="font-semibold text-sm">Line Items</h3>
             <Button size="sm" variant="outline" onClick={addItem}><Plus className="w-3 h-3" /> Add Row</Button>
           </div>
-          <table className="w-full text-sm border border-gray-200">
-            <thead className="bg-gray-50 text-left text-xs text-gray-500">
-              <tr>
-                <th className="px-2 py-1">Description</th>
-                <th className="px-2 py-1 w-16">Qty</th>
-                <th className="px-2 py-1 w-28">Unit Price</th>
-                <th className="px-2 py-1 w-28 text-right">Total</th>
-                <th className="w-8"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((it, idx) => (
-                <tr key={idx} className="border-t">
-                  <td className="px-1 py-1">
-                    <input className="w-full px-2 py-1 border rounded text-sm" value={it.name}
-                      onChange={(e) => updateItem(idx, { name: e.target.value })} />
-                  </td>
-                  <td className="px-1 py-1">
-                    <input type="number" min={0} step="0.01" className="w-full px-2 py-1 border rounded text-sm"
-                      value={it.quantity} onChange={(e) => updateItem(idx, { quantity: Number(e.target.value) })} />
-                  </td>
-                  <td className="px-1 py-1">
-                    <input type="number" min={0} step="0.01" className="w-full px-2 py-1 border rounded text-sm"
-                      value={it.unit_price} onChange={(e) => updateItem(idx, { unit_price: Number(e.target.value) })} />
-                  </td>
-                  <td className="px-2 py-1 text-right font-mono">
-                    {invoice.currency} {it.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                  </td>
-                  <td className="px-1 py-1">
-                    <button onClick={() => removeItem(idx)} className="text-red-400 hover:text-red-600">×</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {/* Group by package_name if present */}
+          {(() => {
+            const hasPackages = items.some((i) => i.package_name);
+            if (hasPackages) {
+              const groups: Record<string, { items: { idx: number; it: InvoiceItem }[]; total: number }> = {};
+              items.forEach((it, idx) => {
+                const key = it.package_name || "(No package)";
+                if (!groups[key]) groups[key] = { items: [], total: 0 };
+                groups[key].items.push({ idx, it });
+                groups[key].total += Number(it.total || 0);
+              });
+              return (
+                <table className="w-full text-sm border border-gray-200">
+                  <thead className="bg-gray-50 text-left text-xs text-gray-500">
+                    <tr>
+                      <th className="px-2 py-1">Description / Package</th>
+                      <th className="px-2 py-1 w-28 text-right">Price</th>
+                      <th className="w-8"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(groups).map(([pkg, group]) => (
+                      <>
+                        <tr key={`pkg-${pkg}`} className="bg-blue-50 border-t">
+                          <td className="px-2 py-1.5 font-semibold text-blue-800 text-xs uppercase tracking-wide" colSpan={1}>
+                            {pkg}
+                          </td>
+                          <td className="px-2 py-1.5 text-right font-mono font-semibold text-blue-800">
+                            {invoice.currency} {group.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          </td>
+                          <td />
+                        </tr>
+                        {group.items.map(({ idx, it }) => (
+                          <tr key={idx} className="border-t bg-white">
+                            <td className="px-4 py-1 text-gray-600 text-xs">{it.name}</td>
+                            <td className="px-2 py-1 text-right text-xs text-gray-500 font-mono">
+                              {invoice.currency} {Number(it.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </td>
+                            <td className="px-1 py-1">
+                              <button onClick={() => removeItem(idx)} className="text-red-400 hover:text-red-600">×</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </>
+                    ))}
+                  </tbody>
+                </table>
+              );
+            }
+            return (
+              <table className="w-full text-sm border border-gray-200">
+                <thead className="bg-gray-50 text-left text-xs text-gray-500">
+                  <tr>
+                    <th className="px-2 py-1">Description</th>
+                    <th className="px-2 py-1 w-16">Qty</th>
+                    <th className="px-2 py-1 w-28">Unit Price</th>
+                    <th className="px-2 py-1 w-28 text-right">Total</th>
+                    <th className="w-8"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((it, idx) => (
+                    <tr key={idx} className="border-t">
+                      <td className="px-1 py-1">
+                        <input className="w-full px-2 py-1 border rounded text-sm" value={it.name}
+                          onChange={(e) => updateItem(idx, { name: e.target.value })} />
+                      </td>
+                      <td className="px-1 py-1">
+                        <input type="number" min={0} step="0.01" className="w-full px-2 py-1 border rounded text-sm"
+                          value={it.quantity} onChange={(e) => updateItem(idx, { quantity: Number(e.target.value) })} />
+                      </td>
+                      <td className="px-1 py-1">
+                        <input type="number" min={0} step="0.01" className="w-full px-2 py-1 border rounded text-sm"
+                          value={it.unit_price} onChange={(e) => updateItem(idx, { unit_price: Number(e.target.value) })} />
+                      </td>
+                      <td className="px-2 py-1 text-right font-mono">
+                        {invoice.currency} {it.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-1 py-1">
+                        <button onClick={() => removeItem(idx)} className="text-red-400 hover:text-red-600">×</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            );
+          })()}
         </div>
 
         <div className="grid grid-cols-2 gap-3">

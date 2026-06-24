@@ -11,6 +11,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { quotationsApi, customersApi, testCatalogApi } from "@/lib/api";
+import { CustomerSearch } from "@/components/ui/CustomerSearch";
 import type { Quotation, QuotationItem, Customer, TestCatalogItem } from "@/lib/types";
 
 const DEFAULT_VAT = 16;
@@ -119,6 +120,7 @@ function CreateQuotationModal({
   onCreated: (q: Quotation) => void;
 }) {
   const [customerId, setCustomerId] = useState<number | "">("");
+  const [quotationType, setQuotationType] = useState<"individual" | "package">("individual");
   const [vatRate, setVatRate] = useState<number>(DEFAULT_VAT);
   const [currency, setCurrency] = useState<string>("KES");
   const [validUntil, setValidUntil] = useState<string>("");
@@ -173,6 +175,7 @@ function CreateQuotationModal({
       quotationsApi
         .create({
           customer_id: Number(customerId),
+          quotation_type: quotationType,
           items,
           vat_rate: vatRate,
           currency,
@@ -198,22 +201,43 @@ function CreateQuotationModal({
       <div className="space-y-4">
         {error && <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">{error}</div>}
 
+        {/* Quotation type */}
+        <div className="flex gap-3">
+          {(["individual", "package"] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setQuotationType(t)}
+              className={`flex-1 py-2 px-4 rounded-lg border-2 text-sm font-medium transition-all ${
+                quotationType === t
+                  ? "border-primary-500 bg-primary-50 text-primary-700"
+                  : "border-gray-200 text-gray-600 hover:border-primary-300"
+              }`}
+            >
+              {t === "individual" ? "Individual Items" : "Package (Bundled)"}
+            </button>
+          ))}
+        </div>
+        {quotationType === "package" && (
+          <p className="text-xs text-gray-500 bg-blue-50 border border-blue-100 rounded px-3 py-2">
+            Package mode: all items under a package group share one bundled price shown on the quotation.
+          </p>
+        )}
+
         <div className="grid grid-cols-2 gap-3">
-          <Select
-            label="Customer"
-            value={customerId}
-            onChange={(e) => {
-              const id = Number(e.target.value);
-              setCustomerId(id);
-              const c = customers.find((x) => x.id === id);
-              if (c?.currency) setCurrency(c.currency);
+          <CustomerSearch
+            customers={customers}
+            value={customerId !== "" ? customerId : undefined}
+            onChange={(id) => {
+              setCustomerId(id ?? "");
+              if (id) {
+                const c = customers.find((x) => x.id === id);
+                if (c?.currency) setCurrency(c.currency);
+              }
             }}
-          >
-            <option value="">— Select customer —</option>
-            {customers.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </Select>
+            label="Customer"
+            required
+          />
           <Input label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)} />
           <Input
             label="VAT Rate (%)"
@@ -272,18 +296,18 @@ function CreateQuotationModal({
           <table className="w-full text-sm border border-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="text-left px-2 py-1">Name</th>
-                <th className="px-2 py-1 w-32">Package</th>
+                <th className="text-left px-2 py-1">Name / Parameter</th>
+                {quotationType === "individual" && <th className="px-2 py-1 w-32">Package</th>}
                 <th className="px-2 py-1 w-16">Unit</th>
-                <th className="px-2 py-1 w-16">Qty</th>
-                <th className="px-2 py-1 w-28">Unit Price</th>
+                {quotationType === "individual" && <th className="px-2 py-1 w-16">Qty</th>}
+                <th className="px-2 py-1 w-28">{quotationType === "package" ? "Package Price" : "Unit Price"}</th>
                 <th className="px-2 py-1 w-28 text-right">Total</th>
                 <th className="w-8"></th>
               </tr>
             </thead>
             <tbody>
               {items.length === 0 ? (
-                <tr><td colSpan={7} className="px-2 py-4 text-center text-gray-400">No items</td></tr>
+                <tr><td colSpan={quotationType === "package" ? 5 : 7} className="px-2 py-4 text-center text-gray-400">No items</td></tr>
               ) : items.map((it, idx) => (
                 <tr key={idx} className={`border-t ${it.package_name ? "bg-blue-50/30" : ""}`}>
                   <td className="px-1 py-1">
@@ -293,14 +317,16 @@ function CreateQuotationModal({
                       onChange={(e) => updateItem(idx, { name: e.target.value })}
                     />
                   </td>
-                  <td className="px-1 py-1">
-                    <input
-                      className="w-full px-2 py-1 border rounded text-xs"
-                      value={it.package_name ?? ""}
-                      onChange={(e) => updateItem(idx, { package_name: e.target.value || null })}
-                      placeholder="Package…"
-                    />
-                  </td>
+                  {quotationType === "individual" && (
+                    <td className="px-1 py-1">
+                      <input
+                        className="w-full px-2 py-1 border rounded text-xs"
+                        value={it.package_name ?? ""}
+                        onChange={(e) => updateItem(idx, { package_name: e.target.value || null })}
+                        placeholder="Package group…"
+                      />
+                    </td>
+                  )}
                   <td className="px-1 py-1">
                     <input
                       className="w-full px-2 py-1 border rounded text-sm"
@@ -308,16 +334,18 @@ function CreateQuotationModal({
                       onChange={(e) => updateItem(idx, { unit: e.target.value })}
                     />
                   </td>
-                  <td className="px-1 py-1">
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      className="w-full px-2 py-1 border rounded text-sm"
-                      value={it.quantity}
-                      onChange={(e) => updateItem(idx, { quantity: Number(e.target.value) })}
-                    />
-                  </td>
+                  {quotationType === "individual" && (
+                    <td className="px-1 py-1">
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        className="w-full px-2 py-1 border rounded text-sm"
+                        value={it.quantity}
+                        onChange={(e) => updateItem(idx, { quantity: Number(e.target.value) })}
+                      />
+                    </td>
+                  )}
                   <td className="px-1 py-1">
                     <input
                       type="number"

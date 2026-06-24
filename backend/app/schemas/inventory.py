@@ -1,7 +1,7 @@
 from datetime import datetime, date
 from typing import Optional, List
 from pydantic import BaseModel, Field
-from app.models.inventory import InventoryCategory, TransactionType
+from app.models.inventory import InventoryCategory, TransactionType, PricingType
 
 
 # ── InventoryItem ─────────────────────────────────────────────────────────────
@@ -18,6 +18,7 @@ class InventoryItemBase(BaseModel):
     storage_location: Optional[str] = None
     storage_conditions: Optional[str] = None
     unit_cost: Optional[float] = None
+    pricing_type: Optional[PricingType] = PricingType.individual
     expiry_date: Optional[date] = None
     notes: Optional[str] = None
 
@@ -38,6 +39,7 @@ class InventoryItemUpdate(BaseModel):
     storage_location: Optional[str] = None
     storage_conditions: Optional[str] = None
     unit_cost: Optional[float] = None
+    pricing_type: Optional[PricingType] = None
     expiry_date: Optional[date] = None
     is_active: Optional[int] = None
     notes: Optional[str] = None

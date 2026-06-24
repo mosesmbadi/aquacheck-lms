@@ -53,3 +53,17 @@ def update_customer(
     db.refresh(customer)
     log_action(db, current_user.id, "UPDATE_CUSTOMER", "customer", str(customer_id))
     return customer
+
+
+@router.delete("/{customer_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_customer(
+    customer_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    customer = db.query(Customer).filter(Customer.id == customer_id).first()
+    if not customer:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found")
+    customer.is_active = False
+    db.commit()
+    log_action(db, current_user.id, "DEACTIVATE_CUSTOMER", "customer", str(customer_id))

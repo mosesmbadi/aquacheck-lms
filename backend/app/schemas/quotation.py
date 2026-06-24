@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import List, Optional
 from pydantic import BaseModel, Field
-from app.models.quotation import QuotationStatus
+from app.models.quotation import QuotationStatus, QuotationType
 
 
 class QuotationItem(BaseModel):
@@ -11,10 +11,12 @@ class QuotationItem(BaseModel):
     quantity: float = 1
     unit_price: float = 0
     total: float = 0
+    package_name: Optional[str] = None
 
 
 class QuotationBase(BaseModel):
     customer_id: int
+    quotation_type: Optional[QuotationType] = QuotationType.individual
     items: List[QuotationItem] = Field(default_factory=list)
     vat_rate: Optional[float] = None  # falls back to env default
     currency: Optional[str] = None
@@ -28,6 +30,7 @@ class QuotationCreate(QuotationBase):
 
 
 class QuotationUpdate(BaseModel):
+    quotation_type: Optional[QuotationType] = None
     items: Optional[List[QuotationItem]] = None
     vat_rate: Optional[float] = None
     currency: Optional[str] = None
@@ -48,6 +51,7 @@ class QuotationOut(BaseModel):
     quote_number: str
     customer_id: int
     customer_name: Optional[str] = None
+    quotation_type: Optional[QuotationType] = QuotationType.individual
     items: List[QuotationItem]
     subtotal: float
     vat_rate: float

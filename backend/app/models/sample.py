@@ -54,6 +54,9 @@ class Sample(Base):
     )
 
     requested_test_ids = Column(JSON, default=list)
+    notes = Column(Text, nullable=True)
+    contact_person = Column(String, nullable=True)
+    submitted_by = Column(String, nullable=True)
 
     contract = relationship("Contract", back_populates="samples")
     customer = relationship("Customer", foreign_keys=[customer_id])

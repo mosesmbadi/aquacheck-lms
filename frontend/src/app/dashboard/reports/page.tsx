@@ -80,6 +80,10 @@ export default function ReportsPage() {
     mutationFn: (data: { id: number; payload: Parameters<typeof reportsApi.update>[1] }) =>
       reportsApi.update(data.id, data.payload),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["reports"] }); setEditReport(null); },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      console.error("Report update failed:", msg || err);
+    },
   });
 
   const SCHEDULE_SPEC_HEADERS: Record<number, string> = {
@@ -384,10 +388,16 @@ function ReportEditModal({
     updateMutation.mutate({
       id: report.id,
       payload: {
-        content: { ...content, ...Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== "")) },
+        content: { ...content, ...fields },
         amendment_reason: amendmentReason || undefined,
       },
-    }, { onSuccess: (r: Report) => onSaved(r) });
+    }, {
+      onSuccess: (r: Report) => onSaved(r),
+      onError: (err: unknown) => {
+        const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+        setError(msg || "Failed to save changes. Please try again.");
+      },
+    });
   };
 
   return (

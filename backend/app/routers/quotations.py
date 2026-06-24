@@ -55,6 +55,7 @@ def _compute_totals(items: List[QuotationItem], vat_rate: float):
             "quantity": qty,
             "unit_price": price,
             "total": total,
+            "package_name": item.package_name,
         })
     subtotal = round(subtotal, 2)
     vat_amount = round(subtotal * (vat_rate / 100.0), 2)
@@ -63,12 +64,14 @@ def _compute_totals(items: List[QuotationItem], vat_rate: float):
 
 
 def _to_out(q: Quotation) -> QuotationOut:
+    from app.models.quotation import QuotationType
     return QuotationOut(
         id=q.id,
         quote_number=q.quote_number,
         customer_id=q.customer_id,
         customer_name=q.customer.name if q.customer else None,
-        items=[QuotationItem(**i) for i in (q.items or [])],
+        quotation_type=q.quotation_type or QuotationType.individual,
+        items=[QuotationItem(**{k: v for k, v in i.items() if k in QuotationItem.model_fields}) for i in (q.items or [])],
         subtotal=float(q.subtotal or 0),
         vat_rate=float(q.vat_rate or 0),
         vat_amount=float(q.vat_amount or 0),
@@ -110,9 +113,11 @@ def create_quotation(
     items, subtotal, vat_amount, total = _compute_totals(payload.items, vat_rate)
     currency = payload.currency or customer.currency or "KES"
 
+    from app.models.quotation import QuotationType
     quote = Quotation(
         quote_number=_next_quote_number(db),
         customer_id=customer.id,
+        quotation_type=payload.quotation_type or QuotationType.individual,
         items=items,
         subtotal=subtotal,
         vat_rate=vat_rate,

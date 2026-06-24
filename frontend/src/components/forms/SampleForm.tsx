@@ -19,6 +19,7 @@ import {
   Building2,
   AlertCircle,
 } from "lucide-react";
+import { CustomerSearch } from "@/components/ui/CustomerSearch";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -84,6 +85,9 @@ const schema = z
       .optional()
       .nullable(),
     description: optStr,
+    notes: optStr,
+    contact_person: optStr,
+    submitted_by: optStr,
     sample_type: optStr,
     collection_date: optStr,
     collection_location: optStr,
@@ -468,7 +472,8 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
 
   const FORM_FIELDS = new Set([
     "customer_id", "contract_id", "sample_category", "potable_type",
-    "waste_industry_type", "discharge_destination", "description", "sample_type",
+    "waste_industry_type", "discharge_destination", "description", "notes",
+    "contact_person", "submitted_by", "sample_type",
     "collection_date", "collection_location", "gps_coordinates", "storage_condition",
     "requested_test_ids",
   ]);
@@ -508,18 +513,14 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
     <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-4">
       {/* Customer selector */}
       {!isCustomer && (
-        <Select
+        <CustomerSearch
+          customers={customers}
+          value={watch("customer_id") as number | undefined}
+          onChange={(id) => setValue("customer_id", id, { shouldValidate: true })}
           label="Customer (optional)"
           error={errors.customer_id?.message}
-          {...register("customer_id")}
-        >
-          <option value="">No specific customer</option>
-          {customers.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </Select>
+          placeholder="Search by name, contact, or email…"
+        />
       )}
 
       <div className="space-y-2">
@@ -712,19 +713,42 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
       {testsReady && (
         <>
           <Input
-            label="Sample Description (optional)"
+            label="Sample Type / Brief Label (optional)"
             error={errors.sample_type?.message}
             {...register("sample_type")}
             placeholder="e.g. Treated effluent — Nairobi facility"
           />
 
           <Textarea
-            label="Notes"
+            label="Sample Description (shown on report)"
             error={errors.description?.message}
             {...register("description")}
             rows={2}
-            placeholder="Additional notes about the sample..."
+            placeholder="Describe the sample — this appears as SAMPLE DESCRIPTION on the report..."
           />
+
+          <Textarea
+            label="Notes (shown separately on report)"
+            error={errors.notes?.message}
+            {...register("notes")}
+            rows={2}
+            placeholder="Additional notes about handling, storage, or sampling conditions..."
+          />
+
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Submitted By"
+              error={errors.submitted_by?.message}
+              {...register("submitted_by")}
+              placeholder="Customer / organisation name"
+            />
+            <Input
+              label="Contact Person"
+              error={errors.contact_person?.message}
+              {...register("contact_person")}
+              placeholder="Name and phone of contact"
+            />
+          </div>
 
           <div className="grid grid-cols-2 gap-4">
             <Input

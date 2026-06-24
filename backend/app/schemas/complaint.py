@@ -1,12 +1,13 @@
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel
-from app.models.complaint import ComplaintStatus
+from app.models.complaint import ComplaintStatus, ComplaintCategory
 
 
 class ComplaintBase(BaseModel):
     customer_id: int
     contract_id: Optional[int] = None
+    category: ComplaintCategory = ComplaintCategory.complaint
     description: str
     reported_by: Optional[str] = None
 
@@ -17,9 +18,14 @@ class ComplaintCreate(ComplaintBase):
 
 class ComplaintUpdate(BaseModel):
     description: Optional[str] = None
+    category: Optional[ComplaintCategory] = None
     investigation_notes: Optional[str] = None
     corrective_action: Optional[str] = None
     status: Optional[ComplaintStatus] = None
+
+
+class ComplaintCloseRequest(BaseModel):
+    corrective_action: Optional[str] = None
 
 
 class ComplaintOut(ComplaintBase):
