@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
@@ -210,62 +210,96 @@ export default function QuotationDetailPage() {
 }
 
 function QuotationItemsTable({ items, currency }: { items: import("@/lib/types").QuotationItem[]; currency: string }) {
-  const packaged = items.filter((i) => i.package_name);
-  const standalone = items.filter((i) => !i.package_name);
-  const packageNames = Array.from(new Set(packaged.map((i) => i.package_name!)));
+  const packageItems = items.filter((i) => i.package_id);
+  const individualItems = items.filter((i) => !i.package_id);
+
+  const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2 });
 
   return (
     <table className="w-full text-sm">
       <thead className="border-b">
-        <tr className="text-left text-gray-500">
-          <th className="py-2">Test / Service</th>
-          <th className="py-2">Unit</th>
-          <th className="py-2 text-right">Qty</th>
-          <th className="py-2 text-right">Unit Price</th>
-          <th className="py-2 text-right">Total</th>
+        <tr className="text-left text-gray-500 text-xs uppercase tracking-wide">
+          <th className="py-2 font-medium">Test / Service</th>
+          <th className="py-2 font-medium text-right w-12">Qty</th>
+          <th className="py-2 font-medium text-right w-36">Unit Price</th>
+          <th className="py-2 font-medium text-right w-36">Total</th>
         </tr>
       </thead>
       <tbody>
-        {/* Standalone items */}
-        {standalone.map((it, idx) => (
-          <tr key={`s-${idx}`} className="border-b">
-            <td className="py-2">{it.name}</td>
-            <td className="py-2">{it.unit ?? "—"}</td>
-            <td className="py-2 text-right">{it.quantity}</td>
-            <td className="py-2 text-right">{currency} {Number(it.unit_price).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-            <td className="py-2 text-right">{currency} {Number(it.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+        {/* Individual (non-package) items */}
+        {individualItems.map((it, idx) => (
+          <tr key={`ind-${idx}`} className="border-b hover:bg-gray-50/50">
+            <td className="py-2 text-gray-800">{it.name}</td>
+            <td className="py-2 text-right text-gray-600">{it.quantity}</td>
+            <td className="py-2 text-right font-mono text-gray-700">{currency} {fmt(Number(it.unit_price))}</td>
+            <td className="py-2 text-right font-mono font-medium">{currency} {fmt(Number(it.total))}</td>
           </tr>
         ))}
-        {/* Package groups */}
-        {packageNames.map((pkgName) => {
-          const pkgItems = packaged.filter((i) => i.package_name === pkgName);
-          const pkgTotal = pkgItems.reduce((s, i) => s + Number(i.package_price ?? i.total), 0);
-          const sumIndividual = pkgItems.reduce((s, i) => s + Number(i.total), 0);
-          const showPackagePrice = pkgItems.some((i) => i.package_price != null);
+
+        {/* Package items — one priced row + constituent tests as sub-rows */}
+        {packageItems.map((it, idx) => {
+          const physio = (it.included_tests ?? []).filter((t) => t.category === "physicochemical");
+          const micro = (it.included_tests ?? []).filter((t) => t.category === "microbiological");
+          const other = (it.included_tests ?? []).filter((t) => !t.category || (t.category !== "physicochemical" && t.category !== "microbiological"));
+          const allTests = it.included_tests ?? [];
+
           return (
-            <>
-              <tr key={`pkg-hdr-${pkgName}`} className="bg-blue-50 border-b">
-                <td colSpan={4} className="py-2 pl-2 font-semibold text-blue-800 text-xs uppercase tracking-wide">
-                  📦 {pkgName}
+            <React.Fragment key={`pkg-${idx}`}>
+              {/* Package header row — shows the single priced line */}
+              <tr className="border-b bg-primary-50 border-primary-100">
+                <td className="py-2.5 pl-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold bg-primary-600 text-white px-1.5 py-0.5 rounded uppercase tracking-wide">Package</span>
+                    <span className="font-semibold text-primary-900">{it.name}</span>
+                    <span className="text-xs text-primary-500">· {allTests.length} test{allTests.length !== 1 ? "s" : ""} included</span>
+                  </div>
                 </td>
-                <td className="py-2 text-right text-blue-800 font-semibold">
-                  {currency} {(showPackagePrice ? pkgTotal : sumIndividual).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                </td>
+                <td className="py-2.5 text-right text-primary-700">{it.quantity}</td>
+                <td className="py-2.5 text-right font-mono text-primary-700">{currency} {fmt(Number(it.unit_price))}</td>
+                <td className="py-2.5 text-right font-mono font-bold text-primary-900">{currency} {fmt(Number(it.total))}</td>
               </tr>
-              {pkgItems.map((it, idx) => (
-                <tr key={`pkg-${pkgName}-${idx}`} className="border-b bg-blue-50/30">
-                  <td className="py-1.5 pl-6 text-gray-600 text-xs">{it.name}</td>
-                  <td className="py-1.5 text-xs text-gray-500">{it.unit ?? "—"}</td>
-                  <td className="py-1.5 text-right text-xs text-gray-500">{it.quantity}</td>
-                  <td className="py-1.5 text-right text-xs text-gray-500">{currency} {Number(it.unit_price).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                  <td className="py-1.5 text-right text-xs text-gray-400 italic">
-                    {it.package_price != null
-                      ? `(ind. ${currency} ${Number(it.total).toLocaleString(undefined, { minimumFractionDigits: 2 })})`
-                      : `${currency} ${Number(it.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
-                  </td>
+
+              {/* Constituent tests — grouped by category */}
+              {physio.length > 0 && (
+                <>
+                  <tr className="bg-blue-50/60 border-b border-blue-100">
+                    <td colSpan={4} className="py-1 pl-6 text-[10px] font-bold text-blue-600 uppercase tracking-widest">
+                      Physio-Chemical Tests
+                    </td>
+                  </tr>
+                  {physio.map((t, ti) => (
+                    <tr key={`pc-${ti}`} className="border-b border-blue-50 bg-blue-50/20 hover:bg-blue-50/40">
+                      <td className="py-1 pl-10 text-xs text-gray-600">{t.name}</td>
+                      <td colSpan={3} className="py-1 text-right text-[10px] text-gray-400 pr-2">included in package</td>
+                    </tr>
+                  ))}
+                </>
+              )}
+              {micro.length > 0 && (
+                <>
+                  <tr className="bg-green-50/60 border-b border-green-100">
+                    <td colSpan={4} className="py-1 pl-6 text-[10px] font-bold text-green-600 uppercase tracking-widest">
+                      Microbiological Tests
+                    </td>
+                  </tr>
+                  {micro.map((t, ti) => (
+                    <tr key={`mb-${ti}`} className="border-b border-green-50 bg-green-50/20 hover:bg-green-50/40">
+                      <td className="py-1 pl-10 text-xs text-gray-600">{t.name}</td>
+                      <td colSpan={3} className="py-1 text-right text-[10px] text-gray-400 pr-2">included in package</td>
+                    </tr>
+                  ))}
+                </>
+              )}
+              {other.map((t, ti) => (
+                <tr key={`oth-${ti}`} className="border-b border-gray-50 bg-gray-50/30">
+                  <td className="py-1 pl-10 text-xs text-gray-600">{t.name}</td>
+                  <td colSpan={3} className="py-1 text-right text-[10px] text-gray-400 pr-2">included in package</td>
                 </tr>
               ))}
-            </>
+
+              {/* Spacer after package block */}
+              <tr className="h-1 bg-white"><td colSpan={4} /></tr>
+            </React.Fragment>
           );
         })}
       </tbody>

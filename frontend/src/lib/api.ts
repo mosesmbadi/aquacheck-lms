@@ -296,6 +296,23 @@ export const quotationsApi = {
   },
 };
 
+// ─── Test Packages ────────────────────────────────────────────────────────────
+export const testPackagesApi = {
+  list: (active_only = true) =>
+    api.get<import("./types").TestPackage[]>("/test-packages", { params: { active_only } }),
+  create: (data: {
+    name: string;
+    description?: string;
+    price: number;
+    catalog_item_ids: number[];
+  }) => api.post<import("./types").TestPackage>("/test-packages", data),
+  update: (
+    id: number,
+    data: Partial<{ name: string; description: string; price: number; catalog_item_ids: number[]; is_active: boolean }>
+  ) => api.put<import("./types").TestPackage>(`/test-packages/${id}`, data),
+  delete: (id: number) => api.delete(`/test-packages/${id}`),
+};
+
 // ─── Test Catalog ─────────────────────────────────────────────────────────────
 export const testCatalogApi = {
   list: (params?: { category?: TestCategory; water_type?: string; active_only?: boolean }) =>

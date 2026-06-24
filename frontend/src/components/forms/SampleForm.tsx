@@ -7,8 +7,8 @@ import { z } from "zod";
 import { useQuery } from "@tanstack/react-query";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { contractsApi, customersApi, testCatalogApi } from "@/lib/api";
-import type { TestCatalogItem } from "@/lib/types";
+import { contractsApi, customersApi, testCatalogApi, testPackagesApi } from "@/lib/api";
+import type { TestCatalogItem, TestPackage } from "@/lib/types";
 import {
   FlaskConical,
   Microscope,
@@ -342,6 +342,11 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
   const { data: industryTypes = [] } = useQuery({
     queryKey: ["industry-types"],
     queryFn: () => testCatalogApi.industryTypes().then((r) => r.data),
+  });
+
+  const { data: testPackages = [] } = useQuery<TestPackage[]>({
+    queryKey: ["test-packages"],
+    queryFn: () => testPackagesApi.list(true).then((r) => r.data),
   });
 
   const {
@@ -780,6 +785,52 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
               placeholder="e.g. 4°C, dark"
             />
           </div>
+
+          {/* Package quick-select — auto-checks all constituent tests */}
+          {testPackages.length > 0 && sampleCategory !== "waste" && (
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-gray-700">Apply Test Package (optional)</label>
+              <div className="flex flex-wrap gap-2">
+                {testPackages.map((pkg) => {
+                  const allSelected = pkg.catalog_item_ids.every((id) =>
+                    (watch("requested_test_ids") ?? []).includes(id)
+                  );
+                  return (
+                    <button
+                      key={pkg.id}
+                      type="button"
+                      onClick={() => {
+                        const current: number[] = watch("requested_test_ids") ?? [];
+                        if (allSelected) {
+                          // deselect all tests from this package
+                          setValue(
+                            "requested_test_ids",
+                            current.filter((id) => !pkg.catalog_item_ids.includes(id))
+                          );
+                        } else {
+                          // add all package tests (avoid dupes)
+                          const merged = Array.from(new Set([...current, ...pkg.catalog_item_ids]));
+                          setValue("requested_test_ids", merged);
+                        }
+                      }}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-medium transition-all ${
+                        allSelected
+                          ? "bg-primary-600 text-white border-primary-600"
+                          : "bg-white text-gray-600 border-gray-300 hover:border-primary-400 hover:text-primary-600"
+                      }`}
+                      title={`${pkg.items.length} tests · KES ${Number(pkg.price).toLocaleString()}`}
+                    >
+                      {pkg.name}
+                      <span className={`text-[10px] ${allSelected ? "text-primary-100" : "text-gray-400"}`}>
+                        ({pkg.items.length})
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-gray-400">Clicking a package selects all its tests. You can still add or remove individual tests below.</p>
+            </div>
+          )}
 
           <TestPicker
             control={control}

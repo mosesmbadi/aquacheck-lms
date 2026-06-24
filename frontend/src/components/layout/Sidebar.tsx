@@ -17,7 +17,7 @@ import {
   LogOut,
   BookMarked,
   Library,
-  Package,
+  Package as PackageIcon,
   Receipt,
   FileSpreadsheet,
 } from "lucide-react";
@@ -30,7 +30,7 @@ const navItems = [
   { label: "Contracts", href: "/dashboard/contracts", icon: FileText },
   { label: "Samples", href: "/dashboard/samples", icon: FlaskConical },
   { label: "Equipment", href: "/dashboard/equipment", icon: Wrench },
-  { label: "Inventory", href: "/dashboard/inventory", icon: Package },
+  { label: "Inventory", href: "/dashboard/inventory", icon: PackageIcon },
   { label: "Reports", href: "/dashboard/reports", icon: ClipboardList },
   { label: "Quotations", href: "/dashboard/quotations", icon: Receipt },
   { label: "Invoices", href: "/dashboard/invoices", icon: FileSpreadsheet },
@@ -51,6 +51,7 @@ const adminItems = [{ label: "Admin", href: "/dashboard/admin", icon: Settings }
 
 const catalogItems = [
   { label: "Test Catalog", href: "/dashboard/catalog/tests", icon: Library },
+  { label: "Test Packages", href: "/dashboard/catalog/packages", icon: PackageIcon },
 ];
 
 const settingsItems = [{ label: "Docs", href: "/dashboard/settings/docs", icon: BookMarked }];

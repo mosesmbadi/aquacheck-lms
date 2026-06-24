@@ -18,6 +18,7 @@ from app.models.inventory import (
 from app.models.quotation import Quotation, QuotationStatus
 from app.models.calibration_record import CalibrationRecord, CalibrationResult
 from app.models.invoice import Invoice, InvoiceStatus
+from app.models.test_package import TestPackage, TestPackageItem
 
 __all__ = [
     "User", "UserRole",
@@ -38,4 +39,5 @@ __all__ = [
     "Quotation", "QuotationStatus",
     "CalibrationRecord", "CalibrationResult",
     "Invoice", "InvoiceStatus",
+    "TestPackage", "TestPackageItem",
 ]

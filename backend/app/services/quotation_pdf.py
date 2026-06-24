@@ -1,9 +1,12 @@
 import io
+import os
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.units import cm
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+
+_LOGO_PATH = os.path.join(os.path.dirname(__file__), "..", "images", "aquacheck logo.png")
 
 
 def _fmt_money(value, currency: str) -> str:
@@ -23,9 +26,16 @@ def build_quotation_pdf(quotation, customer) -> bytes:
     company_style = ParagraphStyle("company", parent=styles["Normal"], fontSize=8, leading=10, alignment=2)
     small_style = ParagraphStyle("small", parent=styles["Normal"], fontSize=8, leading=10)
 
+    # Logo — use the image file; fall back to bold text if the file is missing
+    logo_path = os.path.normpath(_LOGO_PATH)
+    if os.path.isfile(logo_path):
+        logo_cell = RLImage(logo_path, width=5 * cm, height=1.8 * cm, kind="proportional")
+    else:
+        logo_cell = Paragraph("<b>AQUACHECK</b><br/>Trusted Quality Check Partner", styles["Title"])
+
     header_table = Table(
         [[
-            Paragraph("<b>AQUACHECK</b><br/>Trusted Quality Check Partner", styles["Title"]),
+            logo_cell,
             Paragraph(
                 "AQUACHECK LABORATORIES LIMITED<br/>P.O. Box 216 - 00300, NAIROBI<br/>Westlands Commercial Centre<br/>Off Ring Road, Parklands Rd<br/>Email: aquachecklab@gmail.com<br/>Website: www.aquachecklab.com<br/>Tel: 0755596064/0734933819",
                 company_style,
@@ -34,7 +44,7 @@ def build_quotation_pdf(quotation, customer) -> bytes:
         colWidths=[8.2 * cm, 8.8 * cm],
     )
     header_table.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("LINEBELOW", (0, 0), (-1, 0), 1, colors.HexColor("#60a5fa")),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
     ]))
@@ -66,23 +76,25 @@ def build_quotation_pdf(quotation, customer) -> bytes:
     story.append(info_table)
     story.append(Spacer(1, 0.3 * cm))
 
-    # Items table — with package grouping support
+    # Items table
     items = quotation.items or []
-    rows = [["#", "TEST / SERVICE", "UNIT", "QTY", "UNIT PRICE", "TOTAL"]]
-    package_row_styles = []  # track which rows are package headers
+    rows = [["#", "TEST / SERVICE", "QTY", "UNIT PRICE", "TOTAL"]]
+    # Track special row indices for styling
+    package_header_rows = []   # blue header rows
+    category_header_rows = []  # light-coloured category sub-headers
+    sub_test_rows = []         # indented test name rows
 
-    standalone = [i for i in items if not i.get("package_name")]
-    packaged = [i for i in items if i.get("package_name")]
-    pkg_names = list(dict.fromkeys(i["package_name"] for i in packaged))  # preserve order
-
-    row_idx = 1  # data rows start at index 1 (0 is header)
+    row_idx = 1  # data rows start at index 1 (header is 0)
     item_counter = 1
 
-    for item in standalone:
+    # Separate package items from individual items
+    individual_items = [i for i in items if not i.get("package_id")]
+    package_items   = [i for i in items if i.get("package_id")]
+
+    for item in individual_items:
         rows.append([
             str(item_counter),
             item.get("name", "—"),
-            item.get("unit") or "—",
             f"{float(item.get('quantity', 0)):g}",
             _fmt_money(item.get("unit_price", 0), currency),
             _fmt_money(item.get("total", 0), currency),
@@ -90,40 +102,79 @@ def build_quotation_pdf(quotation, customer) -> bytes:
         row_idx += 1
         item_counter += 1
 
-    for pkg_name in pkg_names:
-        pkg_items = [i for i in packaged if i.get("package_name") == pkg_name]
-        pkg_total = sum(float(i.get("package_price") or i.get("total", 0)) for i in pkg_items)
-        # Package header row
-        rows.append(["", f"[PACKAGE] {pkg_name}", "", "", "Package Total:", _fmt_money(pkg_total, currency)])
-        package_row_styles.append(row_idx)
-        row_idx += 1
-        for item in pkg_items:
-            rows.append([
-                str(item_counter),
-                f"  {item.get('name', '—')}",
-                item.get("unit") or "—",
-                f"{float(item.get('quantity', 0)):g}",
-                _fmt_money(item.get("unit_price", 0), currency),
-                f"(ind. {_fmt_money(item.get('total', 0), currency)})",
-            ])
-            row_idx += 1
-            item_counter += 1
+    for item in package_items:
+        included = item.get("included_tests") or []
+        physio = [t for t in included if t.get("category") == "physicochemical"]
+        micro  = [t for t in included if t.get("category") == "microbiological"]
+        other  = [t for t in included if t.get("category") not in ("physicochemical", "microbiological")]
+        test_count = len(included)
 
-    col_widths = [1 * cm, 7.5 * cm, 2 * cm, 1.5 * cm, 2.5 * cm, 2.5 * cm]
+        # Package header row
+        pkg_label = f"{item.get('name', 'Package')}  ({test_count} test{'s' if test_count != 1 else ''} included)"
+        rows.append([
+            str(item_counter),
+            pkg_label,
+            f"{float(item.get('quantity', 0)):g}",
+            _fmt_money(item.get("unit_price", 0), currency),
+            _fmt_money(item.get("total", 0), currency),
+        ])
+        package_header_rows.append(row_idx)
+        row_idx += 1
+        item_counter += 1
+
+        def _add_category(label, tests):
+            nonlocal row_idx
+            if not tests:
+                return
+            rows.append(["", f"   {label}", "", "", ""])
+            category_header_rows.append(row_idx)
+            row_idx += 1
+            for t in tests:
+                rows.append(["", f"      • {t.get('name', '—')}", "", "", "included"])
+                sub_test_rows.append(row_idx)
+                row_idx += 1
+
+        _add_category("Physio-Chemical Tests", physio)
+        _add_category("Microbiological Tests", micro)
+        _add_category("Other Tests", other)
+
+        # Empty spacer row between package blocks
+        rows.append(["", "", "", "", ""])
+        row_idx += 1
+
+    col_widths = [1 * cm, 8.5 * cm, 1.5 * cm, 2.5 * cm, 2.5 * cm]
     items_table = Table(rows, colWidths=col_widths)
     table_style_cmds = [
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e5e7eb")),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#9ca3af")),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d1d5db")),
         ("FONTSIZE", (0, 0), (-1, -1), 8),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("ALIGN", (3, 1), (-1, -1), "RIGHT"),
-        ("PADDING", (0, 0), (-1, -1), 4),
+        ("ALIGN", (2, 1), (-1, -1), "RIGHT"),
+        ("PADDING", (0, 0), (-1, -1), 3),
     ]
-    for pr in package_row_styles:
-        table_style_cmds.append(("BACKGROUND", (0, pr), (-1, pr), colors.HexColor("#dbeafe")))
-        table_style_cmds.append(("FONTNAME", (0, pr), (-1, pr), "Helvetica-Bold"))
-        table_style_cmds.append(("TEXTCOLOR", (0, pr), (-1, pr), colors.HexColor("#1d4ed8")))
+    # Package header rows — blue band
+    for pr in package_header_rows:
+        table_style_cmds += [
+            ("BACKGROUND", (0, pr), (-1, pr), colors.HexColor("#dbeafe")),
+            ("FONTNAME", (0, pr), (-1, pr), "Helvetica-Bold"),
+            ("TEXTCOLOR", (0, pr), (-1, pr), colors.HexColor("#1e40af")),
+        ]
+    # Category sub-header rows — very light grey
+    for cr in category_header_rows:
+        table_style_cmds += [
+            ("BACKGROUND", (0, cr), (-1, cr), colors.HexColor("#f3f4f6")),
+            ("FONTNAME", (0, cr), (-1, cr), "Helvetica-Bold"),
+            ("TEXTCOLOR", (0, cr), (-1, cr), colors.HexColor("#374151")),
+            ("FONTSIZE", (0, cr), (-1, cr), 7),
+        ]
+    # Individual test rows — pale and italic
+    for sr in sub_test_rows:
+        table_style_cmds += [
+            ("BACKGROUND", (0, sr), (-1, sr), colors.HexColor("#f9fafb")),
+            ("TEXTCOLOR", (0, sr), (-1, sr), colors.HexColor("#6b7280")),
+            ("FONTSIZE", (0, sr), (-1, sr), 7),
+        ]
     items_table.setStyle(TableStyle(table_style_cmds))
     story.append(items_table)
     story.append(Spacer(1, 0.2 * cm))

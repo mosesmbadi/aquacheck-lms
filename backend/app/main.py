@@ -26,7 +26,7 @@ from app.routers import (
     public,
     invoices,
 )
-from app.routers import calibration_records
+from app.routers import calibration_records, test_packages
 
 app = FastAPI(
     title="AquaCheck LIMS API",
@@ -55,7 +55,7 @@ API_PREFIX = "/api/v1"
 for router_module in [
     auth, users, customers, contracts, samples,
     test_results, equipment, calibration_records, reports, complaints, nonconformities, quality,
-    test_catalog, documents, inventory, quotations, public, invoices,
+    test_catalog, test_packages, documents, inventory, quotations, public, invoices,
 ]:
     app.include_router(router_module.router, prefix=API_PREFIX)
 

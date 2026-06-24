@@ -46,7 +46,6 @@ const itemSchema = z.object({
   storage_location: z.string().optional(),
   storage_conditions: z.string().optional(),
   unit_cost: z.coerce.number().optional(),
-  pricing_type: z.enum(["individual", "package"]).default("individual"),
   expiry_date: z.string().optional(),
   description: z.string().optional(),
 });
@@ -172,13 +171,13 @@ export default function InventoryPage() {
   const itemForm = useForm<ItemForm>({
     resolver: zodResolver(itemSchema),
     mode: "onChange",
-    defaultValues: { category: "reagent", minimum_stock: 0, unit: "mL", pricing_type: "individual" },
+    defaultValues: { category: "reagent", minimum_stock: 0, unit: "mL" },
   });
 
   const editForm = useForm<ItemForm>({
     resolver: zodResolver(itemSchema),
     mode: "onChange",
-    defaultValues: { category: "reagent", minimum_stock: 0, unit: "mL", pricing_type: "individual" },
+    defaultValues: { category: "reagent", minimum_stock: 0, unit: "mL" },
   });
 
   const txForm = useForm<TxForm>({
@@ -206,7 +205,6 @@ export default function InventoryPage() {
                 storage_location: r.storage_location ?? "",
                 storage_conditions: r.storage_conditions ?? "",
                 unit_cost: r.unit_cost ?? undefined,
-                pricing_type: (r as typeof r & { pricing_type?: "individual" | "package" }).pricing_type ?? "individual",
                 expiry_date: r.expiry_date ?? "",
                 description: r.description ?? "",
               });
@@ -535,7 +533,7 @@ export default function InventoryPage() {
               {...itemForm.register("minimum_stock")}
             />
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <Input
               label="Opening Stock"
               type="number"
@@ -544,15 +542,11 @@ export default function InventoryPage() {
               placeholder="Initial quantity on hand"
             />
             <Input
-              label="Unit Cost (KES)"
+              label="Unit Cost / Buying Price (KES)"
               type="number"
               step="any"
               {...itemForm.register("unit_cost")}
             />
-            <Select label="Pricing Type" {...itemForm.register("pricing_type")}>
-              <option value="individual">Individual (per parameter)</option>
-              <option value="package">Package (bundled price)</option>
-            </Select>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <Input label="Supplier" {...itemForm.register("supplier")} />
@@ -624,12 +618,8 @@ export default function InventoryPage() {
               </Select>
               <Input label="Min. Stock *" type="number" step="any" {...editForm.register("minimum_stock")} />
             </div>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 gap-4">
               <Input label="Unit Cost / Buying Price (KES)" type="number" step="any" {...editForm.register("unit_cost")} placeholder="e.g. 1500.00" />
-              <Select label="Pricing Type" {...editForm.register("pricing_type")}>
-                <option value="individual">Individual (per parameter)</option>
-                <option value="package">Package (bundled price)</option>
-              </Select>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Expiry Date</label>
                 <input type="date" {...editForm.register("expiry_date")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-primary-400 focus:ring-1 focus:ring-primary-400 outline-none" />

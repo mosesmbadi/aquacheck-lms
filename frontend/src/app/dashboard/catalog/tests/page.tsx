@@ -6,8 +6,8 @@ import { useForm } from "react-hook-form";
 import { apiErrorMessage } from "@/lib/utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { testCatalogApi } from "@/lib/api";
-import type { TestCatalogItem, TestCategory } from "@/lib/types";
+import { testCatalogApi, testPackagesApi } from "@/lib/api";
+import type { TestCatalogItem, TestCategory, TestPackage } from "@/lib/types";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -91,6 +91,20 @@ export default function CatalogTestsPage() {
     queryFn: () =>
       testCatalogApi.list({ active_only: !showInactive }).then((r) => r.data),
   });
+
+  const { data: packages = [] } = useQuery<TestPackage[]>({
+    queryKey: ["test-packages"],
+    queryFn: () => testPackagesApi.list(false).then((r) => r.data),
+  });
+
+  // Map: catalog_item_id → list of package names it belongs to
+  const packagesByTestId = new Map<number, string[]>();
+  for (const pkg of packages) {
+    for (const id of pkg.catalog_item_ids) {
+      if (!packagesByTestId.has(id)) packagesByTestId.set(id, []);
+      packagesByTestId.get(id)!.push(pkg.name);
+    }
+  }
 
   const createMutation = useMutation({
     mutationFn: (data: FormData) => testCatalogApi.create(data as Partial<TestCatalogItem>),
@@ -340,6 +354,7 @@ export default function CatalogTestsPage() {
                   selectedIds={selectedIds}
                   onSelect={toggleSelect}
                   onSelectAll={(checked) => toggleSelectAll(physioItems, checked)}
+                  packagesByTestId={packagesByTestId}
                 />
               </Card>
             )}
@@ -360,6 +375,7 @@ export default function CatalogTestsPage() {
                   selectedIds={selectedIds}
                   onSelect={toggleSelect}
                   onSelectAll={(checked) => toggleSelectAll(microItems, checked)}
+                  packagesByTestId={packagesByTestId}
                 />
               </Card>
             )}
@@ -433,6 +449,7 @@ function TestTable({
   selectedIds,
   onSelect,
   onSelectAll,
+  packagesByTestId,
 }: {
   items: TestCatalogItem[];
   onEdit: (item: TestCatalogItem) => void;
@@ -440,6 +457,7 @@ function TestTable({
   selectedIds: Set<number>;
   onSelect: (id: number, checked: boolean) => void;
   onSelectAll: (checked: boolean) => void;
+  packagesByTestId: Map<number, string[]>;
 }) {
   const allSelected = items.length > 0 && items.every((i) => selectedIds.has(i.id));
   const someSelected = !allSelected && items.some((i) => selectedIds.has(i.id));
@@ -463,6 +481,7 @@ function TestTable({
             <th className="px-5 py-3 font-medium text-gray-500">Unit</th>
             <th className="px-5 py-3 font-medium text-gray-500">Method</th>
             <th className="px-5 py-3 font-medium text-gray-500">Standard Limit</th>
+            <th className="px-5 py-3 font-medium text-gray-500">Packages</th>
             <th className="px-5 py-3 font-medium text-gray-500 text-center">Status</th>
             <th className="px-5 py-3 font-medium text-gray-500 text-right">Actions</th>
           </tr>
@@ -470,6 +489,7 @@ function TestTable({
         <tbody>
           {items.map((item, idx) => {
             const isSelected = selectedIds.has(item.id);
+            const pkgNames = packagesByTestId.get(item.id) ?? [];
             return (
               <tr
                 key={item.id}
@@ -488,6 +508,22 @@ function TestTable({
                 <td className="px-5 py-2.5 text-gray-500">{item.unit || "—"}</td>
                 <td className="px-5 py-2.5 text-gray-500 text-xs">{item.method_name || "—"}</td>
                 <td className="px-5 py-2.5 text-gray-600">{item.standard_limit || "—"}</td>
+                <td className="px-5 py-2.5">
+                  {pkgNames.length > 0 ? (
+                    <div className="flex flex-wrap gap-1">
+                      {pkgNames.map((name) => (
+                        <span
+                          key={name}
+                          className="text-[10px] px-1.5 py-0.5 bg-primary-50 text-primary-700 border border-primary-200 rounded-full font-medium"
+                        >
+                          {name}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="text-xs text-gray-300">—</span>
+                  )}
+                </td>
                 <td className="px-5 py-2.5 text-center">
                   <Badge variant={item.is_active ? "success" : "gray"}>
                     {item.is_active ? "Active" : "Inactive"}

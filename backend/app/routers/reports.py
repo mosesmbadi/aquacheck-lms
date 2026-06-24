@@ -4,8 +4,11 @@ from typing import List
 import io
 import base64
 import os
+from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm.attributes import flag_modified
+
+_LOGO_PATH = Path(__file__).parent.parent / "images" / "aquacheck logo.png"
 from fastapi.responses import StreamingResponse, JSONResponse
 from sqlalchemy.orm import Session
 from reportlab.lib.pagesizes import A4
@@ -311,8 +314,13 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
         qr_bytes = io.BytesIO(base64.b64decode(qr_b64))
         qr_image = RLImage(qr_bytes, width=2 * cm, height=2 * cm)
 
+    if _LOGO_PATH.is_file():
+        logo_cell = RLImage(str(_LOGO_PATH), width=5 * cm, height=1.8 * cm, kind="proportional")
+    else:
+        logo_cell = Paragraph("<b>AQUACHECK</b><br/>Trusted Quality Check Partner", styles["Title"])
+
     header_cols = [
-        Paragraph("<b>AQUACHECK</b><br/>Trusted Quality Check Partner", styles["Title"]),
+        logo_cell,
         Paragraph(
             "AQUACHECK LABORATORIES LIMITED<br/>P.O. Box 216 - 00300, NAIROBI<br/>Westlands Commercial Centre<br/>Off Ring Road, Parklands Rd<br/>Email: aquachecklab@gmail.com<br/>Website: www.aquachecklab.com<br/>Tel: 0755596064/0734933819",
             company_style,

@@ -114,19 +114,50 @@ export interface TestCatalogItem {
 // ─── Quotations ───────────────────────────────────────────────────────────────
 export type QuotationStatus = "draft" | "sent" | "accepted" | "rejected" | "expired";
 
+export interface QuotationItemTest {
+  id: number;
+  name: string;
+  category?: string;
+}
+
 export interface QuotationItem {
   catalog_item_id?: number | null;
+  /** set when this line item is a package (not an individual test) */
+  package_id?: number | null;
+  /** catalog test IDs — used to auto-select tests on sample registration */
+  included_catalog_ids?: number[];
+  /** snapshot of test names at quotation creation time — rendered in detail + PDF */
+  included_tests?: QuotationItemTest[];
   name: string;
   unit?: string | null;
   quantity: number;
   unit_price: number;
   total: number;
   package_name?: string | null;
-  package_price?: number | null;
-  is_package_header?: boolean;
 }
 
 export type QuotationType = "individual" | "package";
+
+// ─── Test Packages ────────────────────────────────────────────────────────────
+
+export interface TestPackageItem {
+  id: number;
+  catalog_item_id: number;
+  catalog_item_name?: string;
+  catalog_item_category?: string;
+}
+
+export interface TestPackage {
+  id: number;
+  name: string;
+  description?: string;
+  price: number;
+  is_active: boolean;
+  items: TestPackageItem[];
+  catalog_item_ids: number[];
+  created_at: string;
+  updated_at: string;
+}
 
 export interface Quotation {
   id: number;

@@ -4,8 +4,17 @@ from pydantic import BaseModel, Field
 from app.models.quotation import QuotationStatus, QuotationType
 
 
+class IncludedTest(BaseModel):
+    id: int
+    name: str
+    category: Optional[str] = None
+
+
 class QuotationItem(BaseModel):
     catalog_item_id: Optional[int] = None
+    package_id: Optional[int] = None
+    included_catalog_ids: Optional[List[int]] = None
+    included_tests: Optional[List[IncludedTest]] = None
     name: str
     unit: Optional[str] = None
     quantity: float = 1

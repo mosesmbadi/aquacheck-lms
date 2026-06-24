@@ -11,9 +11,9 @@ import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
-import { quotationsApi, customersApi, testCatalogApi } from "@/lib/api";
+import { quotationsApi, customersApi, testCatalogApi, testPackagesApi } from "@/lib/api";
 import { CustomerSearch } from "@/components/ui/CustomerSearch";
-import type { Quotation, QuotationItem, Customer, TestCatalogItem } from "@/lib/types";
+import type { Quotation, QuotationItem, Customer, TestCatalogItem, TestPackage } from "@/lib/types";
 
 const DEFAULT_VAT = 16;
 
@@ -121,7 +121,6 @@ function CreateQuotationModal({
   onCreated: (q: Quotation) => void;
 }) {
   const [customerId, setCustomerId] = useState<number | "">("");
-  const [quotationType, setQuotationType] = useState<"individual" | "package">("individual");
   const [vatRate, setVatRate] = useState<number>(DEFAULT_VAT);
   const [currency, setCurrency] = useState<string>("KES");
   const [validUntil, setValidUntil] = useState<string>("");
@@ -134,9 +133,37 @@ function CreateQuotationModal({
   const vatAmount = (subtotal * vatRate) / 100;
   const total = subtotal + vatAmount;
 
-  const [packageNameInput, setPackageNameInput] = useState<string>("");
+  const { data: packages = [] } = useQuery<TestPackage[]>({
+    queryKey: ["test-packages"],
+    queryFn: () => testPackagesApi.list(true).then((r) => r.data),
+  });
 
-  const addItem = (catalogItemId?: number, pkgName?: string) => {
+  const addPackageItem = (pkg: TestPackage) => {
+    // Prevent duplicate packages on the same quotation
+    if (items.some((i) => i.package_id === pkg.id)) return;
+    setItems((prev) => [
+      ...prev,
+      {
+        package_id: pkg.id,
+        catalog_item_id: null,
+        included_catalog_ids: pkg.catalog_item_ids,
+        // Snapshot test names so the quote is self-contained even if the package changes later
+        included_tests: pkg.items.map((pi) => ({
+          id: pi.catalog_item_id,
+          name: pi.catalog_item_name ?? `Test #${pi.catalog_item_id}`,
+          category: pi.catalog_item_category ?? undefined,
+        })),
+        name: pkg.name,
+        unit: "package",
+        quantity: 1,
+        unit_price: Number(pkg.price),
+        total: Number(pkg.price),
+        package_name: pkg.name,
+      },
+    ]);
+  };
+
+  const addItem = (catalogItemId?: number) => {
     if (catalogItemId) {
       const t = catalog.find((c) => c.id === catalogItemId);
       if (!t) return;
@@ -149,13 +176,13 @@ function CreateQuotationModal({
           quantity: 1,
           unit_price: Number(t.price ?? 0),
           total: Number(t.price ?? 0),
-          package_name: pkgName ?? null,
+          package_name: null,
         },
       ]);
     } else {
       setItems((prev) => [
         ...prev,
-        { catalog_item_id: null, name: "", unit: "", quantity: 1, unit_price: 0, total: 0, package_name: pkgName ?? null },
+        { catalog_item_id: null, name: "", unit: "", quantity: 1, unit_price: 0, total: 0, package_name: null },
       ]);
     }
   };
@@ -176,7 +203,7 @@ function CreateQuotationModal({
       quotationsApi
         .create({
           customer_id: Number(customerId),
-          quotation_type: quotationType,
+          quotation_type: items.some((i) => i.package_id) ? "package" : "individual",
           items,
           vat_rate: vatRate,
           currency,
@@ -201,29 +228,6 @@ function CreateQuotationModal({
     <Modal open={true} title="New Quotation" onClose={onClose} size="xl">
       <div className="space-y-4">
         {error && <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">{error}</div>}
-
-        {/* Quotation type */}
-        <div className="flex gap-3">
-          {(["individual", "package"] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setQuotationType(t)}
-              className={`flex-1 py-2 px-4 rounded-lg border-2 text-sm font-medium transition-all ${
-                quotationType === t
-                  ? "border-primary-500 bg-primary-50 text-primary-700"
-                  : "border-gray-200 text-gray-600 hover:border-primary-300"
-              }`}
-            >
-              {t === "individual" ? "Individual Items" : "Package (Bundled)"}
-            </button>
-          ))}
-        </div>
-        {quotationType === "package" && (
-          <p className="text-xs text-gray-500 bg-blue-50 border border-blue-100 rounded px-3 py-2">
-            Package mode: all items under a package group share one bundled price shown on the quotation.
-          </p>
-        )}
 
         <div className="grid grid-cols-2 gap-3">
           <CustomerSearch
@@ -259,114 +263,128 @@ function CreateQuotationModal({
           <div className="flex items-center justify-between mb-2">
             <h3 className="font-semibold text-sm">Line Items</h3>
             <div className="flex gap-2">
+              {/* Add a defined package (one price line) */}
+              {packages.length > 0 && (
+                <Select
+                  value=""
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      const pkg = packages.find((p) => p.id === Number(e.target.value));
+                      if (pkg) addPackageItem(pkg);
+                      e.target.value = "";
+                    }
+                  }}
+                >
+                  <option value="">+ Add package</option>
+                  {packages.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} — {currency} {Number(p.price).toLocaleString(undefined, { minimumFractionDigits: 2 })} ({p.items.length} tests)
+                    </option>
+                  ))}
+                </Select>
+              )}
+              {/* Add individual catalog test */}
               <Select
                 value=""
                 onChange={(e) => {
                   if (e.target.value) {
-                    addItem(Number(e.target.value), packageNameInput || undefined);
+                    addItem(Number(e.target.value));
                     e.target.value = "";
                   }
                 }}
               >
-                <option value="">+ Add from catalog</option>
+                <option value="">+ Add individual test</option>
                 {catalog.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name} {t.price ? `— ${currency} ${t.price}` : ""}
                   </option>
                 ))}
               </Select>
-              <Button type="button" variant="outline" size="sm" onClick={() => addItem(undefined, packageNameInput || undefined)}>
-                + Custom
+              <Button type="button" variant="outline" size="sm" onClick={() => addItem()}>
+                + Custom row
               </Button>
             </div>
-          </div>
-
-          {/* Package name input for new items */}
-          <div className="flex gap-2 items-center mb-2">
-            <span className="text-xs text-gray-500">Package (optional):</span>
-            <input
-              type="text"
-              value={packageNameInput}
-              onChange={(e) => setPackageNameInput(e.target.value)}
-              className="px-2 py-1 border border-gray-300 rounded text-xs w-48"
-              placeholder="e.g. Physical Parameters"
-            />
-            <span className="text-xs text-gray-400">Assign new items to this package</span>
           </div>
 
           <table className="w-full text-sm border border-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="text-left px-2 py-1">Name / Parameter</th>
-                {quotationType === "individual" && <th className="px-2 py-1 w-32">Package</th>}
-                <th className="px-2 py-1 w-16">Unit</th>
-                {quotationType === "individual" && <th className="px-2 py-1 w-16">Qty</th>}
-                <th className="px-2 py-1 w-28">{quotationType === "package" ? "Package Price" : "Unit Price"}</th>
-                <th className="px-2 py-1 w-28 text-right">Total</th>
+                <th className="text-left px-2 py-1">Description</th>
+                <th className="px-2 py-1 w-16">Qty</th>
+                <th className="px-2 py-1 w-32">Unit Price ({currency})</th>
+                <th className="px-2 py-1 w-28 text-right">Total ({currency})</th>
                 <th className="w-8"></th>
               </tr>
             </thead>
             <tbody>
               {items.length === 0 ? (
-                <tr><td colSpan={quotationType === "package" ? 5 : 7} className="px-2 py-4 text-center text-gray-400">No items</td></tr>
-              ) : items.map((it, idx) => (
-                <tr key={idx} className={`border-t ${it.package_name ? "bg-blue-50/30" : ""}`}>
-                  <td className="px-1 py-1">
-                    <input
-                      className="w-full px-2 py-1 border rounded text-sm"
-                      value={it.name}
-                      onChange={(e) => updateItem(idx, { name: e.target.value })}
-                    />
+                <tr>
+                  <td colSpan={5} className="px-2 py-6 text-center text-gray-400 text-xs">
+                    No items yet — add a package or individual test above.
                   </td>
-                  {quotationType === "individual" && (
+                </tr>
+              ) : items.map((it, idx) => {
+                const isPkg = !!it.package_id;
+                const pkgDef = isPkg ? packages.find((p) => p.id === it.package_id) : null;
+                return (
+                  <tr key={idx} className={`border-t ${isPkg ? "bg-blue-50/40" : ""}`}>
+                    <td className="px-2 py-1.5">
+                      {isPkg ? (
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] bg-primary-100 text-primary-700 px-1.5 py-0.5 rounded font-medium">PACKAGE</span>
+                            <span className="font-medium text-gray-800 text-sm">{it.name}</span>
+                          </div>
+                          {pkgDef && (
+                            <div className="flex flex-wrap gap-0.5 mt-1">
+                              {pkgDef.items.map((pi) => (
+                                <span key={pi.id} className="text-[10px] text-gray-500 bg-gray-100 px-1 py-0.5 rounded">
+                                  {pi.catalog_item_name}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <input
+                          className="w-full px-2 py-1 border rounded text-sm"
+                          value={it.name}
+                          onChange={(e) => updateItem(idx, { name: e.target.value })}
+                          placeholder="Test / service name"
+                        />
+                      )}
+                    </td>
                     <td className="px-1 py-1">
                       <input
-                        className="w-full px-2 py-1 border rounded text-xs"
-                        value={it.package_name ?? ""}
-                        onChange={(e) => updateItem(idx, { package_name: e.target.value || null })}
-                        placeholder="Package group…"
+                        type="number"
+                        min={1}
+                        step="1"
+                        className="w-16 px-2 py-1 border rounded text-sm text-center"
+                        value={it.quantity}
+                        onChange={(e) => updateItem(idx, { quantity: Number(e.target.value) })}
                       />
                     </td>
-                  )}
-                  <td className="px-1 py-1">
-                    <input
-                      className="w-full px-2 py-1 border rounded text-sm"
-                      value={it.unit ?? ""}
-                      onChange={(e) => updateItem(idx, { unit: e.target.value })}
-                    />
-                  </td>
-                  {quotationType === "individual" && (
                     <td className="px-1 py-1">
                       <input
                         type="number"
                         min={0}
                         step="0.01"
                         className="w-full px-2 py-1 border rounded text-sm"
-                        value={it.quantity}
-                        onChange={(e) => updateItem(idx, { quantity: Number(e.target.value) })}
+                        value={it.unit_price}
+                        onChange={(e) => updateItem(idx, { unit_price: Number(e.target.value) })}
                       />
                     </td>
-                  )}
-                  <td className="px-1 py-1">
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      className="w-full px-2 py-1 border rounded text-sm"
-                      value={it.unit_price}
-                      onChange={(e) => updateItem(idx, { unit_price: Number(e.target.value) })}
-                    />
-                  </td>
-                  <td className="px-2 py-1 text-right">
-                    {currency} {it.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                  </td>
-                  <td className="px-1 py-1">
-                    <button type="button" onClick={() => removeItem(idx)} className="text-red-500 hover:text-red-700">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                    <td className="px-2 py-1 text-right font-mono font-medium">
+                      {it.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </td>
+                    <td className="px-1 py-1 text-center">
+                      <button type="button" onClick={() => removeItem(idx)} className="text-red-400 hover:text-red-600">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

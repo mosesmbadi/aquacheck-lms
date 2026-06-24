@@ -50,6 +50,9 @@ def _compute_totals(items: List[QuotationItem], vat_rate: float):
         subtotal += total
         normalized.append({
             "catalog_item_id": item.catalog_item_id,
+            "package_id": item.package_id,
+            "included_catalog_ids": item.included_catalog_ids,
+            "included_tests": [t.model_dump() for t in item.included_tests] if item.included_tests else None,
             "name": item.name,
             "unit": item.unit,
             "quantity": qty,
