@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { Input, Textarea } from "@/components/ui/Input";
 import { quotationsApi, customersApi } from "@/lib/api";
+import { apiErrorMessage } from "@/lib/utils";
 import type { Quotation, Customer } from "@/lib/types";
 
 const statusVariant: Record<string, "default" | "success" | "warning" | "danger" | "info"> = {
@@ -301,7 +302,7 @@ function SendQuotationModal({
         message,
       }),
     onSuccess: onSent,
-    onError: (e: any) => setError(e?.response?.data?.detail ?? "Failed to send email"),
+    onError: (e: unknown) => setError(apiErrorMessage(e, "Failed to send email")),
   });
 
   return (

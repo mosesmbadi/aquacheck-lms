@@ -39,8 +39,8 @@ export function ContractForm({ onSubmit, onCancel, loading }: ContractFormProps)
     register,
     handleSubmit,
     setValue,
-    formState: { errors },
-  } = useForm<FormData>({ resolver: zodResolver(schema) });
+    formState: { errors, isValid },
+  } = useForm<FormData>({ resolver: zodResolver(schema), mode: "onChange" });
 
   const createCustomerMutation = useMutation({
     mutationFn: (data: CustomerFormData) => customersApi.create(data),
@@ -99,7 +99,7 @@ export function ContractForm({ onSubmit, onCancel, loading }: ContractFormProps)
           <Button type="button" variant="secondary" onClick={onCancel}>
             Cancel
           </Button>
-          <Button type="submit" loading={loading}>
+          <Button type="submit" loading={loading} disabled={!isValid}>
             Create Contract
           </Button>
         </div>

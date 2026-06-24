@@ -38,9 +38,10 @@ export function CustomerForm({ onSubmit, onCancel, loading, initialValues, submi
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isValid },
   } = useForm<CustomerFormData>({
     resolver: zodResolver(schema),
+    mode: "onChange",
     defaultValues: {
       name: initialValues?.name ?? "",
       contact_person: initialValues?.contact_person ?? "",
@@ -76,7 +77,7 @@ export function CustomerForm({ onSubmit, onCancel, loading, initialValues, submi
         <Button type="button" variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" loading={loading}>
+        <Button type="submit" loading={loading} disabled={!isValid}>
           {submitLabel ?? "Create Customer"}
         </Button>
       </div>

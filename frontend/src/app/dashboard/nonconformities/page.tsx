@@ -56,7 +56,7 @@ export default function NonconformitiesPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["nonconformities"] }),
   });
 
-  const { register, handleSubmit, formState: { errors }, reset } = useForm<FormData>({ resolver: zodResolver(schema) });
+  const { register, handleSubmit, formState: { errors, isValid }, reset } = useForm<FormData>({ resolver: zodResolver(schema), mode: "onChange" });
 
   const columns = [
     { key: "nc_number", header: "NC #", render: (r: Nonconformity) => <span className="font-mono font-medium text-primary-600">{r.nc_number}</span> },
@@ -112,7 +112,7 @@ export default function NonconformitiesPage() {
           </div>
           <div className="flex gap-3 justify-end pt-2">
             <Button type="button" variant="secondary" onClick={() => { setShowCreate(false); reset(); }}>Cancel</Button>
-            <Button type="submit" loading={createMutation.isPending}>Record NC</Button>
+            <Button type="submit" loading={createMutation.isPending} disabled={!isValid}>Record NC</Button>
           </div>
         </form>
       </Modal>

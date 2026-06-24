@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Save, CheckCircle, Clock, FlaskConical, MapPin, Calendar, Printer } from "lucide-react";
+import { ArrowLeft, Save, CheckCircle, Clock, FlaskConical, MapPin, Calendar, Printer, ShieldCheck } from "lucide-react";
 import { format } from "date-fns";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/Button";
@@ -111,6 +111,16 @@ export default function SampleDetailPage() {
     },
   });
 
+  const validateAllMutation = useMutation({
+    mutationFn: (resultIds: number[]) =>
+      Promise.all(resultIds.map((id) => testResultsApi.validate(id))),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["test-results", { sample_id: sampleId }] });
+      qc.invalidateQueries({ queryKey: ["sample", sampleId] });
+      qc.invalidateQueries({ queryKey: ["samples"] });
+    },
+  });
+
   function toggleSignatory(user: User) {
     setSignatories((prev) =>
       prev.find((u) => u.id === user.id)
@@ -192,6 +202,12 @@ export default function SampleDetailPage() {
 
   const filledCount = requestedItems.filter((item) => drafts[item.id]?.result_value.trim()).length;
 
+  // Results that exist and are in a validatable state (completed or in_progress, not yet validated)
+  const validatableResults = testResults.filter(
+    (r) => r.status === "completed" || r.status === "in_progress"
+  );
+  const validatableCount = validatableResults.length;
+
   return (
     <DashboardLayout title={`Sample ${sample.sample_code}`}>
       <div className="space-y-6">
@@ -215,6 +231,15 @@ export default function SampleDetailPage() {
             <Button variant="secondary" onClick={() => setPrintOpen(true)}>
               <Printer className="w-4 h-4" /> Print Report
             </Button>
+            {validatableCount > 0 && (
+              <Button
+                variant="secondary"
+                onClick={() => validateAllMutation.mutate(validatableResults.map((r) => r.id))}
+                loading={validateAllMutation.isPending}
+              >
+                <ShieldCheck className="w-4 h-4" /> Validate All ({validatableCount})
+              </Button>
+            )}
             <Button onClick={handleSaveAll} loading={bulkSaveMutation.isPending} disabled={!dirty}>
               <Save className="w-4 h-4" /> Save Results {filledCount > 0 && `(${filledCount})`}
             </Button>
@@ -332,6 +357,17 @@ export default function SampleDetailPage() {
               <div className="flex items-center gap-2">
                 {dirty && (
                   <span className="text-xs text-amber-600 font-medium">Unsaved changes</span>
+                )}
+                {validatableCount > 0 && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => validateAllMutation.mutate(validatableResults.map((r) => r.id))}
+                    loading={validateAllMutation.isPending}
+                    title={`Validate all ${validatableCount} completed result${validatableCount !== 1 ? "s" : ""} at once`}
+                  >
+                    <ShieldCheck className="w-4 h-4" /> Validate All ({validatableCount})
+                  </Button>
                 )}
                 <Button size="sm" onClick={handleSaveAll} loading={bulkSaveMutation.isPending} disabled={!dirty}>
                   <Save className="w-4 h-4" /> Save All

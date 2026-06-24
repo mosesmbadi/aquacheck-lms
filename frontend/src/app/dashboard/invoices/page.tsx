@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
+import { apiErrorMessage } from "@/lib/utils";
 import { Send, CheckCircle, Plus, Pencil } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/Button";
@@ -195,7 +196,7 @@ function InvoiceEditModal({
         notes: notes || undefined,
       } as Partial<Invoice>),
     onSuccess: onSaved,
-    onError: (e: any) => setError(e?.response?.data?.detail ?? "Failed to save invoice"),
+    onError: (e: unknown) => setError(apiErrorMessage(e, "Failed to save invoice")),
   });
 
   const qc = useQueryClient();

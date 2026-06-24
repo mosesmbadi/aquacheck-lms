@@ -17,12 +17,10 @@ router = APIRouter(prefix="/test-results", tags=["Test Results"])
 
 
 def _maybe_complete_sample(sample: Sample, db: Session) -> None:
-    """Mark sample as completed if every requested test has a validated result."""
-    requested_ids: list[int] = sample.requested_test_ids or []
-    if not requested_ids:
-        return
+    """Mark sample as completed if every requested (or saved) test has a validated result."""
     # flush so the just-validated result is visible in this transaction
     db.flush()
+
     validated_ids = {
         tr.catalog_item_id
         for tr in db.query(TestResult).filter(
@@ -31,8 +29,25 @@ def _maybe_complete_sample(sample: Sample, db: Session) -> None:
             TestResult.catalog_item_id.isnot(None),
         ).all()
     }
-    if all(rid in validated_ids for rid in requested_ids):
-        sample.status = SampleStatus.completed
+
+    requested_ids: list[int] = sample.requested_test_ids or []
+
+    if requested_ids:
+        # Standard path: all pre-selected tests must be validated
+        if all(rid in validated_ids for rid in requested_ids):
+            sample.status = SampleStatus.completed
+    else:
+        # Standalone/ad-hoc sample: all saved results must be validated,
+        # and there must be at least one to avoid premature completion.
+        all_result_ids = {
+            tr.catalog_item_id
+            for tr in db.query(TestResult).filter(
+                TestResult.sample_id == sample.id,
+                TestResult.catalog_item_id.isnot(None),
+            ).all()
+        }
+        if all_result_ids and all_result_ids == validated_ids:
+            sample.status = SampleStatus.completed
 
 
 @router.get("", response_model=List[TestResultOut])
@@ -120,7 +135,9 @@ def update_test_result(
 def validate_test_result(
     result_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.admin, UserRole.quality_manager)),
+    current_user: User = Depends(require_role(
+        UserRole.admin, UserRole.quality_manager, UserRole.manager, UserRole.technician
+    )),
 ):
     tr = db.query(TestResult).filter(TestResult.id == result_id).first()
     if not tr:

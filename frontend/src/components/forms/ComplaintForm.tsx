@@ -43,9 +43,10 @@ export function ComplaintForm({ onSubmit, onCancel, loading, customerId }: Compl
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isValid },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
+    mode: "onChange",
     defaultValues: isCustomer ? { customer_id: customerId, category: "complaint" } : { category: "complaint" },
   });
 
@@ -100,7 +101,7 @@ export function ComplaintForm({ onSubmit, onCancel, loading, customerId }: Compl
         <Button type="button" variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" loading={loading}>
+        <Button type="submit" loading={loading} disabled={!isValid}>
           Submit
         </Button>
       </div>

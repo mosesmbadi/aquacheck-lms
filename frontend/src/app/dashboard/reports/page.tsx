@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Download, Send, Pencil, History, Clock } from "lucide-react";
+import { apiErrorMessage } from "@/lib/utils";
 import { format } from "date-fns";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/Button";
@@ -81,8 +82,7 @@ export default function ReportsPage() {
       reportsApi.update(data.id, data.payload),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["reports"] }); setEditReport(null); },
     onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      console.error("Report update failed:", msg || err);
+      console.error("Report update failed:", apiErrorMessage(err));
     },
   });
 
@@ -93,8 +93,9 @@ export default function ReportsPage() {
     6: "NEMA MONITORING STANDARD; SIXTH SCHEDULE.",
   };
 
-  const { register, handleSubmit, watch, setValue, formState: { errors }, reset } = useForm<FormData>({
+  const { register, handleSubmit, watch, setValue, formState: { errors, isValid }, reset } = useForm<FormData>({
     resolver: zodResolver(schema),
+    mode: "onChange",
     defaultValues: {
       report_type: "test_report",
       report_title: "TEST REPORT",
@@ -329,7 +330,7 @@ export default function ReportsPage() {
           <Textarea label="Disclaimer Override" error={errors.disclaimer?.message} {...register("disclaimer")} rows={3} placeholder="Optional custom disclaimer text for this report." />
           <div className="flex gap-3 justify-end pt-2">
             <Button type="button" variant="secondary" onClick={() => { setShowCreate(false); reset(); }}>Cancel</Button>
-            <Button type="submit" loading={createMutation.isPending}>Create Report</Button>
+            <Button type="submit" loading={createMutation.isPending} disabled={!isValid}>Create Report</Button>
           </div>
         </form>
       </Modal>
@@ -394,8 +395,7 @@ function ReportEditModal({
     }, {
       onSuccess: (r: Report) => onSaved(r),
       onError: (err: unknown) => {
-        const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-        setError(msg || "Failed to save changes. Please try again.");
+        setError(apiErrorMessage(err, "Failed to save changes. Please try again."));
       },
     });
   };

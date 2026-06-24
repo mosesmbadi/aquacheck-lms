@@ -45,7 +45,7 @@ export default function MethodsPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["methods"] }),
   });
 
-  const { register, handleSubmit, formState: { errors }, reset } = useForm<FormData>({ resolver: zodResolver(schema) });
+  const { register, handleSubmit, formState: { errors, isValid }, reset } = useForm<FormData>({ resolver: zodResolver(schema), mode: "onChange" });
 
   const filtered = methods.filter((m) =>
     !search || m.code.toLowerCase().includes(search.toLowerCase()) || m.name.toLowerCase().includes(search.toLowerCase())
@@ -97,7 +97,7 @@ export default function MethodsPage() {
           <Textarea label="Description" {...register("description")} rows={3} placeholder="Describe the method..." />
           <div className="flex gap-3 justify-end pt-2">
             <Button type="button" variant="secondary" onClick={() => { setShowCreate(false); reset(); }}>Cancel</Button>
-            <Button type="submit" loading={createMutation.isPending}>Add Method</Button>
+            <Button type="submit" loading={createMutation.isPending} disabled={!isValid}>Add Method</Button>
           </div>
         </form>
       </Modal>

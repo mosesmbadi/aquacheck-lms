@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiErrorMessage } from "@/lib/utils";
 import { format } from "date-fns";
 import { Plus, Trash2 } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
@@ -185,7 +186,7 @@ function CreateQuotationModal({
         })
         .then((r) => r.data),
     onSuccess: onCreated,
-    onError: (e: any) => setError(e?.response?.data?.detail ?? "Failed to create quotation"),
+    onError: (e: unknown) => setError(apiErrorMessage(e, "Failed to create quotation")),
   });
 
   const submit = () => {

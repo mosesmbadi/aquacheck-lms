@@ -15,6 +15,7 @@ import type { Equipment, CalibrationResult } from "@/lib/types";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { apiErrorMessage } from "@/lib/utils";
 
 // ─── Add equipment schema ─────────────────────────────────────────────────────
 
@@ -120,8 +121,8 @@ function CalibrationHistoryModal({
     },
   });
 
-  const { register: calReg, handleSubmit: calSubmit, reset: calReset, formState: { errors: calErrors } } =
-    useForm<CalFormData>({ resolver: zodResolver(calSchema) });
+  const { register: calReg, handleSubmit: calSubmit, reset: calReset, formState: { errors: calErrors, isValid: calIsValid } } =
+    useForm<CalFormData>({ resolver: zodResolver(calSchema), mode: "onChange" });
 
   function handleCalSubmit(data: CalFormData) {
     const form = new FormData();
@@ -203,7 +204,7 @@ function CalibrationHistoryModal({
             <Button type="button" variant="secondary" size="sm" onClick={() => { setShowAddForm(false); calReset(); }}>
               Cancel
             </Button>
-            <Button type="submit" size="sm" loading={createMutation.isPending}>
+            <Button type="submit" size="sm" loading={createMutation.isPending} disabled={!calIsValid}>
               Save Record
             </Button>
           </div>
@@ -297,8 +298,7 @@ export default function EquipmentPage() {
     mutationFn: (data: Partial<Equipment>) => equipmentApi.create(data),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["equipment"] }); setShowCreate(false); setCreateError(""); reset(); },
     onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setCreateError(msg || "Failed to add equipment. Check for duplicate Equipment ID.");
+      setCreateError(apiErrorMessage(err, "Failed to add equipment. Check for duplicate Equipment ID."));
     },
   });
 
@@ -311,19 +311,18 @@ export default function EquipmentPage() {
     mutationFn: ({ id, data }: { id: number; data: Partial<Equipment> }) => equipmentApi.update(id, data),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["equipment"] }); setEditEquipment(null); setEditError(""); editReset(); },
     onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setEditError(msg || "Failed to update equipment. Please try again.");
+      setEditError(apiErrorMessage(err, "Failed to update equipment. Please try again."));
     },
   });
 
-  const { register, handleSubmit, formState: { errors }, reset } = useForm<AddFormData>({ resolver: zodResolver(addSchema) });
+  const { register, handleSubmit, formState: { errors, isValid: addIsValid }, reset } = useForm<AddFormData>({ resolver: zodResolver(addSchema), mode: "onChange" });
 
   const {
     register: editReg,
     handleSubmit: editSubmit,
     reset: editReset,
-    formState: { errors: editErrors },
-  } = useForm<EditFormData>({ resolver: zodResolver(editSchema) });
+    formState: { errors: editErrors, isValid: editIsValid },
+  } = useForm<EditFormData>({ resolver: zodResolver(editSchema), mode: "onChange" });
 
   const columns = [
     { key: "equipment_id", header: "Equipment ID", render: (r: Equipment) => <span className="font-mono font-medium text-primary-600">{r.equipment_id}</span> },
@@ -441,7 +440,7 @@ export default function EquipmentPage() {
           <Input label="Calibration Certificate Ref." {...register("calibration_certificate_ref")} placeholder="e.g. CERT-2024-0042" />
           <div className="flex gap-3 justify-end pt-2">
             <Button type="button" variant="secondary" onClick={() => { setShowCreate(false); reset(); }}>Cancel</Button>
-            <Button type="submit" loading={createMutation.isPending}>Add Equipment</Button>
+            <Button type="submit" loading={createMutation.isPending} disabled={!addIsValid}>Add Equipment</Button>
           </div>
         </form>
       </Modal>
@@ -492,7 +491,7 @@ export default function EquipmentPage() {
               <Button type="button" variant="secondary" onClick={() => { setEditEquipment(null); editReset(); }}>
                 Cancel
               </Button>
-              <Button type="submit" loading={updateMutation.isPending}>Save Changes</Button>
+              <Button type="submit" loading={updateMutation.isPending} disabled={!editIsValid}>Save Changes</Button>
             </div>
           </form>
         )}

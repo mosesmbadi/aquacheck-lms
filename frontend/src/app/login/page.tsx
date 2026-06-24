@@ -23,8 +23,8 @@ export default function LoginPage() {
   const {
     register,
     handleSubmit,
-    formState: { errors },
-  } = useForm<LoginForm>({ resolver: zodResolver(loginSchema) });
+    formState: { errors, isValid },
+  } = useForm<LoginForm>({ resolver: zodResolver(loginSchema), mode: "onChange" });
 
   const onSubmit = async (data: LoginForm) => {
     setLoading(true);
@@ -94,7 +94,7 @@ export default function LoginPage() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !isValid}
               className="w-full py-2.5 px-4 bg-primary-400 hover:bg-primary-500 disabled:opacity-60 text-white font-semibold rounded-lg transition-colors text-sm"
             >
               {loading ? "Signing in..." : "Sign in"}

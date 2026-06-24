@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
+import { apiErrorMessage } from "@/lib/utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { testCatalogApi } from "@/lib/api";
@@ -98,8 +99,7 @@ export default function CatalogTestsPage() {
       closeModal();
     },
     onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setMutationError(msg || "Failed to save test. You may not have permission.");
+      setMutationError(apiErrorMessage(err, "Failed to save test. You may not have permission."));
     },
   });
 
@@ -111,8 +111,7 @@ export default function CatalogTestsPage() {
       closeModal();
     },
     onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setMutationError(msg || "Failed to save changes. You may not have permission (admin/manager required).");
+      setMutationError(apiErrorMessage(err, "Failed to save changes. You may not have permission (admin/manager required)."));
     },
   });
 
@@ -131,8 +130,7 @@ export default function CatalogTestsPage() {
       setMutationError("");
     },
     onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setMutationError(msg || "Failed to delete. Admin or manager role required.");
+      setMutationError(apiErrorMessage(err, "Failed to delete. Admin or manager role required."));
     },
   });
 
@@ -140,8 +138,8 @@ export default function CatalogTestsPage() {
     register,
     handleSubmit,
     reset,
-    formState: { errors },
-  } = useForm<FormData>({ resolver: zodResolver(schema) });
+    formState: { errors, isValid },
+  } = useForm<FormData>({ resolver: zodResolver(schema), mode: "onChange" });
 
   function openCreate() {
     reset({ category: "physicochemical", water_type: "dialysis_potable", sort_order: 0, is_active: true, price: 0 });
@@ -417,7 +415,7 @@ export default function CatalogTestsPage() {
 
           <div className="flex gap-3 justify-end pt-2">
             <Button type="button" variant="secondary" onClick={closeModal}>Cancel</Button>
-            <Button type="submit" loading={loading}>{editing ? "Save Changes" : "Add Test"}</Button>
+            <Button type="submit" loading={loading} disabled={!isValid}>{editing ? "Save Changes" : "Add Test"}</Button>
           </div>
         </form>
       </Modal>

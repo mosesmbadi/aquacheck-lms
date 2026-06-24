@@ -171,16 +171,19 @@ export default function InventoryPage() {
 
   const itemForm = useForm<ItemForm>({
     resolver: zodResolver(itemSchema),
-    defaultValues: { category: "reagent", minimum_stock: 0, unit: "mL" },
+    mode: "onChange",
+    defaultValues: { category: "reagent", minimum_stock: 0, unit: "mL", pricing_type: "individual" },
   });
 
   const editForm = useForm<ItemForm>({
     resolver: zodResolver(itemSchema),
-    defaultValues: { category: "reagent", minimum_stock: 0, unit: "mL" },
+    mode: "onChange",
+    defaultValues: { category: "reagent", minimum_stock: 0, unit: "mL", pricing_type: "individual" },
   });
 
   const txForm = useForm<TxForm>({
     resolver: zodResolver(txSchema),
+    mode: "onChange",
     defaultValues: { transaction_type: "receive" },
   });
 
@@ -587,7 +590,7 @@ export default function InventoryPage() {
             >
               Cancel
             </Button>
-            <Button type="submit" loading={createMutation.isPending}>
+            <Button type="submit" loading={createMutation.isPending} disabled={!itemForm.formState.isValid}>
               Create Item
             </Button>
           </div>
@@ -643,7 +646,7 @@ export default function InventoryPage() {
             <Textarea label="Description / Notes" rows={2} {...editForm.register("description")} />
             <div className="flex gap-3 justify-end pt-2">
               <Button type="button" variant="secondary" onClick={() => { setEditItem(null); editForm.reset(); }}>Cancel</Button>
-              <Button type="submit" loading={updateMutation.isPending}>Save Changes</Button>
+              <Button type="submit" loading={updateMutation.isPending} disabled={!editForm.formState.isValid}>Save Changes</Button>
             </div>
           </form>
         )}
@@ -746,7 +749,7 @@ export default function InventoryPage() {
               >
                 Cancel
               </Button>
-              <Button type="submit" loading={txMutation.isPending}>
+              <Button type="submit" loading={txMutation.isPending} disabled={!txForm.formState.isValid}>
                 Record Movement
               </Button>
             </div>

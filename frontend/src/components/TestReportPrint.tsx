@@ -5,11 +5,12 @@ import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Printer, X, Clock } from "lucide-react";
 import { samplesApi, testResultsApi, testCatalogApi, contractsApi, customersApi, reportsApi } from "@/lib/api";
-import type { Sample, TestResult, TestCatalogItem, Contract, Customer, Report } from "@/lib/types";
+import type { Sample, TestResult, TestCatalogItem, Contract, Customer, Report, User } from "@/lib/types";
 
 interface TestReportPrintProps {
   sampleId: number;
   onClose: () => void;
+  signatories?: User[];
 }
 
 function getCompliance(item: TestCatalogItem, value: string): string {
@@ -35,7 +36,7 @@ function getCompliance(item: TestCatalogItem, value: string): string {
   return "";
 }
 
-export default function TestReportPrint({ sampleId, onClose }: TestReportPrintProps) {
+export default function TestReportPrint({ sampleId, onClose, signatories = [] }: TestReportPrintProps) {
   const printRef = useRef<HTMLDivElement>(null);
   const [printing, setPrinting] = useState(false);
 
@@ -410,36 +411,47 @@ export default function TestReportPrint({ sampleId, onClose }: TestReportPrintPr
             )}
 
             {/* Signatures */}
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: "40px", fontSize: "11px", flexWrap: "wrap", gap: "16px" }}>
-              {authorizerName ? (
-                <div style={{ textAlign: "center" }}>
+            <div style={{ display: "flex", justifyContent: signatories.length > 0 ? "space-around" : "space-between", marginTop: "40px", fontSize: "11px", flexWrap: "wrap", gap: "16px" }}>
+              {signatories.length > 0 ? signatories.map((sig) => (
+                <div key={sig.id} style={{ textAlign: "center" }}>
+                  {sig.signature_b64 && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={`data:image/png;base64,${sig.signature_b64}`}
+                      alt="signature"
+                      style={{ width: "100px", height: "60px", objectFit: "contain", display: "block", margin: "0 auto 4px" }}
+                    />
+                  )}
                   <div style={{ borderTop: "1px solid #000", width: "180px", paddingTop: "4px" }}>
-                    <div style={{ fontWeight: "bold", textTransform: "uppercase" }}>{authorizerName}</div>
-                    <div style={{ fontStyle: "italic" }}>{authorizerTitle}</div>
+                    <div style={{ fontWeight: "bold", textTransform: "uppercase" }}>{sig.full_name}</div>
+                    <div style={{ fontStyle: "italic" }}>{sig.job_title || sig.role.replace("_", " ")}</div>
                   </div>
                 </div>
-              ) : (
-                <div style={{ textAlign: "center" }}>
-                  <div style={{ borderTop: "1px solid #000", width: "180px", paddingTop: "4px" }}>
-                    <div style={{ fontWeight: "bold", textTransform: "uppercase" }}>___________________</div>
-                    <div style={{ fontStyle: "italic" }}>Authorised Signatory</div>
+              )) : (
+                <>
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ borderTop: "1px solid #000", width: "180px", paddingTop: "4px" }}>
+                      <div style={{ fontWeight: "bold", textTransform: "uppercase" }}>{authorizerName || "___________________"}</div>
+                      <div style={{ fontStyle: "italic" }}>{authorizerTitle || "Authorised Signatory"}</div>
+                    </div>
                   </div>
-                </div>
-              )}
-              {analystName ? (
-                <div style={{ textAlign: "center" }}>
-                  <div style={{ borderTop: "1px solid #000", width: "180px", paddingTop: "4px" }}>
-                    <div style={{ fontWeight: "bold", textTransform: "uppercase" }}>{analystName}</div>
-                    <div style={{ fontStyle: "italic" }}>{analystTitle}</div>
-                  </div>
-                </div>
-              ) : (
-                <div style={{ textAlign: "center" }}>
-                  <div style={{ borderTop: "1px solid #000", width: "180px", paddingTop: "4px" }}>
-                    <div style={{ fontWeight: "bold", textTransform: "uppercase" }}>___________________</div>
-                    <div style={{ fontStyle: "italic" }}>Authorised Signatory</div>
-                  </div>
-                </div>
+                  {analystName && (
+                    <div style={{ textAlign: "center" }}>
+                      <div style={{ borderTop: "1px solid #000", width: "180px", paddingTop: "4px" }}>
+                        <div style={{ fontWeight: "bold", textTransform: "uppercase" }}>{analystName}</div>
+                        <div style={{ fontStyle: "italic" }}>{analystTitle}</div>
+                      </div>
+                    </div>
+                  )}
+                  {!analystName && (
+                    <div style={{ textAlign: "center" }}>
+                      <div style={{ borderTop: "1px solid #000", width: "180px", paddingTop: "4px" }}>
+                        <div style={{ fontWeight: "bold", textTransform: "uppercase" }}>___________________</div>
+                        <div style={{ fontStyle: "italic" }}>Authorised Signatory</div>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 

@@ -351,9 +351,10 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
     watch,
     setValue,
     setError,
-    formState: { errors },
+    formState: { errors, isValid },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
+    mode: "onChange",
     defaultValues: {
       customer_id: customerId,
       requested_test_ids: [],
@@ -799,7 +800,7 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
         <Button type="button" variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" loading={loading} disabled={!testsReady}>
+        <Button type="submit" loading={loading} disabled={!testsReady || !isValid}>
           Register Sample
         </Button>
       </div>

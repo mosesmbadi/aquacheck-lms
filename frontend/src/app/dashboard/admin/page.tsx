@@ -124,13 +124,13 @@ export default function AdminPage() {
   });
 
   // ── Create form ──
-  const { register: regCreate, handleSubmit: hsCreate, control: ctrlCreate, formState: { errors: errCreate }, reset: resetCreate } =
-    useForm<CreateFormData>({ resolver: zodResolver(createSchema), defaultValues: { role: "technician", is_contact_person: false } });
+  const { register: regCreate, handleSubmit: hsCreate, control: ctrlCreate, formState: { errors: errCreate, isValid: createIsValid }, reset: resetCreate } =
+    useForm<CreateFormData>({ resolver: zodResolver(createSchema), mode: "onChange", defaultValues: { role: "technician", is_contact_person: false } });
   const selectedRole = useWatch({ control: ctrlCreate, name: "role" });
 
   // ── Edit form ──
-  const { register: regEdit, handleSubmit: hsEdit, formState: { errors: errEdit }, reset: resetEdit } =
-    useForm<EditFormData>({ resolver: zodResolver(editSchema) });
+  const { register: regEdit, handleSubmit: hsEdit, formState: { errors: errEdit, isValid: editIsValid }, reset: resetEdit } =
+    useForm<EditFormData>({ resolver: zodResolver(editSchema), mode: "onChange" });
 
   const customerMap = new Map<number, Customer>(customers.map((c) => [c.id, c]));
 
@@ -265,7 +265,7 @@ export default function AdminPage() {
           )}
           <div className="flex gap-3 justify-end pt-2">
             <Button type="button" variant="secondary" onClick={() => { setShowCreate(false); resetCreate(); }}>Cancel</Button>
-            <Button type="submit" loading={createMutation.isPending}>Create User</Button>
+            <Button type="submit" loading={createMutation.isPending} disabled={!createIsValid}>Create User</Button>
           </div>
         </form>
       </Modal>
@@ -361,7 +361,7 @@ export default function AdminPage() {
 
             <div className="flex gap-3 justify-end pt-2">
               <Button type="button" variant="secondary" onClick={closeEdit}>Cancel</Button>
-              <Button type="submit" loading={updateMutation.isPending}>Save Changes</Button>
+              <Button type="submit" loading={updateMutation.isPending} disabled={!editIsValid}>Save Changes</Button>
             </div>
           </form>
         )}

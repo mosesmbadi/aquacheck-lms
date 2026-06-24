@@ -47,7 +47,7 @@ export default function TestsPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["test-results"] }),
   });
 
-  const { register, handleSubmit, formState: { errors }, reset } = useForm<FormData>({ resolver: zodResolver(schema) });
+  const { register, handleSubmit, formState: { errors, isValid }, reset } = useForm<FormData>({ resolver: zodResolver(schema), mode: "onChange" });
 
   const columns = [
     { key: "id", header: "Test ID", render: (r: TestResult) => <span className="font-mono text-primary-600">#{r.id}</span> },
@@ -108,7 +108,7 @@ export default function TestsPage() {
           <Textarea label="Notes" {...register("notes")} rows={2} placeholder="Optional notes..." />
           <div className="flex gap-3 justify-end pt-2">
             <Button type="button" variant="secondary" onClick={() => { setShowCreate(false); reset(); }}>Cancel</Button>
-            <Button type="submit" loading={createMutation.isPending}>Record Result</Button>
+            <Button type="submit" loading={createMutation.isPending} disabled={!isValid}>Record Result</Button>
           </div>
         </form>
       </Modal>
