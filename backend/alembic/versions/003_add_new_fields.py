@@ -31,16 +31,15 @@ def upgrade() -> None:
     if "complaints" in inspector.get_table_names():
         existing = [c["name"] for c in inspector.get_columns("complaints")]
         if "category" not in existing:
-            # Create the enum type first (PostgreSQL)
-            try:
-                op.execute("CREATE TYPE complaintcategory AS ENUM ('complaint', 'feedback')")
-            except Exception:
-                pass  # Type may already exist
+            op.execute(sa.text(
+                "DO $$ BEGIN CREATE TYPE complaintcategory AS ENUM ('complaint', 'feedback');"
+                " EXCEPTION WHEN duplicate_object THEN NULL; END $$;"
+            ))
             op.add_column(
                 "complaints",
                 sa.Column(
                     "category",
-                    sa.Enum("complaint", "feedback", name="complaintcategory"),
+                    sa.Enum("complaint", "feedback", name="complaintcategory", create_type=False),
                     nullable=False,
                     server_default="complaint",
                 ),
@@ -50,15 +49,15 @@ def upgrade() -> None:
     if "inventory_items" in inspector.get_table_names():
         existing = [c["name"] for c in inspector.get_columns("inventory_items")]
         if "pricing_type" not in existing:
-            try:
-                op.execute("CREATE TYPE pricingtype AS ENUM ('individual', 'package')")
-            except Exception:
-                pass
+            op.execute(sa.text(
+                "DO $$ BEGIN CREATE TYPE pricingtype AS ENUM ('individual', 'package');"
+                " EXCEPTION WHEN duplicate_object THEN NULL; END $$;"
+            ))
             op.add_column(
                 "inventory_items",
                 sa.Column(
                     "pricing_type",
-                    sa.Enum("individual", "package", name="pricingtype"),
+                    sa.Enum("individual", "package", name="pricingtype", create_type=False),
                     nullable=False,
                     server_default="individual",
                 ),
@@ -68,15 +67,15 @@ def upgrade() -> None:
     if "quotations" in inspector.get_table_names():
         existing = [c["name"] for c in inspector.get_columns("quotations")]
         if "quotation_type" not in existing:
-            try:
-                op.execute("CREATE TYPE quotationtype AS ENUM ('individual', 'package')")
-            except Exception:
-                pass
+            op.execute(sa.text(
+                "DO $$ BEGIN CREATE TYPE quotationtype AS ENUM ('individual', 'package');"
+                " EXCEPTION WHEN duplicate_object THEN NULL; END $$;"
+            ))
             op.add_column(
                 "quotations",
                 sa.Column(
                     "quotation_type",
-                    sa.Enum("individual", "package", name="quotationtype"),
+                    sa.Enum("individual", "package", name="quotationtype", create_type=False),
                     nullable=False,
                     server_default="individual",
                 ),
