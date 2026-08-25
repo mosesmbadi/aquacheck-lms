@@ -17,7 +17,7 @@ ISO/IEC 17025:2017 compliant internal LIMS.
 
 ---
 
-## Quick Start
+## Quick Start - With Docker
 
 ### 1. Copy environment file
 ```bash
@@ -25,7 +25,7 @@ cp .env.example .env
 ```
 Edit `.env` if you want custom passwords or secrets.
 
-### 2. Start all services
+### 2. Start all services (If you're using docker)
 ```bash
 docker compose up --build -d
 ```
@@ -39,29 +39,6 @@ docker compose up --build -d
 
 The default admin user is created automatically on first startup.
 
----
-
-## Services
-
-### Backend (FastAPI)
-- Port: **8000**
-- API prefix: `/api/v1`
-- Auto-creates all database tables on startup
-- Seeds default admin: `admin@aquacheck.com` / `Admin@123`
-
-### Frontend (Next.js)
-- Port: **3000**
-- Communicates with backend at `NEXT_PUBLIC_API_URL`
-
-### Database (PostgreSQL 15)
-- Internal port: 5432
-- Volume: `postgres_data` (persistent)
-
-### pgAdmin
-- Port: **5050**
-- Connect to DB server: host=`db`, port=`5432`
-
----
 
 ## User Roles
 
@@ -76,11 +53,13 @@ The default admin user is created automatically on first startup.
 
 ---
 
-## Development
+## Quick Start - Without Docker
 
 ### Run backend locally (without Docker)
 ```bash
 cd backend
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 # Set DATABASE_URL in .env to point to local postgres
 uvicorn app.main:app --reload --port 8000
@@ -117,7 +96,3 @@ git pull origin main
 docker compose down
 docker compose up --build -d
 ```
-
-
-
-docker image prune -f
