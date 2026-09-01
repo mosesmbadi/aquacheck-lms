@@ -16,6 +16,7 @@ def calibration_due(db: Session = Depends(get_db), _: User = Depends(get_current
     threshold = date.today() + timedelta(days=30)
     return (
         db.query(Equipment)
+        .filter(Equipment.is_active == True)  # noqa: E712
         .filter(Equipment.calibration_due_date <= threshold)
         .filter(Equipment.calibration_due_date != None)  # noqa: E711
         .order_by(Equipment.calibration_due_date.asc())
@@ -24,8 +25,15 @@ def calibration_due(db: Session = Depends(get_db), _: User = Depends(get_current
 
 
 @router.get("", response_model=List[EquipmentOut])
-def list_equipment(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
-    return db.query(Equipment).filter(Equipment.is_active == 1).order_by(Equipment.created_at.desc()).all()
+def list_equipment(
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+    active_only: bool = True,
+):
+    query = db.query(Equipment)
+    if active_only:
+        query = query.filter(Equipment.is_active == True)  # noqa: E712
+    return query.order_by(Equipment.created_at.desc()).all()
 
 
 @router.post("", response_model=EquipmentOut, status_code=status.HTTP_201_CREATED)

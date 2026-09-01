@@ -292,6 +292,24 @@ export default function InventoryPage() {
         ),
       },
       {
+        key: "expiry_date",
+        header: "Expiry",
+        render: (r: InventoryItem) => {
+          if (!r.expiry_date) return <span className="text-xs text-gray-400">—</span>;
+          const expiry = new Date(r.expiry_date);
+          const now = new Date();
+          const daysLeft = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          const color = daysLeft < 0 ? "text-red-600 font-semibold" : daysLeft <= 30 ? "text-amber-600" : "text-gray-600";
+          const label = daysLeft < 0 ? "Expired" : `${daysLeft}d`;
+          return (
+            <span className={`text-xs ${color}`}>
+              {format(expiry, "MMM d, yyyy")}
+              <span className="ml-1 text-[10px]">({label})</span>
+            </span>
+          );
+        },
+      },
+      {
         key: "supplier",
         header: "Supplier",
         render: (r: InventoryItem) => (
@@ -567,6 +585,14 @@ export default function InventoryPage() {
               {...itemForm.register("storage_conditions")}
               placeholder="e.g. 2-8°C"
             />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Expiry Date"
+              type="date"
+              {...itemForm.register("expiry_date")}
+            />
+            <div />
           </div>
           <Textarea
             label="Description / Notes"

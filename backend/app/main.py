@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import OperationalError
 from sqlalchemy import text
 
+from app.config import settings
 from app.database import engine, Base, SessionLocal
 from app.config import settings
 from app.models import *  # noqa: F401,F403 — ensure all models are registered
@@ -386,8 +387,10 @@ def ensure_schema_compatibility():
 def on_startup():
     try:
         Base.metadata.create_all(bind=engine)
+        # Only run schema compatibility for PostgreSQL
+        if "postgresql" in settings.DATABASE_URL:
+            ensure_schema_compatibility()
         print("[LIMS] Database tables ensured.")
-        ensure_schema_compatibility()
         from app.routers.calibration_records import CERT_DIR
         CERT_DIR.mkdir(parents=True, exist_ok=True)
         print(f"[LIMS] Calibration cert upload directory: {CERT_DIR}")

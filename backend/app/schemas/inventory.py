@@ -42,6 +42,7 @@ class InventoryItemUpdate(BaseModel):
     pricing_type: Optional[PricingType] = None
     expiry_date: Optional[date] = None
     is_active: Optional[int] = None
+    expiry_date: Optional[date] = None
     notes: Optional[str] = None
 
 
