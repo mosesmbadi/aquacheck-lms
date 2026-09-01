@@ -157,20 +157,32 @@ def create_report(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Customers are not permitted to create reports.",
         )
-    contract = db.query(Contract).filter(Contract.id == payload.contract_id).first()
-    if not contract:
+    contract = (
+        db.query(Contract).filter(Contract.id == payload.contract_id).first()
+        if payload.contract_id
+        else None
+    )
+    if payload.contract_id and not contract:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contract not found")
 
     content = payload.content or {}
     sample_id = content.get("sample_id")
+    sample = None
     if sample_id:
         sample = db.query(Sample).filter(Sample.id == sample_id).first()
         if not sample:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sample not found")
-        if sample.contract_id != payload.contract_id:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Selected sample does not belong to this contract")
 
-    report = Report(**payload.model_dump(), report_number=_next_report_number(db))
+    contract_id = payload.contract_id
+    if not contract_id and sample and sample.contract_id:
+        contract_id = sample.contract_id
+
+    if contract_id and sample and sample.contract_id != contract_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Selected sample does not belong to this contract")
+
+    report_data = payload.model_dump()
+    report_data["contract_id"] = contract_id
+    report = Report(**report_data, report_number=_next_report_number(db))
     db.add(report)
     db.commit()
     db.refresh(report)
@@ -273,11 +285,17 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
     if not report:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
 
-    contract = db.query(Contract).filter(Contract.id == report.contract_id).first()
-    if not contract:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contract not found")
+    contract = (
+        db.query(Contract).filter(Contract.id == report.contract_id).first()
+        if report.contract_id
+        else None
+    )
 
-    customer = db.query(Customer).filter(Customer.id == contract.customer_id).first()
+    customer = (
+        db.query(Customer).filter(Customer.id == contract.customer_id).first()
+        if contract
+        else None
+    )
     issuer = db.query(User).filter(User.id == report.issued_by).first() if report.issued_by else None
     content = report.content or {}
     sample_id = content.get("sample_id")

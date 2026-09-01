@@ -5,7 +5,7 @@ from app.models.report import ReportType, ReportStatus
 
 
 class ReportBase(BaseModel):
-    contract_id: int
+    contract_id: Optional[int] = None
     report_type: ReportType = ReportType.test_report
     content: Optional[Dict[str, Any]] = {}
 

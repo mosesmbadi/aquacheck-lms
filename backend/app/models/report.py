@@ -25,7 +25,7 @@ class Report(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     report_number = Column(String, unique=True, index=True, nullable=False)
-    contract_id = Column(Integer, ForeignKey("contracts.id"), nullable=False)
+    contract_id = Column(Integer, ForeignKey("contracts.id"), nullable=True)
     report_type = Column(SAEnum(ReportType), default=ReportType.test_report, nullable=False)
     status = Column(SAEnum(ReportStatus), default=ReportStatus.draft, nullable=False)
     content = Column(JSON, default=dict)

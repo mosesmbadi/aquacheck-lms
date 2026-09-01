@@ -338,7 +338,7 @@ export interface CalibrationRecord {
 export interface Report {
   id: number;
   report_number: string;
-  contract_id: number;
+  contract_id?: number;
   report_type: ReportType;
   status: ReportStatus;
   content?: {

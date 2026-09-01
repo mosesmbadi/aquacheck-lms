@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Download, Send, Pencil, History, Clock } from "lucide-react";
+import { Plus, Send, Pencil, History, Clock, Printer } from "lucide-react";
 import { apiErrorMessage } from "@/lib/utils";
 import { format } from "date-fns";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
@@ -13,13 +13,17 @@ import { ReportStatusBadge } from "@/components/ui/Badge";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 import { reportsApi, contractsApi, samplesApi } from "@/lib/api";
 import type { Report, Sample } from "@/lib/types";
+import TestReportPrint from "@/components/TestReportPrint";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { getToken, getCurrentUser } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 
 const schema = z.object({
-  contract_id: z.coerce.number().min(1, "Select a contract"),
+  contract_id: z.preprocess(
+    (value) => (value === "" || value === null || value === undefined ? undefined : value),
+    z.coerce.number().int().positive().optional()
+  ),
   sample_id: z.preprocess(
     (value) => (value === "" || value === null || value === undefined ? undefined : value),
     z.coerce.number().int().positive().optional()
@@ -57,6 +61,7 @@ export default function ReportsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [editReport, setEditReport] = useState<Report | null>(null);
   const [historyReport, setHistoryReport] = useState<Report | null>(null);
+  const [printReportId, setPrintReportId] = useState<number | null>(null);
   const currentUser = getCurrentUser();
   const isCustomer = currentUser?.role === "customer";
 
@@ -119,7 +124,9 @@ export default function ReportsPage() {
 
   const selectedContractId = Number(watch("contract_id") || 0);
   const selectedSampleId = Number(watch("sample_id") || 0);
-  const filteredSamples = samples.filter((sample: Sample) => sample.contract_id === selectedContractId);
+  const filteredSamples = selectedContractId > 0
+    ? samples.filter((sample: Sample) => sample.contract_id === selectedContractId)
+    : samples;
 
   // Auto-set specification_title from the selected sample's waste_schedule
   useEffect(() => {
@@ -135,24 +142,14 @@ export default function ReportsPage() {
 
   const sampleCodeById = new Map<number, string>(samples.map((sample: Sample) => [sample.id, sample.sample_code]));
 
-  const downloadPdf = (id: number) => {
-    const url = reportsApi.pdfUrl(id);
-    const token = getToken();
-    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.blob())
-      .then((blob) => {
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        a.download = `report-${id}.pdf`;
-        a.click();
-      });
-  };
+  const printReport = reports.find((r) => r.id === printReportId) ?? null;
+  const printSampleId = printReport?.content?.sample_id ?? null;
 
   const columns = [
     { key: "report_number", header: "Report #", render: (r: Report) => <span className="font-mono font-medium text-primary-600">{r.report_number}</span> },
     { key: "report_type", header: "Type", render: (r: Report) => <span className="text-xs capitalize">{r.report_type.replace(/_/g, " ")}</span> },
     { key: "sample_id", header: "Sample", render: (r: Report) => <span className="text-gray-500 text-xs">{r.content?.sample_id ? sampleCodeById.get(r.content.sample_id) ?? `#${r.content.sample_id}` : "Contract-level"}</span> },
-    { key: "contract_id", header: "Contract", render: (r: Report) => <span className="text-gray-500 text-xs">#{r.contract_id}</span> },
+    { key: "contract_id", header: "Contract", render: (r: Report) => <span className="text-gray-500 text-xs">{r.contract_id ? `#${r.contract_id}` : "—"}</span> },
     { key: "classification", header: "Outcome", render: (r: Report) => <span className="text-gray-700 text-xs">{String(r.content?.classification ?? "—")}</span> },
     { key: "status", header: "Status", render: (r: Report) => <ReportStatusBadge status={r.status} /> },
     { key: "issued_at", header: "Issued", render: (r: Report) => <span className="text-gray-500 text-xs">{r.issued_at ? format(new Date(r.issued_at), "MMM d, yyyy") : "—"}</span> },
@@ -166,8 +163,8 @@ export default function ReportsPage() {
             </Button>
           )}
           {(r.status === "issued" || r.status === "amended") && (
-            <Button size="sm" variant="secondary" onClick={() => downloadPdf(r.id)}>
-              <Download className="w-3.5 h-3.5" /> PDF
+            <Button size="sm" variant="secondary" onClick={() => setPrintReportId(r.id)}>
+              <Printer className="w-3.5 h-3.5" /> Print
             </Button>
           )}
           {!isCustomer && (r.status === "issued" || r.status === "amended" || r.status === "draft") && (
@@ -259,10 +256,14 @@ export default function ReportsPage() {
         </Modal>
       )}
 
+      {printReportId && printSampleId && (
+        <TestReportPrint sampleId={printSampleId} onClose={() => setPrintReportId(null)} />
+      )}
+
       <Modal open={showCreate} onClose={() => { setShowCreate(false); reset(); }} title="Create Report" size="lg">
         <form onSubmit={handleSubmit(async (data) => {
           await createMutation.mutateAsync({
-            contract_id: data.contract_id,
+            contract_id: data.contract_id || undefined,
             report_type: data.report_type,
             content: {
               sample_id: data.sample_id,
@@ -286,8 +287,8 @@ export default function ReportsPage() {
           } as Partial<Report>);
           reset();
         })} className="space-y-4">
-          <Select label="Contract" error={errors.contract_id?.message} {...register("contract_id")}>
-            <option value="">Select contract...</option>
+          <Select label="Contract (optional for standalone samples)" error={errors.contract_id?.message} {...register("contract_id")}>
+            <option value="">No contract (standalone)...</option>
             {contracts.map((c) => <option key={c.id} value={c.id}>{c.contract_number} — {c.title}</option>)}
           </Select>
           <Select label="Sample" error={errors.sample_id?.message} {...register("sample_id")}>
