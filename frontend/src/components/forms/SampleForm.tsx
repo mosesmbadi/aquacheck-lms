@@ -7,7 +7,7 @@ import { z } from "zod";
 import { useQuery } from "@tanstack/react-query";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { contractsApi, customersApi, testCatalogApi, testPackagesApi } from "@/lib/api";
+import { contractsApi, customersApi, testCatalogApi, testPackagesApi, usersApi } from "@/lib/api";
 import type { TestCatalogItem, TestPackage } from "@/lib/types";
 import {
   FlaskConical,
@@ -84,10 +84,15 @@ const schema = z
       .enum(["environment", "public_sewer"])
       .optional()
       .nullable(),
+    physical_sample_id: optStr,
     description: optStr,
     notes: optStr,
     contact_person: optStr,
     submitted_by: optStr,
+    sampled_by: z.preprocess(
+      (v) => (v === "" || v === null || v === undefined ? undefined : v),
+      z.coerce.number().int().positive().optional()
+    ),
     sample_type: optStr,
     collection_date: optStr,
     collection_location: optStr,
@@ -349,6 +354,11 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
     queryFn: () => testPackagesApi.list(true).then((r) => r.data),
   });
 
+  const { data: samplerUsers = [] } = useQuery({
+    queryKey: ["users", "samplers"],
+    queryFn: () => usersApi.list().then((r) => r.data.filter((u) => u.role !== "customer" && u.is_active)),
+  });
+
   const {
     register,
     handleSubmit,
@@ -479,7 +489,7 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
   const FORM_FIELDS = new Set([
     "customer_id", "contract_id", "sample_category", "potable_type",
     "waste_industry_type", "discharge_destination", "description", "notes",
-    "contact_person", "submitted_by", "sample_type",
+    "contact_person", "submitted_by", "sampled_by", "sample_type", "physical_sample_id",
     "collection_date", "collection_location", "gps_coordinates", "storage_condition",
     "requested_test_ids",
   ]);
@@ -623,7 +633,7 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
         <div className="border border-orange-200 rounded-xl bg-orange-50/40 p-4 space-y-5">
           {/* Step 2 — Industry type */}
           <div>
-            <StepBadge n={2} label="Industry / Source Type (Schedule 4)" done={!!wasteIndustryType} />
+            <StepBadge n={2} label="Industry / Source Type (Schedule 4) *" done={!!wasteIndustryType} />
             <p className="text-xs text-gray-500 mb-2 ml-7">
               Select the type of facility or process that generated this wastewater.
               This determines which parameters need to be monitored.
@@ -652,7 +662,7 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
             <div>
               <StepBadge
                 n={3}
-                label="Where will the treated water be discharged?"
+                label="Where will the treated water be discharged? *"
                 done={!!dischargeDestination}
               />
               <p className="text-xs text-gray-500 mb-3 ml-7">
@@ -718,15 +728,23 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
       {/* Rest of form — shown after category (and waste wizard) is complete */}
       {testsReady && (
         <>
-          <Input
-            label="Sample Type / Brief Label (optional)"
-            error={errors.sample_type?.message}
-            {...register("sample_type")}
-            placeholder="e.g. Treated effluent — Nairobi facility"
-          />
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Sample Type / Brief Label (optional)"
+              error={errors.sample_type?.message}
+              {...register("sample_type")}
+              placeholder="e.g. Treated effluent — Nairobi facility"
+            />
+            <Input
+              label="Physical Sample ID (optional)"
+              error={errors.physical_sample_id?.message}
+              {...register("physical_sample_id")}
+              placeholder="ID/tag written on the physical sample"
+            />
+          </div>
 
           <Textarea
-            label="Sample Description (shown on report)"
+            label="Sample Description (optional, shown on report)"
             error={errors.description?.message}
             {...register("description")}
             rows={2}
@@ -734,7 +752,7 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
           />
 
           <Textarea
-            label="Notes (shown separately on report)"
+            label="Notes (optional, shown separately on report)"
             error={errors.notes?.message}
             {...register("notes")}
             rows={2}
@@ -743,13 +761,13 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
 
           <div className="grid grid-cols-2 gap-4">
             <Input
-              label="Submitted By"
+              label="Submitted By (optional)"
               error={errors.submitted_by?.message}
               {...register("submitted_by")}
               placeholder="Customer / organisation name"
             />
             <Input
-              label="Contact Person"
+              label="Contact Person (optional)"
               error={errors.contact_person?.message}
               {...register("contact_person")}
               placeholder="Name and phone of contact"
@@ -757,34 +775,45 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
           </div>
 
           <div className="grid grid-cols-2 gap-4">
+            <Select
+              label="Sampled By (optional)"
+              error={errors.sampled_by?.message}
+              {...register("sampled_by")}
+            >
+              <option value="">— Leave blank (defaults to AquaCheck Laboratories Ltd) —</option>
+              {samplerUsers.map((u) => (
+                <option key={u.id} value={u.id}>{u.full_name}</option>
+              ))}
+            </Select>
             <Input
               label="Collection Date (optional)"
               type="date"
               error={errors.collection_date?.message}
               {...register("collection_date")}
             />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
             <Input
               label="Collection Location (optional)"
               error={errors.collection_location?.message}
               {...register("collection_location")}
               placeholder="e.g. Nairobi, East Gate Rd"
             />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
             <Input
               label="GPS Coordinates (optional)"
               error={errors.gps_coordinates?.message}
               {...register("gps_coordinates")}
               placeholder="-1.2921, 36.8219"
             />
-            <Input
-              label="Storage Condition (optional)"
-              error={errors.storage_condition?.message}
-              {...register("storage_condition")}
-              placeholder="e.g. 4°C, dark"
-            />
           </div>
+
+          <Input
+            label="Storage Condition (optional)"
+            error={errors.storage_condition?.message}
+            {...register("storage_condition")}
+            placeholder="e.g. 4°C, dark"
+          />
 
           {/* Package quick-select — auto-checks all constituent tests */}
           {testPackages.length > 0 && sampleCategory !== "waste" && (

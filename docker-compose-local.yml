@@ -50,7 +50,7 @@ services:
     env_file:
       - .env
     ports:
-      - "8088:8000"
+      - "8001:8000"
     # environment:
     #   DATABASE_URL: ${DATABASE_URL:-postgresql://lims_user:lims_pass@db:5432/lims_db}
     #   SECRET_KEY: ${SECRET_KEY:-change-me-in-production-super-secret-key-123}
@@ -98,7 +98,7 @@ services:
   #   ports:
   #     - "3002:3000"
   #   environment:
-  #     NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://lim.aquachecklab.com/api}
+  #     NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://lims.aquachecklab.com/api}
   #   volumes:
   #     - ./frontend/src:/app/src
   #     - ./frontend/public:/app/public

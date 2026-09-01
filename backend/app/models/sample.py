@@ -27,6 +27,7 @@ class Sample(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     sample_code = Column(String, unique=True, index=True, nullable=False)
+    physical_sample_id = Column(String, nullable=True)
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=True, index=True)
     contract_id = Column(Integer, ForeignKey("contracts.id"), nullable=True)
     description = Column(Text, nullable=True)
@@ -57,9 +58,15 @@ class Sample(Base):
     notes = Column(Text, nullable=True)
     contact_person = Column(String, nullable=True)
     submitted_by = Column(String, nullable=True)
+    sampled_by = Column(Integer, ForeignKey("users.id"), nullable=True)
 
     contract = relationship("Contract", back_populates="samples")
     customer = relationship("Customer", foreign_keys=[customer_id])
     receiver = relationship("User", foreign_keys=[received_by])
+    sampler = relationship("User", foreign_keys=[sampled_by])
     test_results = relationship("TestResult", back_populates="sample")
     nonconformities = relationship("Nonconformity", back_populates="related_sample")
+
+    @property
+    def sampled_by_name(self):
+        return self.sampler.full_name if self.sampler else None

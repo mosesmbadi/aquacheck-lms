@@ -247,12 +247,15 @@ export interface Method {
 export interface Sample {
   id: number;
   sample_code: string;
+  physical_sample_id?: string;
   customer_id?: number;
   contract_id?: number;
   description?: string;
   notes?: string;
   contact_person?: string;
   submitted_by?: string;
+  sampled_by?: number;
+  sampled_by_name?: string;
   sample_type?: string;
   sample_category?: SampleCategory;
   waste_schedule?: number;
@@ -338,7 +341,8 @@ export interface CalibrationRecord {
 export interface Report {
   id: number;
   report_number: string;
-  contract_id: number;
+  contract_id?: number;
+  customer_id?: number;
   report_type: ReportType;
   status: ReportStatus;
   content?: {

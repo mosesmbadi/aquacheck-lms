@@ -55,7 +55,18 @@ export default function SamplesPage() {
   });
 
   const columns = [
-    { key: "sample_code", header: "Sample Code", render: (r: Sample) => <button className="font-mono font-medium text-primary-600 hover:text-primary-800 hover:underline" onClick={(e) => { e.stopPropagation(); router.push(`/dashboard/samples/${r.id}`); }}>{r.sample_code}</button> },
+    {
+      key: "sample_code",
+      header: "Sample Code",
+      render: (r: Sample) => (
+        <div>
+          <button className="font-mono font-medium text-primary-600 hover:text-primary-800 hover:underline" onClick={(e) => { e.stopPropagation(); router.push(`/dashboard/samples/${r.id}`); }}>{r.sample_code}</button>
+          {r.physical_sample_id && (
+            <div className="text-xs text-gray-400 font-mono">Physical ID: {r.physical_sample_id}</div>
+          )}
+        </div>
+      ),
+    },
     { key: "sample_type", header: "Type", render: (r: Sample) => <span>{r.sample_type ?? "—"}</span> },
     { key: "contract_id", header: "Contract", render: (r: Sample) => <span className="text-gray-500">{r.contract_id ? `#${r.contract_id}` : "Standalone"}</span> },
     { key: "status", header: "Status", render: (r: Sample) => <SampleStatusBadge status={r.status} /> },

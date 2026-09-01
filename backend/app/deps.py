@@ -1,4 +1,4 @@
-from typing import Generator, List
+from typing import Generator, List, Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
@@ -7,6 +7,7 @@ from app.models.user import User, UserRole
 from app.services.auth import decode_access_token
 
 bearer_scheme = HTTPBearer()
+optional_bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def get_db() -> Generator:
@@ -37,6 +38,27 @@ def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
+    return user
+
+
+def get_optional_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_bearer_scheme),
+    db: Session = Depends(get_db),
+) -> Optional[User]:
+    """Like get_current_user, but returns None instead of raising when no/invalid
+    credentials are supplied. Used by endpoints that serve both public and
+    authenticated views of the same resource (e.g. QR-code report links)."""
+    if credentials is None:
+        return None
+    payload = decode_access_token(credentials.credentials)
+    if payload is None:
+        return None
+    user_id = payload.get("sub")
+    if user_id is None:
+        return None
+    user = db.query(User).filter(User.id == int(user_id)).first()
+    if user is None or not user.is_active:
+        return None
     return user
 
 

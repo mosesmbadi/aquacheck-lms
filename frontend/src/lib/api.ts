@@ -127,6 +127,15 @@ export const reportsApi = {
     api.put<Report>(`/reports/${id}`, data),
   issue: (id: number) => api.post<Report>(`/reports/${id}/issue`),
   pdfUrl: (id: number) => `${BASE_URL}/reports/${id}/pdf`,
+  downloadPdf: async (id: number, reportNumber: string) => {
+    const res = await api.get(`/reports/${id}/pdf`, { responseType: "blob" });
+    const url = window.URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${reportNumber.replace(/\//g, "_")}.pdf`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  },
 };
 
 // ─── Complaints ───────────────────────────────────────────────────────────────

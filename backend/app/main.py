@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import OperationalError
@@ -382,6 +383,127 @@ def ensure_schema_compatibility():
             ))
             print("[LIMS] Added users.signature_b64 column.")
 
+        # reports.contract_id — allow reports for standalone (non-contract) samples
+        report_contract_nullable = connection.execute(
+            text(
+                """
+                SELECT is_nullable
+                FROM information_schema.columns
+                WHERE table_name = 'reports' AND column_name = 'contract_id'
+                """
+            )
+        ).scalar()
+        if report_contract_nullable == "NO":
+            connection.execute(text("ALTER TABLE reports ALTER COLUMN contract_id DROP NOT NULL"))
+            print("[LIMS] Updated reports.contract_id to allow standalone reports.")
+
+        # reports.customer_id — associate a report directly with a customer, independent of a contract
+        report_cust_exists = connection.execute(
+            text(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'reports' AND column_name = 'customer_id'
+                """
+            )
+        ).scalar()
+        if not report_cust_exists:
+            connection.execute(text(
+                "ALTER TABLE reports ADD COLUMN customer_id INTEGER REFERENCES customers(id)"
+            ))
+            connection.execute(text(
+                """
+                UPDATE reports SET customer_id = contracts.customer_id
+                FROM contracts
+                WHERE reports.contract_id = contracts.id AND reports.customer_id IS NULL
+                """
+            ))
+            print("[LIMS] Added reports.customer_id column and backfilled from contracts.")
+
+        # samples.sampled_by — user who physically collected the sample (optional)
+        sampled_by_exists = connection.execute(
+            text(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'samples' AND column_name = 'sampled_by'
+                """
+            )
+        ).scalar()
+        if not sampled_by_exists:
+            connection.execute(text(
+                "ALTER TABLE samples ADD COLUMN sampled_by INTEGER REFERENCES users(id)"
+            ))
+            print("[LIMS] Added samples.sampled_by column.")
+
+        # samples.physical_sample_id — optional client/field-assigned ID tying this record to a physical sample
+        physical_id_exists = connection.execute(
+            text(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'samples' AND column_name = 'physical_sample_id'
+                """
+            )
+        ).scalar()
+        if not physical_id_exists:
+            connection.execute(text(
+                "ALTER TABLE samples ADD COLUMN physical_sample_id VARCHAR"
+            ))
+            print("[LIMS] Added samples.physical_sample_id column.")
+
+
+def backfill_sample_reports():
+    """One-time catch-up: every sample should have a report entry under /reports,
+    just like it already gets a live preview under /samples. Samples created before
+    that auto-generation was added (in samples.create_sample) never got one — create
+    a draft report for each of them here."""
+    from app.models.sample import Sample  # noqa: F401 (registered via app.models import *)
+    from app.models.report import Report, ReportType
+    from app.models.contract import Contract
+
+    db = SessionLocal()
+    try:
+        rows = db.execute(
+            text(
+                """
+                SELECT s.id, s.contract_id, s.customer_id, s.sample_code
+                FROM samples s
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM reports r WHERE (r.content ->> 'sample_id')::int = s.id
+                )
+                ORDER BY s.id
+                """
+            )
+        ).fetchall()
+        if not rows:
+            return
+
+        year = datetime.now(timezone.utc).year
+        count = db.query(Report).filter(Report.report_number.like(f"RPT-{year}-%")).count()
+        for row in rows:
+            count += 1
+            report_customer_id = row.customer_id
+            if not report_customer_id and row.contract_id:
+                contract = db.query(Contract).filter(Contract.id == row.contract_id).first()
+                report_customer_id = contract.customer_id if contract else None
+
+            db.add(Report(
+                report_number=f"RPT-{year}-{str(count).zfill(5)}",
+                contract_id=row.contract_id,
+                customer_id=report_customer_id,
+                report_type=ReportType.test_report,
+                content={
+                    "sample_id": row.id,
+                    "report_title": "TEST REPORT",
+                    "overall_status": "COMPLETE",
+                },
+            ))
+        db.commit()
+        print(f"[LIMS] Backfilled {len(rows)} draft report(s) for existing samples without one.")
+    except Exception as exc:
+        db.rollback()
+        print(f"[LIMS] WARNING: could not backfill sample reports: {exc}")
+    finally:
+        db.close()
+
 
 @app.on_event("startup")
 def on_startup():
@@ -391,6 +513,7 @@ def on_startup():
         if "postgresql" in settings.DATABASE_URL:
             ensure_schema_compatibility()
         print("[LIMS] Database tables ensured.")
+        backfill_sample_reports()
         from app.routers.calibration_records import CERT_DIR
         CERT_DIR.mkdir(parents=True, exist_ok=True)
         print(f"[LIMS] Calibration cert upload directory: {CERT_DIR}")

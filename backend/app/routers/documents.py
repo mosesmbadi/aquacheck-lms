@@ -15,6 +15,7 @@ from app.services.document_service import extract_sections, generate_pdf
 
 UPLOAD_BASE = Path(os.environ.get("UPLOAD_DIR", str(Path(__file__).parent.parent.parent / "uploads")))
 DOCS_UPLOAD_DIR = UPLOAD_BASE / "documents"
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
@@ -148,6 +149,8 @@ async def upload_document_file(
         raise HTTPException(status_code=400, detail="Only PDF and DOCX files are accepted.")
 
     data = await file.read()
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File exceeds the 20 MB upload limit.")
 
     if ext == ".docx":
         with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:

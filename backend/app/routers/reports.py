@@ -6,6 +6,7 @@ import base64
 import os
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import or_
 from sqlalchemy.orm.attributes import flag_modified
 
 _LOGO_PATH = Path(__file__).parent.parent / "images" / "aquacheck logo.png"
@@ -16,6 +17,7 @@ from reportlab.lib import colors
 from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.pdfgen.canvas import Canvas
 from app.deps import get_db, get_current_user
 from app.models.user import User, UserRole
 from app.models.report import Report, ReportStatus
@@ -140,8 +142,11 @@ def list_reports(db: Session = Depends(get_db), current_user: User = Depends(get
     q = db.query(Report)
     if current_user.role == UserRole.customer and current_user.customer_id:
         q = (
-            q.join(Contract, Report.contract_id == Contract.id)
-             .filter(Contract.customer_id == current_user.customer_id)
+            q.outerjoin(Contract, Report.contract_id == Contract.id)
+             .filter(or_(
+                 Report.customer_id == current_user.customer_id,
+                 Contract.customer_id == current_user.customer_id,
+             ))
         )
     return q.order_by(Report.created_at.desc()).all()
 
@@ -157,20 +162,34 @@ def create_report(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Customers are not permitted to create reports.",
         )
-    contract = db.query(Contract).filter(Contract.id == payload.contract_id).first()
-    if not contract:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contract not found")
+    contract = None
+    if payload.contract_id:
+        contract = db.query(Contract).filter(Contract.id == payload.contract_id).first()
+        if not contract:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contract not found")
 
     content = payload.content or {}
     sample_id = content.get("sample_id")
+    sample = None
     if sample_id:
         sample = db.query(Sample).filter(Sample.id == sample_id).first()
         if not sample:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sample not found")
-        if sample.contract_id != payload.contract_id:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Selected sample does not belong to this contract")
 
-    report = Report(**payload.model_dump(), report_number=_next_report_number(db))
+    contract_id = payload.contract_id
+    if not contract_id and sample and sample.contract_id:
+        contract_id = sample.contract_id
+        contract = db.query(Contract).filter(Contract.id == contract_id).first()
+
+    if contract_id and sample and sample.contract_id and sample.contract_id != contract_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Selected sample does not belong to this contract")
+
+    resolved_customer_id = payload.customer_id or (contract.customer_id if contract else None) or (sample.customer_id if sample else None)
+
+    report_data = payload.model_dump()
+    report_data["contract_id"] = contract_id
+    report_data["customer_id"] = resolved_customer_id
+    report = Report(**report_data, report_number=_next_report_number(db))
     db.add(report)
     db.commit()
     db.refresh(report)
@@ -185,8 +204,9 @@ def get_report(report_id: int, db: Session = Depends(get_db), current_user: User
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
     # Customers may only view reports belonging to their own customer account
     if current_user.role == UserRole.customer and current_user.customer_id:
-        contract = db.query(Contract).filter(Contract.id == report.contract_id).first()
-        if not contract or contract.customer_id != current_user.customer_id:
+        contract = db.query(Contract).filter(Contract.id == report.contract_id).first() if report.contract_id else None
+        contract_customer_id = contract.customer_id if contract else None
+        if report.customer_id != current_user.customer_id and contract_customer_id != current_user.customer_id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
     return report
 
@@ -267,17 +287,44 @@ def issue_report(
     return report
 
 
+class _NumberedCanvas(Canvas):
+    """Canvas that stamps a 'Page X of Y' footer on every page. ReportLab only
+    knows the final page count once the whole document has been drawn, so pages
+    are buffered in showPage() and the footer is stamped in save(), once the
+    total is known."""
+
+    def __init__(self, *args, **kwargs):
+        Canvas.__init__(self, *args, **kwargs)
+        self._saved_page_states = []
+
+    def showPage(self):
+        self._saved_page_states.append(dict(self.__dict__))
+        self._startPage()
+
+    def save(self):
+        page_count = len(self._saved_page_states)
+        for state in self._saved_page_states:
+            self.__dict__.update(state)
+            self._draw_page_number(page_count)
+            Canvas.showPage(self)
+        Canvas.save(self)
+
+    def _draw_page_number(self, page_count):
+        self.setFont("Helvetica", 7)
+        self.setFillColor(colors.HexColor("#666666"))
+        self.drawCentredString(A4[0] / 2, 1.1 * cm, f"Page {self._pageNumber} of {page_count}")
+
+
 @router.get("/{report_id}/pdf")
 def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     report = db.query(Report).filter(Report.id == report_id).first()
     if not report:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
 
-    contract = db.query(Contract).filter(Contract.id == report.contract_id).first()
-    if not contract:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contract not found")
+    contract = db.query(Contract).filter(Contract.id == report.contract_id).first() if report.contract_id else None
 
-    customer = db.query(Customer).filter(Customer.id == contract.customer_id).first()
+    customer_id = report.customer_id or (contract.customer_id if contract else None)
+    customer = db.query(Customer).filter(Customer.id == customer_id).first() if customer_id else None
     issuer = db.query(User).filter(User.id == report.issued_by).first() if report.issued_by else None
     content = report.content or {}
     sample_id = content.get("sample_id")
@@ -326,21 +373,13 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
             company_style,
         ),
     ]
-    if qr_image:
-        header_cols.append(qr_image)
 
-    header_table = Table(
-        [header_cols],
-        colWidths=[6.2 * cm, 7.8 * cm, 3 * cm] if qr_image else [8.2 * cm, 8.8 * cm],
-    )
-    hdr_style_cmds = [
+    header_table = Table([header_cols], colWidths=[8.2 * cm, 8.8 * cm])
+    header_table.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("LINEBELOW", (0, 0), (-1, 0), 1, colors.HexColor("#60a5fa")),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-    ]
-    if qr_image:
-        hdr_style_cmds.append(("ALIGN", (2, 0), (2, 0), "CENTER"))
-    header_table.setStyle(TableStyle(hdr_style_cmds))
+    ]))
     story.append(header_table)
     story.append(Spacer(1, 0.15 * cm))
 
@@ -359,12 +398,28 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
         parts = [p for p in [customer.contact_person, customer.phone] if p]
         return ", ".join(parts) if parts else "N/A"
 
+    def _sampled_by_value():
+        override = _content_value(content, "sampled_by", None)
+        if override:
+            return override
+        if sample and sample.sampler:
+            return sample.sampler.full_name
+        return "AQUACHECK LABORATORIES LTD"
+
+    def _sample_lab_id_value():
+        override = _content_value(content, "sample_lab_id", None)
+        if override:
+            return override
+        if sample and sample.physical_sample_id:
+            return sample.physical_sample_id
+        return sample.sample_code if sample else report.report_number
+
     info_data = [
         ["SAMPLE DESCRIPTION:", sample.description if sample and sample.description else _content_value(content, "sample_description", "N/A"), "SAMPLING DATE:", _format_date(_content_value(content, "sampling_date", sample.collection_date if sample else None))],
         ["SUBMITTED BY:", _content_value(content, "submitted_by", customer.name if customer else "N/A"), "RECEIVED ON:", _format_date(_content_value(content, "received_on", sample.received_at if sample else None))],
         ["CONTACT PERSON:", _contact_person_value(), "ANALYSIS DATE:", _format_date(_content_value(content, "analysis_date", report.created_at))],
-        ["SAMPLED BY:", _content_value(content, "sampled_by", "AQUACHECK LABORATORIES LTD"), "REPORT ISSUED ON:", _format_date(report.issued_at or _content_value(content, "report_issued_on", None))],
-        ["SAMPLING LOCATION:", _content_value(content, "sampling_location", sample.collection_location if sample else "N/A"), "SAMPLE LAB ID:", _content_value(content, "sample_lab_id", sample.sample_code if sample else report.report_number)],
+        ["SAMPLED BY:", _sampled_by_value(), "REPORT ISSUED ON:", _format_date(report.issued_at or _content_value(content, "report_issued_on", None))],
+        ["SAMPLING LOCATION:", _content_value(content, "sampling_location", sample.collection_location if sample else "N/A"), "SAMPLE LAB ID:", _sample_lab_id_value()],
     ]
     info_table = Table(info_data, colWidths=[3.2 * cm, 5.3 * cm, 3.2 * cm, 5.3 * cm])
     info_table.setStyle(TableStyle([
@@ -465,7 +520,15 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
     ]))
     story.append(signatory_table)
 
-    doc.build(story)
+    if qr_image:
+        story.append(Spacer(1, 0.5 * cm))
+        qr_caption_style = ParagraphStyle("qr_caption", parent=styles["Normal"], fontSize=6, alignment=1, textColor=colors.HexColor("#666666"))
+        qr_table = Table([[qr_image]], colWidths=[17 * cm])
+        qr_table.setStyle(TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER")]))
+        story.append(qr_table)
+        story.append(Paragraph("Scan to verify", qr_caption_style))
+
+    doc.build(story, canvasmaker=_NumberedCanvas)
     buffer.seek(0)
     return StreamingResponse(
         buffer,

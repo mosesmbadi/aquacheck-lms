@@ -127,6 +127,33 @@ def create_sample(
         # Invoice creation is non-critical — log and continue
         print(f"[LIMS] Warning: could not auto-create invoice for sample {sample_code}: {exc}")
 
+    # Auto-generate a draft report for this sample so it shows up under Reports immediately,
+    # matching the preview already available under Samples.
+    try:
+        from app.models.report import Report, ReportType
+        from app.routers.reports import _next_report_number
+
+        report_cust_id = sample.customer_id
+        if not report_cust_id and payload.contract_id:
+            c = db.query(Contract).filter(Contract.id == payload.contract_id).first()
+            report_cust_id = c.customer_id if c else None
+
+        report = Report(
+            report_number=_next_report_number(db),
+            contract_id=payload.contract_id,
+            customer_id=report_cust_id,
+            report_type=ReportType.test_report,
+            content={
+                "sample_id": sample.id,
+                "report_title": "TEST REPORT",
+                "overall_status": "COMPLETE",
+            },
+        )
+        db.add(report)
+    except Exception as exc:
+        # Report creation is non-critical — log and continue
+        print(f"[LIMS] Warning: could not auto-create report for sample {sample_code}: {exc}")
+
     db.commit()
     db.refresh(sample)
     log_action(db, current_user.id, "CREATE_SAMPLE", "sample", str(sample.id))

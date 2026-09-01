@@ -3,14 +3,14 @@
 import { useState, useCallback, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Save, CheckCircle, Clock, FlaskConical, MapPin, Calendar, Printer, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Save, CheckCircle, Clock, FlaskConical, MapPin, Calendar, Printer, ShieldCheck, Pencil, Check, X } from "lucide-react";
 import { format } from "date-fns";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { SampleStatusBadge, TestStatusBadge } from "@/components/ui/Badge";
 import { samplesApi, testResultsApi, testCatalogApi, usersApi } from "@/lib/api";
-import type { TestResult, TestCatalogItem, User } from "@/lib/types";
+import type { TestResult, TestCatalogItem, User, Sample } from "@/lib/types";
 import TestReportPrint from "@/components/TestReportPrint";
 
 type ResultDraft = {
@@ -29,6 +29,8 @@ export default function SampleDetailPage() {
   const [dirty, setDirty] = useState(false);
   const [printOpen, setPrintOpen] = useState(false);
   const [signatories, setSignatories] = useState<User[]>([]);
+  const [editingPhysicalId, setEditingPhysicalId] = useState(false);
+  const [physicalIdDraft, setPhysicalIdDraft] = useState("");
 
   const { data: sample, isLoading: sampleLoading } = useQuery({
     queryKey: ["sample", sampleId],
@@ -102,6 +104,16 @@ export default function SampleDetailPage() {
     },
   });
 
+  const updatePhysicalIdMutation = useMutation({
+    mutationFn: (physical_sample_id: string) =>
+      samplesApi.update(sampleId, { physical_sample_id: physical_sample_id || null } as Partial<Sample>),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["sample", sampleId] });
+      qc.invalidateQueries({ queryKey: ["samples"] });
+      setEditingPhysicalId(false);
+    },
+  });
+
   const validateMutation = useMutation({
     mutationFn: (resultId: number) => testResultsApi.validate(resultId),
     onSuccess: () => {
@@ -112,8 +124,16 @@ export default function SampleDetailPage() {
   });
 
   const validateAllMutation = useMutation({
-    mutationFn: (resultIds: number[]) =>
-      Promise.all(resultIds.map((id) => testResultsApi.validate(id))),
+    mutationFn: async (resultIds: number[]) => {
+      // Sequential, not Promise.all: each validate call recomputes the sample's
+      // completion status from committed results, so firing them in parallel can
+      // race and leave the sample stuck (each request misses the others' commits).
+      const results = [];
+      for (const id of resultIds) {
+        results.push(await testResultsApi.validate(id));
+      }
+      return results;
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["test-results", { sample_id: sampleId }] });
       qc.invalidateQueries({ queryKey: ["sample", sampleId] });
@@ -223,6 +243,45 @@ export default function SampleDetailPage() {
                 <SampleStatusBadge status={sample.status} />
                 {sample.contract_id && (
                   <span className="text-xs text-gray-500">Contract #{sample.contract_id}</span>
+                )}
+                {editingPhysicalId ? (
+                  <span className="inline-flex items-center gap-1">
+                    <input
+                      autoFocus
+                      value={physicalIdDraft}
+                      onChange={(e) => setPhysicalIdDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") updatePhysicalIdMutation.mutate(physicalIdDraft.trim());
+                        if (e.key === "Escape") setEditingPhysicalId(false);
+                      }}
+                      placeholder="Physical sample ID"
+                      className="text-xs font-mono border border-gray-300 rounded px-1.5 py-0.5 w-36 focus:outline-none focus:ring-1 focus:ring-primary-400"
+                    />
+                    <button
+                      onClick={() => updatePhysicalIdMutation.mutate(physicalIdDraft.trim())}
+                      disabled={updatePhysicalIdMutation.isPending}
+                      className="text-primary-600 hover:text-primary-800"
+                      title="Save"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setEditingPhysicalId(false)}
+                      className="text-gray-400 hover:text-gray-600"
+                      title="Cancel"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => { setPhysicalIdDraft(sample.physical_sample_id ?? ""); setEditingPhysicalId(true); }}
+                    className="group inline-flex items-center gap-1 text-xs text-gray-500 hover:text-primary-600 font-mono"
+                    title="Edit physical sample ID"
+                  >
+                    {sample.physical_sample_id ? `Physical ID: ${sample.physical_sample_id}` : "+ Add physical ID"}
+                    <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-100" />
+                  </button>
                 )}
               </div>
             </div>

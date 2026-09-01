@@ -4,11 +4,13 @@ import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import axios from "axios";
+import { getToken } from "@/lib/auth";
 
 const baseApiUrl =
-  typeof window !== "undefined"
+  process.env.NEXT_PUBLIC_API_URL ??
+  (typeof window !== "undefined"
     ? `${window.location.protocol}//${window.location.hostname}:8088`
-    : "http://localhost:8088";
+    : "http://localhost:8088");
 
 interface PublicReport {
   report_number: string;
@@ -20,7 +22,15 @@ interface PublicReport {
   sampling_location: string;
   sampling_date: string;
   sampled_by: string;
-  parameters: Array<{ parameter: string; method: string; section: string }>;
+  parameters: Array<{
+    parameter: string;
+    method: string;
+    section: string;
+    result?: string;
+    specification?: string;
+    remarks?: string;
+  }>;
+  authorized: boolean;
   laboratory: string;
   note: string;
 }
@@ -30,8 +40,14 @@ export default function PublicReportPage() {
 
   const { data, isLoading, isError } = useQuery<PublicReport>({
     queryKey: ["public-report", token],
-    queryFn: () =>
-      axios.get(`${baseApiUrl}/api/v1/public/reports/${token}`).then((r) => r.data),
+    queryFn: () => {
+      const authToken = getToken();
+      return axios
+        .get(`${baseApiUrl}/api/v1/public/reports/${token}`, {
+          headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined,
+        })
+        .then((r) => r.data);
+    },
     retry: false,
   });
 
@@ -115,6 +131,13 @@ export default function PublicReportPage() {
                     <tr className="border-b text-left text-gray-500 text-xs">
                       <th className="pb-2">Parameter</th>
                       <th className="pb-2">Method</th>
+                      {data.authorized && (
+                        <>
+                          <th className="pb-2">Result</th>
+                          <th className="pb-2">Specification</th>
+                          <th className="pb-2">Remarks</th>
+                        </>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
@@ -122,6 +145,13 @@ export default function PublicReportPage() {
                       <tr key={i} className="border-b border-gray-50">
                         <td className="py-1.5 text-gray-800">{p.parameter}</td>
                         <td className="py-1.5 text-gray-500 text-xs">{p.method}</td>
+                        {data.authorized && (
+                          <>
+                            <td className="py-1.5 text-gray-800 font-medium">{p.result}</td>
+                            <td className="py-1.5 text-gray-500 text-xs">{p.specification}</td>
+                            <td className="py-1.5 text-gray-500 text-xs">{p.remarks}</td>
+                          </>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -131,18 +161,26 @@ export default function PublicReportPage() {
           )}
         </div>
 
-        {/* Confidentiality note */}
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-          <p className="text-sm text-amber-800">
-            <span className="font-semibold">Note: </span>{data.note}
-          </p>
-          <a
-            href="/login"
-            className="mt-2 inline-block text-xs font-medium text-amber-700 underline hover:text-amber-900"
-          >
-            Log in to view full results →
-          </a>
-        </div>
+        {/* Confidentiality / access note */}
+        {data.authorized ? (
+          <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+            <p className="text-sm text-green-800">
+              <span className="font-semibold">Verified access. </span>{data.note}
+            </p>
+          </div>
+        ) : (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+            <p className="text-sm text-amber-800">
+              <span className="font-semibold">Note: </span>{data.note}
+            </p>
+            <a
+              href="/login"
+              className="mt-2 inline-block text-xs font-medium text-amber-700 underline hover:text-amber-900"
+            >
+              Log in to view full results →
+            </a>
+          </div>
+        )}
 
         <p className="text-center text-xs text-gray-400">
           {data.laboratory} · ISO/IEC 17025 Accredited Laboratory

@@ -28,7 +28,7 @@ def calibration_due(db: Session = Depends(get_db), _: User = Depends(get_current
 def list_equipment(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
-    active_only: bool = True,
+    active_only: bool = False,
 ):
     query = db.query(Equipment)
     if active_only:
