@@ -148,8 +148,9 @@ def validate_test_result(
     tr.validated_by = current_user.id
     tr.validated_at = datetime.now(timezone.utc)
 
-    # Auto-complete sample if all requested tests are now validated
-    sample = db.query(Sample).filter(Sample.id == tr.sample_id).first()
+    # Lock the sample row so concurrent validations of sibling results (e.g. "Validate All"
+    # firing several requests at once) serialize instead of each missing the others' commits.
+    sample = db.query(Sample).filter(Sample.id == tr.sample_id).with_for_update().first()
     if sample:
         _maybe_complete_sample(sample, db)
 
@@ -185,7 +186,7 @@ def bulk_upsert_results(
     current_user: User = Depends(get_current_user),
 ):
     """Create or update test results for a sample in bulk (one row per catalog item)."""
-    sample = db.query(Sample).filter(Sample.id == payload.sample_id).first()
+    sample = db.query(Sample).filter(Sample.id == payload.sample_id).with_for_update().first()
     if not sample:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sample not found")
 

@@ -55,6 +55,8 @@ The default admin user is created automatically on first startup.
 
 ## Quick Start - Without Docker
 
+## NB: This is a Python 3.12 System
+
 ### Run backend locally (without Docker)
 ```bash
 cd backend
@@ -64,6 +66,7 @@ pip install -r requirements.txt
 # Set DATABASE_URL in .env to point to local postgres
 uvicorn app.main:app --reload --port 8000
 ```
+
 
 ### Run frontend locally (without Docker)
 ```bash

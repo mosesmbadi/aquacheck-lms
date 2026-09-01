@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Download, Send, Pencil, History, Clock } from "lucide-react";
+import { Plus, Download, Printer, Send, Pencil, History, Clock } from "lucide-react";
 import { apiErrorMessage } from "@/lib/utils";
 import { format } from "date-fns";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
@@ -17,9 +17,13 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { getToken, getCurrentUser } from "@/lib/auth";
+import TestReportPrint from "@/components/TestReportPrint";
 
 const schema = z.object({
-  contract_id: z.coerce.number().min(1, "Select a contract"),
+  contract_id: z.preprocess(
+    (value) => (value === "" || value === null || value === undefined ? undefined : value),
+    z.coerce.number().int().positive().optional()
+  ),
   sample_id: z.preprocess(
     (value) => (value === "" || value === null || value === undefined ? undefined : value),
     z.coerce.number().int().positive().optional()
@@ -57,6 +61,7 @@ export default function ReportsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [editReport, setEditReport] = useState<Report | null>(null);
   const [historyReport, setHistoryReport] = useState<Report | null>(null);
+  const [printReport, setPrintReport] = useState<Report | null>(null);
   const currentUser = getCurrentUser();
   const isCustomer = currentUser?.role === "customer";
 
@@ -119,7 +124,9 @@ export default function ReportsPage() {
 
   const selectedContractId = Number(watch("contract_id") || 0);
   const selectedSampleId = Number(watch("sample_id") || 0);
-  const filteredSamples = samples.filter((sample: Sample) => sample.contract_id === selectedContractId);
+  const filteredSamples = selectedContractId
+    ? samples.filter((sample: Sample) => sample.contract_id === selectedContractId)
+    : samples;
 
   // Auto-set specification_title from the selected sample's waste_schedule
   useEffect(() => {
@@ -152,7 +159,7 @@ export default function ReportsPage() {
     { key: "report_number", header: "Report #", render: (r: Report) => <span className="font-mono font-medium text-primary-600">{r.report_number}</span> },
     { key: "report_type", header: "Type", render: (r: Report) => <span className="text-xs capitalize">{r.report_type.replace(/_/g, " ")}</span> },
     { key: "sample_id", header: "Sample", render: (r: Report) => <span className="text-gray-500 text-xs">{r.content?.sample_id ? sampleCodeById.get(r.content.sample_id) ?? `#${r.content.sample_id}` : "Contract-level"}</span> },
-    { key: "contract_id", header: "Contract", render: (r: Report) => <span className="text-gray-500 text-xs">#{r.contract_id}</span> },
+    { key: "contract_id", header: "Contract", render: (r: Report) => <span className="text-gray-500 text-xs">{r.contract_id ? `#${r.contract_id}` : "Standalone"}</span> },
     { key: "classification", header: "Outcome", render: (r: Report) => <span className="text-gray-700 text-xs">{String(r.content?.classification ?? "—")}</span> },
     { key: "status", header: "Status", render: (r: Report) => <ReportStatusBadge status={r.status} /> },
     { key: "issued_at", header: "Issued", render: (r: Report) => <span className="text-gray-500 text-xs">{r.issued_at ? format(new Date(r.issued_at), "MMM d, yyyy") : "—"}</span> },
@@ -165,7 +172,12 @@ export default function ReportsPage() {
               <Send className="w-3.5 h-3.5" /> Issue
             </Button>
           )}
-          {(r.status === "issued" || r.status === "amended") && (
+          {(r.status === "issued" || r.status === "amended") && r.content?.sample_id && (
+            <Button size="sm" variant="secondary" onClick={() => setPrintReport(r)}>
+              <Printer className="w-3.5 h-3.5" /> View / Print
+            </Button>
+          )}
+          {(r.status === "issued" || r.status === "amended") && !r.content?.sample_id && (
             <Button size="sm" variant="secondary" onClick={() => downloadPdf(r.id)}>
               <Download className="w-3.5 h-3.5" /> PDF
             </Button>
@@ -203,6 +215,15 @@ export default function ReportsPage() {
         )}
         <Table<Report> columns={columns} data={reports} loading={isLoading} emptyMessage="No reports generated." keyExtractor={(r) => r.id} />
       </div>
+
+      {/* ── View / Print Report (same layout as Samples page) ───────────────── */}
+      {printReport && printReport.content?.sample_id && (
+        <TestReportPrint
+          sampleId={printReport.content.sample_id}
+          reportId={printReport.id}
+          onClose={() => setPrintReport(null)}
+        />
+      )}
 
       {/* ── Edit Report Modal ──────────────────────────────────────────────── */}
       {editReport && (
@@ -286,8 +307,8 @@ export default function ReportsPage() {
           } as Partial<Report>);
           reset();
         })} className="space-y-4">
-          <Select label="Contract" error={errors.contract_id?.message} {...register("contract_id")}>
-            <option value="">Select contract...</option>
+          <Select label="Contract (optional — leave blank for a standalone sample)" error={errors.contract_id?.message} {...register("contract_id")}>
+            <option value="">No contract / standalone</option>
             {contracts.map((c) => <option key={c.id} value={c.id}>{c.contract_number} — {c.title}</option>)}
           </Select>
           <Select label="Sample" error={errors.sample_id?.message} {...register("sample_id")}>

@@ -112,8 +112,16 @@ export default function SampleDetailPage() {
   });
 
   const validateAllMutation = useMutation({
-    mutationFn: (resultIds: number[]) =>
-      Promise.all(resultIds.map((id) => testResultsApi.validate(id))),
+    mutationFn: async (resultIds: number[]) => {
+      // Sequential, not Promise.all: each validate call recomputes the sample's
+      // completion status from committed results, so firing them in parallel can
+      // race and leave the sample stuck (each request misses the others' commits).
+      const results = [];
+      for (const id of resultIds) {
+        results.push(await testResultsApi.validate(id));
+      }
+      return results;
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["test-results", { sample_id: sampleId }] });
       qc.invalidateQueries({ queryKey: ["sample", sampleId] });

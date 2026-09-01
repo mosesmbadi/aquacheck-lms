@@ -9,6 +9,7 @@ import type { Sample, TestResult, TestCatalogItem, Contract, Customer, Report, U
 
 interface TestReportPrintProps {
   sampleId: number;
+  reportId?: number;
   onClose: () => void;
   signatories?: User[];
 }
@@ -36,7 +37,7 @@ function getCompliance(item: TestCatalogItem, value: string): string {
   return "";
 }
 
-export default function TestReportPrint({ sampleId, onClose, signatories = [] }: TestReportPrintProps) {
+export default function TestReportPrint({ sampleId, reportId, onClose, signatories = [] }: TestReportPrintProps) {
   const printRef = useRef<HTMLDivElement>(null);
   const [printing, setPrinting] = useState(false);
 
@@ -73,7 +74,9 @@ export default function TestReportPrint({ sampleId, onClose, signatories = [] }:
     queryFn: () => reportsApi.list().then((r) => r.data),
   });
 
-  const report = allReports.find((r) => r.content?.sample_id === sampleId);
+  const report = reportId
+    ? allReports.find((r) => r.id === reportId)
+    : allReports.find((r) => r.content?.sample_id === sampleId);
   const rc = report?.content || {};
 
   const resultByCatalog: Record<number, TestResult> = {};
@@ -114,22 +117,21 @@ export default function TestReportPrint({ sampleId, onClose, signatories = [] }:
           <base href="${window.location.origin}/" />
           <title>Test Report - ${sample?.sample_code || ""}</title>
           <style>
-            @page { size: A4; margin: 15mm; }
+            @page {
+              size: A4;
+              margin: 15mm 15mm 20mm 15mm;
+              @bottom-center {
+                content: "Page " counter(page) " of " counter(pages);
+                font-size: 8px;
+                color: #666;
+              }
+            }
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body { font-family: 'Times New Roman', Times, serif; font-size: 11px; color: #000; }
+            table { page-break-inside: auto; }
+            thead { display: table-header-group; }
+            tr { page-break-inside: avoid; page-break-after: auto; }
             .report { max-width: 700px; margin: 0 auto; }
-            .meta-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 11px; }
-            .meta-table td { padding: 2px 4px; vertical-align: top; }
-            .results-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 10px; }
-            .results-table th, .results-table td { border: 1px solid #000; padding: 3px 5px; text-align: left; }
-            .results-table th { background: #e0e0e0; font-weight: bold; font-size: 10px; text-transform: uppercase; }
-            .section-header td { background: #333; color: #fff; font-weight: bold; border: 1px solid #000; padding: 4px 5px; text-transform: uppercase; }
-            .notes-section { font-size: 9px; margin: 8px 0; line-height: 1.5; }
-            .disclaimer { font-size: 9px; margin: 8px 0; font-style: italic; line-height: 1.4; }
-            .comments { font-size: 10px; margin: 8px 0; line-height: 1.4; }
-            .signatures { display: flex; justify-content: space-between; margin-top: 30px; font-size: 11px; }
-            .signature-block { text-align: center; }
-            .revision-section { font-size: 8px; margin-top: 8px; border-top: 1px solid #ccc; padding-top: 6px; color: #555; }
             img { max-width: 100%; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           </style>
         </head>
@@ -245,13 +247,6 @@ export default function TestReportPrint({ sampleId, onClose, signatories = [] }:
                 <div>Website: www.aquachecklab.com</div>
                 <div>TEL: 0755596064/0734933839</div>
               </div>
-              {qrApiUrl && (
-                <div style={{ marginLeft: "8px", textAlign: "center" }}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={qrApiUrl} alt="Report QR" style={{ width: "70px", height: "70px" }} />
-                  <div style={{ fontSize: "7px", color: "#666", marginTop: "2px" }}>Scan to verify</div>
-                </div>
-              )}
             </div>
 
             <hr style={{ border: "none", borderTop: "2px solid #000", margin: "5px 0" }} />
@@ -276,31 +271,31 @@ export default function TestReportPrint({ sampleId, onClose, signatories = [] }:
                   <td style={{ padding: "2px 4px" }}><strong>SAMPLE DESCRIPTION:</strong></td>
                   <td style={{ padding: "2px 4px", textTransform: "uppercase" }} colSpan={2}>{sample.description || sample.sample_type || "WATER SAMPLE"}</td>
                   <td style={{ padding: "2px 4px", textAlign: "right" }}><strong>SAMPLING DATE:</strong></td>
-                  <td style={{ padding: "2px 4px" }}>{samplingDate}</td>
+                  <td style={{ padding: "2px 4px", textAlign: "right" }}>{samplingDate}</td>
                 </tr>
                 <tr>
                   <td style={{ padding: "2px 4px" }}><strong>SUBMITTED BY:</strong></td>
                   <td style={{ padding: "2px 4px", textTransform: "uppercase" }} colSpan={2}>{submittedBy}</td>
                   <td style={{ padding: "2px 4px", textAlign: "right" }}><strong>RECEIVED ON:</strong></td>
-                  <td style={{ padding: "2px 4px" }}>{receivedDate}</td>
+                  <td style={{ padding: "2px 4px", textAlign: "right" }}>{receivedDate}</td>
                 </tr>
                 <tr>
                   <td style={{ padding: "2px 4px" }}><strong>CONTACT PERSON:</strong></td>
                   <td style={{ padding: "2px 4px", textTransform: "uppercase" }} colSpan={2}>{contactPerson}</td>
                   <td style={{ padding: "2px 4px", textAlign: "right" }}><strong>ANALYSIS DATE:</strong></td>
-                  <td style={{ padding: "2px 4px" }}>{analysisDate}</td>
+                  <td style={{ padding: "2px 4px", textAlign: "right" }}>{analysisDate}</td>
                 </tr>
                 <tr>
                   <td style={{ padding: "2px 4px" }}><strong>SAMPLED BY:</strong></td>
                   <td style={{ padding: "2px 4px", textTransform: "uppercase" }} colSpan={2}>{sampledBy}</td>
                   <td style={{ padding: "2px 4px", textAlign: "right" }}><strong>REPORT ISSUED ON:</strong></td>
-                  <td style={{ padding: "2px 4px" }}>{reportIssuedDate}</td>
+                  <td style={{ padding: "2px 4px", textAlign: "right" }}>{reportIssuedDate}</td>
                 </tr>
                 <tr>
                   <td style={{ padding: "2px 4px" }}><strong>SAMPLING LOCATION:</strong></td>
                   <td style={{ padding: "2px 4px", textTransform: "uppercase" }} colSpan={2}>{sample.collection_location || "—"}</td>
                   <td style={{ padding: "2px 4px", textAlign: "right" }}><strong>SAMPLE LAB ID:</strong></td>
-                  <td style={{ padding: "2px 4px" }}>{sampleLabId}</td>
+                  <td style={{ padding: "2px 4px", textAlign: "right" }}>{sampleLabId}</td>
                 </tr>
                 {sampleNotes && (
                   <tr>
@@ -328,7 +323,7 @@ export default function TestReportPrint({ sampleId, onClose, signatories = [] }:
               </thead>
               <tbody>
                 {!isWaste && physicochemical.length > 0 && (
-                  <tr>
+                  <tr style={{ pageBreakAfter: "avoid", breakAfter: "avoid" }}>
                     <td colSpan={5} style={{ background: "#333", color: "#fff", border: "1px solid #000", padding: "4px 5px", fontWeight: "bold", textTransform: "uppercase" }}>
                       Physio-Chemical Test
                     </td>
@@ -353,7 +348,7 @@ export default function TestReportPrint({ sampleId, onClose, signatories = [] }:
                   );
                 })}
                 {!isWaste && microbiological.length > 0 && (
-                  <tr>
+                  <tr style={{ pageBreakAfter: "avoid", breakAfter: "avoid" }}>
                     <td colSpan={5} style={{ background: "#333", color: "#fff", border: "1px solid #000", padding: "4px 5px", fontWeight: "bold", textTransform: "uppercase" }}>
                       Microbiological Test
                     </td>
@@ -411,7 +406,7 @@ export default function TestReportPrint({ sampleId, onClose, signatories = [] }:
             )}
 
             {/* Signatures */}
-            <div style={{ display: "flex", justifyContent: signatories.length > 0 ? "space-around" : "space-between", marginTop: "40px", fontSize: "11px", flexWrap: "wrap", gap: "16px" }}>
+            <div style={{ display: "flex", justifyContent: signatories.length > 0 ? "space-around" : "space-between", marginTop: "40px", fontSize: "11px", flexWrap: "wrap", gap: "16px", pageBreakInside: "avoid", breakInside: "avoid" }}>
               {signatories.length > 0 ? signatories.map((sig) => (
                 <div key={sig.id} style={{ textAlign: "center" }}>
                   {sig.signature_b64 && (
@@ -459,6 +454,15 @@ export default function TestReportPrint({ sampleId, onClose, signatories = [] }:
             <div style={{ textAlign: "center", marginTop: "20px", fontSize: "12px", fontWeight: "bold" }}>
               {reportIssuedDate}
             </div>
+
+            {/* QR code — moved to bottom of report */}
+            {qrApiUrl && (
+              <div style={{ textAlign: "center", marginTop: "16px" }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={qrApiUrl} alt="Report QR" style={{ width: "70px", height: "70px" }} />
+                <div style={{ fontSize: "7px", color: "#666", marginTop: "2px" }}>Scan to verify</div>
+              </div>
+            )}
 
             {/* Revision history — only show if there are entries */}
             {revisionHistory.length > 0 && (
