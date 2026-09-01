@@ -14,6 +14,7 @@ class EquipmentBase(BaseModel):
     calibration_due_date: Optional[date] = None
     last_calibration_date: Optional[date] = None
     calibration_certificate_ref: Optional[str] = None
+    is_active: bool = True
 
 
 class EquipmentCreate(EquipmentBase):
@@ -30,12 +31,13 @@ class EquipmentUpdate(BaseModel):
     calibration_due_date: Optional[date] = None
     last_calibration_date: Optional[date] = None
     calibration_certificate_ref: Optional[str] = None
+    is_active: Optional[bool] = None
 
 
 class EquipmentOut(EquipmentBase):
     id: int
     status: EquipmentStatus
-    is_active: int
+    is_active: bool
     created_at: datetime
     updated_at: datetime
 
