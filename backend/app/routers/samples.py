@@ -147,7 +147,6 @@ def create_sample(
                 "sample_id": sample.id,
                 "report_title": "TEST REPORT",
                 "overall_status": "COMPLETE",
-                "sampled_by": "AQUACHECK LABORATORIES LTD",
             },
         )
         db.add(report)

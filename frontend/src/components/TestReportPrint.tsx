@@ -186,10 +186,10 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
     scheduleContext = "KS EAS 12:2018 specifications for treated potable water";
   }
 
-  const sampledBy: string = rc.sampled_by || "AQUACHECK LABORATORIES LTD";
+  const sampledBy: string = rc.sampled_by || sample.sampled_by_name || "AQUACHECK LABORATORIES LTD";
   const submittedBy: string = rc.submitted_by || (sample as Sample & { submitted_by?: string }).submitted_by || customer?.name || "—";
   const contactPerson: string = rc.client_contact || (sample as Sample & { contact_person?: string }).contact_person || (customer?.contact_person ? `${customer.contact_person}${customer.phone ? ` - ${customer.phone}` : ""}` : "—");
-  const sampleLabId: string = rc.sample_lab_id || sample.sample_code;
+  const sampleLabId: string = rc.sample_lab_id || sample.physical_sample_id || sample.sample_code;
   const authorizerName: string = rc.authorizer_name || "Victor Mutai";
   const authorizerTitle: string = rc.authorizer_title || "Water Chemist";
   const analystName: string = rc.analyst_name || "";

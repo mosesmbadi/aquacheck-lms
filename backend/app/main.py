@@ -418,6 +418,36 @@ def ensure_schema_compatibility():
             ))
             print("[LIMS] Added reports.customer_id column and backfilled from contracts.")
 
+        # samples.sampled_by — user who physically collected the sample (optional)
+        sampled_by_exists = connection.execute(
+            text(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'samples' AND column_name = 'sampled_by'
+                """
+            )
+        ).scalar()
+        if not sampled_by_exists:
+            connection.execute(text(
+                "ALTER TABLE samples ADD COLUMN sampled_by INTEGER REFERENCES users(id)"
+            ))
+            print("[LIMS] Added samples.sampled_by column.")
+
+        # samples.physical_sample_id — optional client/field-assigned ID tying this record to a physical sample
+        physical_id_exists = connection.execute(
+            text(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'samples' AND column_name = 'physical_sample_id'
+                """
+            )
+        ).scalar()
+        if not physical_id_exists:
+            connection.execute(text(
+                "ALTER TABLE samples ADD COLUMN physical_sample_id VARCHAR"
+            ))
+            print("[LIMS] Added samples.physical_sample_id column.")
+
 
 def backfill_sample_reports():
     """One-time catch-up: every sample should have a report entry under /reports,
@@ -463,7 +493,6 @@ def backfill_sample_reports():
                     "sample_id": row.id,
                     "report_title": "TEST REPORT",
                     "overall_status": "COMPLETE",
-                    "sampled_by": "AQUACHECK LABORATORIES LTD",
                 },
             ))
         db.commit()

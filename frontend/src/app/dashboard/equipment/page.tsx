@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, AlertCircle, Clock, Download, Trash2, CircleCheck, CircleX, TriangleAlert, Pencil } from "lucide-react";
+import { Plus, AlertCircle, Clock, Download, Trash2, CircleCheck, CircleX, TriangleAlert, Pencil, Search } from "lucide-react";
 import { format } from "date-fns";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/Button";
@@ -284,10 +284,24 @@ export default function EquipmentPage() {
   const [historyEquipment, setHistoryEquipment] = useState<Equipment | null>(null);
   const [createError, setCreateError] = useState("");
   const [editError, setEditError] = useState("");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("active");
 
   const { data: equipment = [], isLoading } = useQuery({
     queryKey: ["equipment"],
     queryFn: () => equipmentApi.list().then((r) => r.data),
+  });
+
+  const filteredEquipment = equipment.filter((e) => {
+    const matchSearch =
+      !search ||
+      e.equipment_id.toLowerCase().includes(search.toLowerCase()) ||
+      e.name.toLowerCase().includes(search.toLowerCase());
+    const matchStatus =
+      !statusFilter ||
+      (statusFilter === "active" && e.is_active) ||
+      (statusFilter === "inactive" && !e.is_active);
+    return matchSearch && matchStatus;
   });
   const { data: calDue = [] } = useQuery({
     queryKey: ["equipment-calibration-due"],
@@ -410,11 +424,32 @@ export default function EquipmentPage() {
           </div>
         )}
 
-        <div className="flex justify-end">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex gap-3 flex-1">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search equipment..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-primary-400 focus:ring-1 focus:ring-primary-400 outline-none"
+              />
+            </div>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-primary-400 outline-none bg-white"
+            >
+              <option value="">All Statuses</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </div>
           <Button onClick={() => setShowCreate(true)}><Plus className="w-4 h-4" />Add Equipment</Button>
         </div>
 
-        <Table<Equipment> columns={columns} data={equipment} loading={isLoading} emptyMessage="No equipment registered." keyExtractor={(r) => r.id} />
+        <Table<Equipment> columns={columns} data={filteredEquipment} loading={isLoading} emptyMessage="No equipment registered." keyExtractor={(r) => r.id} />
       </div>
 
       {/* Add Equipment modal */}

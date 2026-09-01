@@ -224,6 +224,16 @@ function SectionEditor({
 
 // ─── Add Document Modal ───────────────────────────────────────────────────────
 
+const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20 MB
+const ALLOWED_FILE_TYPES = new Set([".pdf", ".docx"]);
+
+function validateDocFile(file: File): string | null {
+  const ext = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
+  if (!ALLOWED_FILE_TYPES.has(ext)) return "Only PDF and DOCX files are accepted.";
+  if (file.size > MAX_FILE_SIZE) return "File exceeds the 20 MB limit.";
+  return null;
+}
+
 const CATEGORY_LABELS: Record<DocumentCategory, string> = {
   sop: "SOP",
   masterlist: "Master List",
@@ -412,7 +422,20 @@ function AddDocumentModal({
                 type="file"
                 accept=".pdf,.docx"
                 className="hidden"
-                onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
+                onChange={(e) => {
+                  const f = e.target.files?.[0] ?? null;
+                  if (f) {
+                    const validationError = validateDocFile(f);
+                    if (validationError) {
+                      setError(validationError);
+                      setSelectedFile(null);
+                      if (fileRef.current) fileRef.current.value = "";
+                      return;
+                    }
+                  }
+                  setError(null);
+                  setSelectedFile(f);
+                }}
               />
               {selectedFile ? (
                 <div className="flex items-center justify-between gap-3 px-4 py-3 bg-primary-50 border border-primary-200 rounded-xl">
@@ -471,6 +494,7 @@ function DocumentCard({ doc, isAdmin }: { doc: Document; isAdmin: boolean }) {
   const [previewing, setPreviewing] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [replaceFile, setReplaceFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
 
   const [form, setForm] = useState({
     title:          doc.title,
@@ -569,8 +593,24 @@ function DocumentCard({ doc, isAdmin }: { doc: Document; isAdmin: boolean }) {
               type="file"
               accept=".pdf,.docx"
               className="hidden"
-              onChange={(e) => setReplaceFile(e.target.files?.[0] ?? null)}
+              onChange={(e) => {
+                const f = e.target.files?.[0] ?? null;
+                if (f) {
+                  const validationError = validateDocFile(f);
+                  if (validationError) {
+                    setFileError(validationError);
+                    setReplaceFile(null);
+                    if (replaceFileRef.current) replaceFileRef.current.value = "";
+                    return;
+                  }
+                }
+                setFileError(null);
+                setReplaceFile(f);
+              }}
             />
+            {fileError && (
+              <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-2">{fileError}</p>
+            )}
             {replaceFile ? (
               <div className="flex items-center justify-between gap-3 px-3 py-2.5 bg-indigo-50 border border-indigo-200 rounded-lg">
                 <div className="flex items-center gap-2 min-w-0">

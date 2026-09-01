@@ -391,12 +391,28 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
         parts = [p for p in [customer.contact_person, customer.phone] if p]
         return ", ".join(parts) if parts else "N/A"
 
+    def _sampled_by_value():
+        override = _content_value(content, "sampled_by", None)
+        if override:
+            return override
+        if sample and sample.sampler:
+            return sample.sampler.full_name
+        return "AQUACHECK LABORATORIES LTD"
+
+    def _sample_lab_id_value():
+        override = _content_value(content, "sample_lab_id", None)
+        if override:
+            return override
+        if sample and sample.physical_sample_id:
+            return sample.physical_sample_id
+        return sample.sample_code if sample else report.report_number
+
     info_data = [
         ["SAMPLE DESCRIPTION:", sample.description if sample and sample.description else _content_value(content, "sample_description", "N/A"), "SAMPLING DATE:", _format_date(_content_value(content, "sampling_date", sample.collection_date if sample else None))],
         ["SUBMITTED BY:", _content_value(content, "submitted_by", customer.name if customer else "N/A"), "RECEIVED ON:", _format_date(_content_value(content, "received_on", sample.received_at if sample else None))],
         ["CONTACT PERSON:", _contact_person_value(), "ANALYSIS DATE:", _format_date(_content_value(content, "analysis_date", report.created_at))],
-        ["SAMPLED BY:", _content_value(content, "sampled_by", "AQUACHECK LABORATORIES LTD"), "REPORT ISSUED ON:", _format_date(report.issued_at or _content_value(content, "report_issued_on", None))],
-        ["SAMPLING LOCATION:", _content_value(content, "sampling_location", sample.collection_location if sample else "N/A"), "SAMPLE LAB ID:", _content_value(content, "sample_lab_id", sample.sample_code if sample else report.report_number)],
+        ["SAMPLED BY:", _sampled_by_value(), "REPORT ISSUED ON:", _format_date(report.issued_at or _content_value(content, "report_issued_on", None))],
+        ["SAMPLING LOCATION:", _content_value(content, "sampling_location", sample.collection_location if sample else "N/A"), "SAMPLE LAB ID:", _sample_lab_id_value()],
     ]
     info_table = Table(info_data, colWidths=[3.2 * cm, 5.3 * cm, 3.2 * cm, 5.3 * cm])
     info_table.setStyle(TableStyle([

@@ -25,7 +25,7 @@ def calibration_due(db: Session = Depends(get_db), _: User = Depends(get_current
 
 @router.get("", response_model=List[EquipmentOut])
 def list_equipment(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
-    return db.query(Equipment).filter(Equipment.is_active == 1).order_by(Equipment.created_at.desc()).all()
+    return db.query(Equipment).order_by(Equipment.created_at.desc()).all()
 
 
 @router.post("", response_model=EquipmentOut, status_code=status.HTTP_201_CREATED)

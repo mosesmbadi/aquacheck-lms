@@ -88,7 +88,7 @@ def get_public_report(
         "sample_description": (sample.description if sample else None) or content.get("sample_description", "—"),
         "sampling_location": content.get("sampling_location", sample.collection_location if sample else "—"),
         "sampling_date": content.get("sampling_date", str(sample.collection_date) if sample and sample.collection_date else "—"),
-        "sampled_by": content.get("sampled_by", "AQUACHECK LABORATORIES LTD"),
+        "sampled_by": content.get("sampled_by") or (sample.sampler.full_name if sample and sample.sampler else None) or "AQUACHECK LABORATORIES LTD",
         "parameters": parameters,
         "authorized": is_authorized,
         "laboratory": "AquaCheck Laboratories Limited",

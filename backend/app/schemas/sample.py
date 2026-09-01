@@ -7,10 +7,12 @@ from app.models.sample import SampleStatus, SampleCategory
 class SampleBase(BaseModel):
     customer_id: Optional[int] = None
     contract_id: Optional[int] = Field(None, gt=0)
+    physical_sample_id: Optional[str] = None
     description: Optional[str] = None
     notes: Optional[str] = None
     contact_person: Optional[str] = None
     submitted_by: Optional[str] = None
+    sampled_by: Optional[int] = None
     sample_type: Optional[str] = None
     sample_category: Optional[SampleCategory] = None
     waste_schedule: Optional[int] = None
@@ -22,7 +24,7 @@ class SampleBase(BaseModel):
     storage_condition: Optional[str] = None
     requested_test_ids: Optional[List[int]] = Field(default_factory=list)
 
-    @field_validator("contract_id", mode="before")
+    @field_validator("contract_id", "sampled_by", mode="before")
     @classmethod
     def normalize_contract_id(cls, value):
         if value in ("", 0, "0"):
@@ -36,10 +38,12 @@ class SampleCreate(SampleBase):
 
 class SampleUpdate(BaseModel):
     contract_id: Optional[int] = Field(None, gt=0)
+    physical_sample_id: Optional[str] = None
     description: Optional[str] = None
     notes: Optional[str] = None
     contact_person: Optional[str] = None
     submitted_by: Optional[str] = None
+    sampled_by: Optional[int] = None
     sample_type: Optional[str] = None
     sample_category: Optional[SampleCategory] = None
     waste_schedule: Optional[int] = None
@@ -54,7 +58,7 @@ class SampleUpdate(BaseModel):
     disposal_method: Optional[str] = None
     requested_test_ids: Optional[List[int]] = None
 
-    @field_validator("contract_id", mode="before")
+    @field_validator("contract_id", "sampled_by", mode="before")
     @classmethod
     def normalize_contract_id(cls, value):
         if value in ("", 0, "0"):
@@ -80,6 +84,7 @@ class SampleOut(SampleBase):
     notes: Optional[str] = None
     contact_person: Optional[str] = None
     submitted_by: Optional[str] = None
+    sampled_by_name: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
