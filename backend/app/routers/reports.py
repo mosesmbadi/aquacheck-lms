@@ -175,12 +175,19 @@ def create_report(
         sample = db.query(Sample).filter(Sample.id == sample_id).first()
         if not sample:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sample not found")
-        if contract and sample.contract_id and sample.contract_id != payload.contract_id:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Selected sample does not belong to this contract")
+
+    contract_id = payload.contract_id
+    if not contract_id and sample and sample.contract_id:
+        contract_id = sample.contract_id
+        contract = db.query(Contract).filter(Contract.id == contract_id).first()
+
+    if contract_id and sample and sample.contract_id and sample.contract_id != contract_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Selected sample does not belong to this contract")
 
     resolved_customer_id = payload.customer_id or (contract.customer_id if contract else None) or (sample.customer_id if sample else None)
 
     report_data = payload.model_dump()
+    report_data["contract_id"] = contract_id
     report_data["customer_id"] = resolved_customer_id
     report = Report(**report_data, report_number=_next_report_number(db))
     db.add(report)

@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useRef, useState, useEffect } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Printer, X, Clock } from "lucide-react";
 import { samplesApi, testResultsApi, testCatalogApi, contractsApi, customersApi, reportsApi } from "@/lib/api";
@@ -68,7 +68,6 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
     enabled: !!contract?.customer_id,
   });
 
-  // Fetch reports to find the report for this sample
   const { data: allReports = [] } = useQuery<Report[]>({
     queryKey: ["reports"],
     queryFn: () => reportsApi.list().then((r) => r.data),
@@ -77,6 +76,24 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
   const report = reportId
     ? allReports.find((r) => r.id === reportId)
     : allReports.find((r) => r.content?.sample_id === sampleId);
+  const qc = useQueryClient();
+
+  const createReport = useMutation<Report, unknown, void>({
+    mutationFn: () =>
+      reportsApi.create({
+        contract_id: sample?.contract_id,
+        report_type: "test_report",
+        content: { sample_id: sampleId },
+      }).then((r) => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["reports"] }),
+  });
+
+  useEffect(() => {
+    if (!reportId && sample && !report && !createReport.isPending) {
+      createReport.mutate();
+    }
+  }, [reportId, sample?.id, report?.id]);
+
   const rc = report?.content || {};
 
   const resultByCatalog: Record<number, TestResult> = {};

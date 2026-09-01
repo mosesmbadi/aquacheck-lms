@@ -13,11 +13,11 @@ import { ReportStatusBadge } from "@/components/ui/Badge";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 import { reportsApi, contractsApi, samplesApi } from "@/lib/api";
 import type { Report, Sample } from "@/lib/types";
+import TestReportPrint from "@/components/TestReportPrint";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { getToken, getCurrentUser } from "@/lib/auth";
-import TestReportPrint from "@/components/TestReportPrint";
+import { getCurrentUser } from "@/lib/auth";
 
 const schema = z.object({
   contract_id: z.preprocess(
@@ -124,7 +124,7 @@ export default function ReportsPage() {
 
   const selectedContractId = Number(watch("contract_id") || 0);
   const selectedSampleId = Number(watch("sample_id") || 0);
-  const filteredSamples = selectedContractId
+  const filteredSamples = selectedContractId > 0
     ? samples.filter((sample: Sample) => sample.contract_id === selectedContractId)
     : samples;
 
@@ -141,19 +141,6 @@ export default function ReportsPage() {
   }, [selectedSampleId, samples]);  // eslint-disable-line
 
   const sampleCodeById = new Map<number, string>(samples.map((sample: Sample) => [sample.id, sample.sample_code]));
-
-  const downloadPdf = (id: number) => {
-    const url = reportsApi.pdfUrl(id);
-    const token = getToken();
-    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.blob())
-      .then((blob) => {
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        a.download = `report-${id}.pdf`;
-        a.click();
-      });
-  };
 
   const columns = [
     { key: "report_number", header: "Report #", render: (r: Report) => <span className="font-mono font-medium text-primary-600">{r.report_number}</span> },
@@ -178,7 +165,7 @@ export default function ReportsPage() {
             </Button>
           )}
           {(r.status === "issued" || r.status === "amended") && !r.content?.sample_id && (
-            <Button size="sm" variant="secondary" onClick={() => downloadPdf(r.id)}>
+            <Button size="sm" variant="secondary" onClick={() => reportsApi.downloadPdf(r.id, r.report_number)}>
               <Download className="w-3.5 h-3.5" /> PDF
             </Button>
           )}
@@ -283,7 +270,7 @@ export default function ReportsPage() {
       <Modal open={showCreate} onClose={() => { setShowCreate(false); reset(); }} title="Create Report" size="lg">
         <form onSubmit={handleSubmit(async (data) => {
           await createMutation.mutateAsync({
-            contract_id: data.contract_id,
+            contract_id: data.contract_id || undefined,
             report_type: data.report_type,
             content: {
               sample_id: data.sample_id,
