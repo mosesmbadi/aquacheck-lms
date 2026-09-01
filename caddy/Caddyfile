@@ -2,7 +2,7 @@
     email admin@aquachecklab.com
 }
 
-lim.aquachecklab.com {
+lims.aquachecklab.com {
     route {
         coraza_waf {
             load_owasp_crs
@@ -20,7 +20,7 @@ lim.aquachecklab.com {
         }
 
         # API traffic → FastAPI backend
-        handle /api/* {
+        handle_path /api/* {
             reverse_proxy backend:8000
         }
 
