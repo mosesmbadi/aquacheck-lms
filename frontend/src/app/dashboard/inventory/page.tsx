@@ -566,13 +566,17 @@ export default function InventoryPage() {
               {...itemForm.register("unit_cost")}
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <Input label="Supplier" {...itemForm.register("supplier")} />
             <Input
               label="Catalog #"
               {...itemForm.register("catalog_number")}
               placeholder="Manufacturer ref"
             />
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Expiry Date</label>
+              <input type="date" {...itemForm.register("expiry_date")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-primary-400 focus:ring-1 focus:ring-primary-400 outline-none" />
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <Input
@@ -1084,6 +1088,7 @@ function LedgerView({ item }: { item: InventoryItem }) {
                 <th className="px-3 py-2 font-medium text-right">Qty</th>
                 <th className="px-3 py-2 font-medium text-right">Balance</th>
                 <th className="px-3 py-2 font-medium">Lot</th>
+                <th className="px-3 py-2 font-medium">Expiry</th>
                 <th className="px-3 py-2 font-medium">Ref</th>
               </tr>
             </thead>
@@ -1114,6 +1119,7 @@ function LedgerView({ item }: { item: InventoryItem }) {
                     {t.balance_after} {item.unit}
                   </td>
                   <td className="px-3 py-2 text-gray-600">{t.lot_number ?? "—"}</td>
+                  <td className="px-3 py-2 text-gray-600">{t.expiry_date ? format(new Date(t.expiry_date), "dd MMM yyyy") : "—"}</td>
                   <td className="px-3 py-2 text-gray-600">{t.reference ?? "—"}</td>
                 </tr>
               ))}
