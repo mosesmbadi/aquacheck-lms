@@ -28,7 +28,7 @@ from app.routers import (
     public,
     invoices,
 )
-from app.routers import calibration_records, test_packages
+from app.routers import calibration_records, test_packages, result_qualifiers
 
 app = FastAPI(
     title="AquaCheck LIMS API",
@@ -58,6 +58,7 @@ for router_module in [
     auth, users, customers, contracts, samples,
     test_results, equipment, calibration_records, reports, complaints, nonconformities, quality,
     test_catalog, test_packages, documents, inventory, quotations, public, invoices,
+    result_qualifiers,
 ]:
     app.include_router(router_module.router, prefix=API_PREFIX)
 
@@ -530,6 +531,13 @@ def on_startup():
             print(f"[LIMS] Seeded {added} dialysis water test catalog items.")
         else:
             print("[LIMS] Test catalog already up to date.")
+
+        from app.routers.result_qualifiers import seed_result_qualifiers
+        qual_added = seed_result_qualifiers(db)
+        if qual_added:
+            print(f"[LIMS] Seeded {qual_added} result qualifiers / legend abbreviations.")
+        else:
+            print("[LIMS] Result qualifiers already up to date.")
 
         from app.services.seed_customers import seed_customers
         cust_added = seed_customers(db)

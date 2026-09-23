@@ -111,6 +111,30 @@ export interface TestCatalogItem {
   updated_at: string;
 }
 
+// ─── Result Qualifiers ────────────────────────────────────────────────────────
+/** "qualifier" tokens are typed into a result box; "abbreviation" rows are legend-only. */
+export type QualifierKind = "qualifier" | "abbreviation";
+export type LegendScope = "all" | "waste" | "non_waste";
+
+export interface ResultQualifier {
+  id: number;
+  code: string;
+  label: string;
+  kind: QualifierKind;
+  /** Extra spellings matched case-insensitively against a result value or standard limit. */
+  aliases: string[];
+  /** The number the token stands for, if any (ND -> 0). */
+  numeric_equivalent?: number | null;
+  /** Token sits above any finite limit (TNTC). */
+  exceeds_limit: boolean;
+  /** Analyte was present — drives evaluation against "Not Detectable" style limits. */
+  is_detected: boolean;
+  legend_scope: LegendScope;
+  show_in_legend: boolean;
+  sort_order: number;
+  is_active: boolean;
+}
+
 // ─── Quotations ───────────────────────────────────────────────────────────────
 export type QuotationStatus = "draft" | "sent" | "accepted" | "rejected" | "expired";
 

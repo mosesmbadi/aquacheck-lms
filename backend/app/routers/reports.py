@@ -25,9 +25,12 @@ from app.models.contract import Contract
 from app.models.customer import Customer
 from app.models.sample import Sample
 from app.models.test_result import TestResult
+from app.models.test_catalog import TestCatalogItem, TestCategory
+from app.models.result_qualifier import ResultQualifier
 from app.schemas.report import ReportCreate, ReportUpdate, ReportOut
 from app.services.audit import log_action
 from app.services.barcode import generate_barcode
+from app.services.compliance import evaluate_remark, legend_entries
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
 
@@ -51,6 +54,11 @@ def _format_date(value):
     return str(value)
 
 
+_CATEGORY_SECTIONS = {
+    TestCategory.physicochemical: "PHYSIO-CHEMICAL TEST",
+    TestCategory.microbiological: "MICROBIOLOGICAL TEST",
+}
+
 _SCHEDULE_SPEC_HEADERS = {
     3: "NEMA STANDARD FOR EFFLUENT WATER; THIRD SCHEDULE.\nMaximum levels Permissible.",
     4: "NEMA MONITORING GUIDE;\nFOURTH SCHEDULE.",
@@ -65,11 +73,12 @@ _SCHEDULE_CONTEXT = {
 }
 
 
-def _schedule_ns_note(waste_schedule):
-    base = "NS: No Set Standard, ND: Not Detectable, TNTC: Too numerous to count, USEPA: United States Environmental Protection Agency, APHA: American Public Health Association."
-    if waste_schedule:
-        return base + " NEMA: National Environmental Management Authority."
-    return base + " KS: Kenya Standard, EAS: East African Standard."
+def _legend_note(qualifiers, waste_schedule):
+    """Legend line under the results table, built from the editable qualifier table."""
+    entries = legend_entries(qualifiers, is_waste=bool(waste_schedule))
+    if not entries:
+        return ""
+    return ", ".join(f"{q.code}: {q.label}" for q in entries) + "."
 
 
 def _remarks_para(remarks, style):
@@ -91,39 +100,74 @@ def _auto_comment(sample, result_sections):
         for row in section.get("rows", [])
         if "NON-COMPLIANT" in str(row.get("remarks", "")).upper()
     ]
+    untested = [
+        row.get("parameter", "")
+        for section in result_sections
+        for row in section.get("rows", [])
+        if str(row.get("remarks", "")).strip().lower() == "not tested"
+    ]
+    # The conformity statement covers only parameters actually measured, so any gap is
+    # stated rather than left to inference.
+    gap = (
+        " The following requested parameters were not tested and are excluded from this "
+        f"statement: {', '.join(p for p in untested if p)}."
+        if untested
+        else ""
+    )
     if not non_compliant:
-        return f"All tested parameters comply with the applicable NEMA schedule {sample.waste_schedule} standards."
+        return (
+            f"All tested parameters comply with the applicable NEMA schedule "
+            f"{sample.waste_schedule} standards." + gap
+        )
     context = _SCHEDULE_CONTEXT.get(sample.waste_schedule, "the applicable standards")
     param_list = ", ".join(p for p in non_compliant if p)
     return (
         f"The parameters; {param_list} do not meet the set specifications for {context} "
         "based on the legal notice No.120 of EMCA, 2006. Treatment is therefore recommended."
+        + gap
     )
 
 
-def _result_sections(test_results, content: dict, sample=None):
+def _result_sections(test_results, content: dict, sample=None, catalog_by_id=None, qualifiers=()):
     manual_sections = content.get("result_sections")
     if isinstance(manual_sections, list) and manual_sections:
         return manual_sections
 
+    catalog_by_id = catalog_by_id or {}
     waste_schedule = getattr(sample, "waste_schedule", None) if sample else None
     default_spec_header = _SCHEDULE_SPEC_HEADERS.get(waste_schedule, "SPECIFICATION")
 
     sections = OrderedDict()
     for result in test_results:
         raw = result.raw_observations or {}
-        section_name = raw.get("section") or "TEST"
+        catalog_item = catalog_by_id.get(result.catalog_item_id)
+        section_name = raw.get("section") or (
+            _CATEGORY_SECTIONS.get(getattr(catalog_item, "category", None)) if catalog_item else None
+        ) or "TEST"
+        specification = (
+            raw.get("specification")
+            or raw.get("standard_limit")
+            or raw.get("limit")
+            or (catalog_item.standard_limit if catalog_item else None)
+            or "—"
+        )
+        # Remarks are derived from the same rules the entry screen and the print view
+        # use; a remark stored on the result only ever acts as a manual override.
+        # A parameter with no result reports as untested — never defaulted to a value
+        # and never counted as a pass (ISO/IEC 17025 §7.8.2).
+        remark = evaluate_remark(specification, result.result_value, qualifiers)
+        remarks = raw.get("remarks") or raw.get("compliance") or remark.label
         sections.setdefault(section_name, []).append(
             {
-                "parameter": raw.get("parameter_name") or (result.method.name if result.method else f"Method #{result.method_id}"),
+                "parameter": raw.get("parameter_name") or (catalog_item.name if catalog_item else None) or (result.method.name if result.method else f"Method #{result.method_id}"),
                 "method": raw.get("method_name") or (
                     result.method.standard_reference
                     if result.method and result.method.standard_reference
-                    else result.method.code if result.method else "N/A"
-                ),
-                "result": result.result_value or "Pending",
-                "specification": raw.get("specification") or raw.get("standard_limit") or raw.get("limit") or "—",
-                "remarks": raw.get("remarks") or raw.get("compliance") or result.notes or "—",
+                    else result.method.code if result.method else None
+                ) or (catalog_item.method_name if catalog_item else None) or "N/A",
+                "result": (result.result_value or "").strip() or "—",
+                "specification": specification,
+                "remarks": remarks,
             }
         )
 
@@ -323,7 +367,13 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
 
     contract = db.query(Contract).filter(Contract.id == report.contract_id).first() if report.contract_id else None
 
-    customer_id = report.customer_id or (contract.customer_id if contract else None)
+    # A sample may be linked to a client directly (standalone sample) or through its
+    # contract; fall back through both before giving up.
+    customer_id = (
+        report.customer_id
+        or (contract.customer_id if contract else None)
+        or (sample.customer_id if sample else None)
+    )
     customer = db.query(Customer).filter(Customer.id == customer_id).first() if customer_id else None
     issuer = db.query(User).filter(User.id == report.issued_by).first() if report.issued_by else None
     content = report.content or {}
@@ -337,6 +387,20 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
             .order_by(TestResult.created_at.asc())
             .all()
         )
+
+    catalog_by_id = {}
+    catalog_ids = [r.catalog_item_id for r in test_results if r.catalog_item_id]
+    if catalog_ids:
+        catalog_by_id = {
+            item.id: item
+            for item in db.query(TestCatalogItem).filter(TestCatalogItem.id.in_(catalog_ids)).all()
+        }
+    qualifiers = (
+        db.query(ResultQualifier)
+        .filter(ResultQualifier.is_active == True)  # noqa: E712
+        .order_by(ResultQualifier.sort_order, ResultQualifier.code)
+        .all()
+    )
 
     waste_schedule = getattr(sample, "waste_schedule", None) if sample else None
 
@@ -393,10 +457,25 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
         override = _content_value(content, "client_contact", None)
         if override:
             return override
+        if sample is not None and sample.contact_person:
+            return sample.contact_person
         if not customer:
             return "N/A"
         parts = [p for p in [customer.contact_person, customer.phone] if p]
         return ", ".join(parts) if parts else "N/A"
+
+    def _submitted_by_value():
+        override = _content_value(content, "submitted_by", None)
+        if override:
+            return override
+        # The client is the party the report is issued to, so a linked one takes
+        # precedence. Without a client (walk-in or ad-hoc sample) the contact person
+        # stands in.
+        if customer:
+            return customer.name
+        if sample is not None and sample.submitted_by:
+            return sample.submitted_by
+        return _contact_person_value()
 
     def _sampled_by_value():
         override = _content_value(content, "sampled_by", None)
@@ -416,7 +495,7 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
 
     info_data = [
         ["SAMPLE DESCRIPTION:", sample.description if sample and sample.description else _content_value(content, "sample_description", "N/A"), "SAMPLING DATE:", _format_date(_content_value(content, "sampling_date", sample.collection_date if sample else None))],
-        ["SUBMITTED BY:", _content_value(content, "submitted_by", customer.name if customer else "N/A"), "RECEIVED ON:", _format_date(_content_value(content, "received_on", sample.received_at if sample else None))],
+        ["SUBMITTED BY:", _submitted_by_value(), "RECEIVED ON:", _format_date(_content_value(content, "received_on", sample.received_at if sample else None))],
         ["CONTACT PERSON:", _contact_person_value(), "ANALYSIS DATE:", _format_date(_content_value(content, "analysis_date", report.created_at))],
         ["SAMPLED BY:", _sampled_by_value(), "REPORT ISSUED ON:", _format_date(report.issued_at or _content_value(content, "report_issued_on", None))],
         ["SAMPLING LOCATION:", _content_value(content, "sampling_location", sample.collection_location if sample else "N/A"), "SAMPLE LAB ID:", _sample_lab_id_value()],
@@ -434,7 +513,7 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
     story.append(info_table)
     story.append(Spacer(1, 0.2 * cm))
 
-    result_sections = _result_sections(test_results, content, sample)
+    result_sections = _result_sections(test_results, content, sample, catalog_by_id, qualifiers)
     if result_sections:
         for section in result_sections:
             spec_header = section.get("specification_header", "SPECIFICATION")
@@ -468,9 +547,10 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
     else:
         story.append(Paragraph("No analytical results are linked to this report yet.", styles["Normal"]))
 
-    ns_note = _content_value(content, "ns_definition", None) or _schedule_ns_note(waste_schedule)
+    legend_note = _content_value(content, "ns_definition", None) or _legend_note(qualifiers, waste_schedule)
     story.append(Spacer(1, 0.2 * cm))
-    story.append(Paragraph(f"<b>NS:</b> {ns_note}", small_style))
+    if legend_note:
+        story.append(Paragraph(legend_note, small_style))
     story.append(Paragraph("<b>DISCLAIMER</b>", small_style))
     story.append(Paragraph(
         _content_value(

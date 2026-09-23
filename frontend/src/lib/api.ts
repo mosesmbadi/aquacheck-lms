@@ -339,6 +339,18 @@ export const testCatalogApi = {
     }),
 };
 
+// ─── Result Qualifiers ────────────────────────────────────────────────────────
+export const resultQualifiersApi = {
+  list: (params?: { kind?: import("./types").QualifierKind; active_only?: boolean }) =>
+    api.get<import("./types").ResultQualifier[]>("/result-qualifiers", { params }),
+  create: (data: Partial<import("./types").ResultQualifier>) =>
+    api.post<import("./types").ResultQualifier>("/result-qualifiers", data),
+  update: (id: number, data: Partial<import("./types").ResultQualifier>) =>
+    api.put<import("./types").ResultQualifier>(`/result-qualifiers/${id}`, data),
+  delete: (id: number) => api.delete(`/result-qualifiers/${id}`),
+  seed: () => api.post<{ added: number; message: string }>("/result-qualifiers/seed"),
+};
+
 // ─── Invoices ─────────────────────────────────────────────────────────────────
 export const invoicesApi = {
   list: () => api.get<Invoice[]>("/invoices"),

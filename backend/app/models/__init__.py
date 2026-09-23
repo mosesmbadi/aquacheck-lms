@@ -19,6 +19,7 @@ from app.models.quotation import Quotation, QuotationStatus
 from app.models.calibration_record import CalibrationRecord, CalibrationResult
 from app.models.invoice import Invoice, InvoiceStatus
 from app.models.test_package import TestPackage, TestPackageItem
+from app.models.result_qualifier import ResultQualifier, QualifierKind, LegendScope
 
 __all__ = [
     "User", "UserRole",
@@ -40,4 +41,5 @@ __all__ = [
     "CalibrationRecord", "CalibrationResult",
     "Invoice", "InvoiceStatus",
     "TestPackage", "TestPackageItem",
+    "ResultQualifier", "QualifierKind", "LegendScope",
 ]

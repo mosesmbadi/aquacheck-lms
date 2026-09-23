@@ -20,6 +20,7 @@ import {
   Package as PackageIcon,
   Receipt,
   FileSpreadsheet,
+  Tags,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getCurrentUser, logout } from "@/lib/auth";
@@ -52,6 +53,7 @@ const adminItems = [{ label: "Admin", href: "/dashboard/admin", icon: Settings }
 const catalogItems = [
   { label: "Test Catalog", href: "/dashboard/catalog/tests", icon: Library },
   { label: "Test Packages", href: "/dashboard/catalog/packages", icon: PackageIcon },
+  { label: "Result Qualifiers", href: "/dashboard/catalog/qualifiers", icon: Tags },
 ];
 
 const settingsItems = [{ label: "Docs", href: "/dashboard/settings/docs", icon: BookMarked }];

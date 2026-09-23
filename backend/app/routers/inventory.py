@@ -64,13 +64,21 @@ def inventory_stats(db: Session = Depends(get_db), _: User = Depends(get_current
     low = sum(1 for i in items if i.current_stock <= i.minimum_stock)
 
     soon = date.today() + timedelta(days=30)
-    expiring = (
+
+    item_expiring = sum(
+        1 for i in items
+        if i.expiry_date and i.expiry_date <= soon
+    )
+
+    tx_expiring = (
         db.query(func.count(func.distinct(InventoryTransaction.item_id)))
         .filter(InventoryTransaction.expiry_date != None)  # noqa: E711
         .filter(InventoryTransaction.expiry_date <= soon)
         .filter(InventoryTransaction.transaction_type == TransactionType.receive)
         .scalar() or 0
     )
+
+    expiring = item_expiring or tx_expiring
 
     total_value = sum(
         (i.current_stock * (i.unit_cost or 0.0)) for i in items
@@ -531,8 +539,9 @@ async def import_items_csv(
             min_stock = _parse_float(row.get("minimum_stock", "")) or 0.0
             opening_stock = _parse_float(row.get("opening_stock", "")) or 0.0
             unit_cost = _parse_float(row.get("unit_cost", ""))
+            expiry_date = _parse_date(row.get("expiry_date", ""))
         except ValueError as e:
-            errors.append(f"Row {idx}: numeric parse error — {e}")
+            errors.append(f"Row {idx}: parse error — {e}")
             skipped += 1
             continue
 
@@ -548,8 +557,8 @@ async def import_items_csv(
             "storage_location": (row.get("storage_location") or "").strip() or None,
             "storage_conditions": (row.get("storage_conditions") or "").strip() or None,
             "unit_cost": unit_cost,
-            "description": (row.get("description") or "").strip() or None,
             "expiry_date": _parse_date(row.get("expiry_date", "")),
+            "description": (row.get("description") or "").strip() or None,
         }
 
         if existing:
