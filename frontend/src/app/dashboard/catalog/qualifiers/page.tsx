@@ -78,7 +78,7 @@ export default function ResultQualifiersPage() {
     mutationFn: (data: Partial<ResultQualifier>) => resultQualifiersApi.create(data),
     onSuccess: () => { invalidate(); closeModal(); },
     onError: (err: unknown) =>
-      setMutationError(apiErrorMessage(err, "Failed to save. Admin or manager role required.")),
+      setMutationError(apiErrorMessage(err, "Could not save the qualifier.")),
   });
 
   const updateMutation = useMutation({
@@ -86,7 +86,7 @@ export default function ResultQualifiersPage() {
       resultQualifiersApi.update(id, data),
     onSuccess: () => { invalidate(); closeModal(); },
     onError: (err: unknown) =>
-      setMutationError(apiErrorMessage(err, "Failed to save changes. Admin or manager role required.")),
+      setMutationError(apiErrorMessage(err, "Could not save your changes.")),
   });
 
   const toggleMutation = useMutation({
@@ -94,14 +94,14 @@ export default function ResultQualifiersPage() {
       resultQualifiersApi.update(item.id, { is_active: !item.is_active }),
     onSuccess: invalidate,
     onError: (err: unknown) =>
-      setMutationError(apiErrorMessage(err, "Failed to update. Admin or manager role required.")),
+      setMutationError(apiErrorMessage(err, "Could not update the qualifier.")),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => resultQualifiersApi.delete(id),
     onSuccess: () => { invalidate(); setMutationError(""); },
     onError: (err: unknown) =>
-      setMutationError(apiErrorMessage(err, "Failed to delete. Admin or manager role required.")),
+      setMutationError(apiErrorMessage(err, "Could not delete the qualifier.")),
   });
 
   const {

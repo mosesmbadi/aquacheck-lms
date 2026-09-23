@@ -1,6 +1,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
@@ -8,6 +9,8 @@ from app.database import get_db
 from app.deps import require_role
 from app.models.user import UserRole
 from app.models.test_catalog import TestCatalogItem, TestCategory
+from app.models.test_result import TestResult
+from app.models.test_package import TestPackage, TestPackageItem
 
 router = APIRouter(prefix="/test-catalog", tags=["Test Catalog"])
 
@@ -668,8 +671,57 @@ def delete_catalog_item(
     item = db.query(TestCatalogItem).filter(TestCatalogItem.id == item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Catalog item not found")
-    db.delete(item)
-    db.commit()
+
+    # Test results carry the traceability of an issued report back to the catalog entry
+    # it was measured against, so that entry must outlive them. A test that is no longer
+    # offered is retired with is_active instead of being destroyed.
+    result_count = (
+        db.query(TestResult).filter(TestResult.catalog_item_id == item_id).count()
+    )
+    if result_count:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"'{item.name}' has {result_count} recorded test "
+                f"result{'s' if result_count != 1 else ''} and cannot be deleted. "
+                "Deactivate it instead to remove it from new sample requests."
+            ),
+        )
+
+    # test_package_items.catalog_item_id has no DB-level constraint (see the note on the
+    # model), so nothing stops this delete from leaving packages pointing at a missing
+    # row. Check it here or the corruption is silent.
+    package_names = [
+        name
+        for (name,) in db.query(TestPackage.name)
+        .join(TestPackageItem, TestPackageItem.package_id == TestPackage.id)
+        .filter(TestPackageItem.catalog_item_id == item_id)
+        .distinct()
+        .all()
+    ]
+    if package_names:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"'{item.name}' is part of the test package(s): {', '.join(package_names)}. "
+                "Remove it from those packages first, or deactivate it instead."
+            ),
+        )
+
+    try:
+        db.delete(item)
+        db.commit()
+    except IntegrityError:
+        # Anything else still referencing the row — surface it as a conflict rather than
+        # letting it surface as an unexplained 500.
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"'{item.name}' is still referenced by other records and cannot be "
+                "deleted. Deactivate it instead."
+            ),
+        )
 
 
 @router.post("/seed", response_model=dict)
