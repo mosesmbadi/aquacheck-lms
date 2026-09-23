@@ -9,8 +9,9 @@ import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { SampleStatusBadge, TestStatusBadge } from "@/components/ui/Badge";
-import { samplesApi, testResultsApi, testCatalogApi, usersApi } from "@/lib/api";
-import type { TestResult, TestCatalogItem, User, Sample } from "@/lib/types";
+import { samplesApi, testResultsApi, testCatalogApi, usersApi, resultQualifiersApi } from "@/lib/api";
+import type { TestResult, TestCatalogItem, User, Sample, ResultQualifier } from "@/lib/types";
+import { evaluateRemark, type Remark } from "@/lib/compliance";
 import TestReportPrint from "@/components/TestReportPrint";
 
 type ResultDraft = {
@@ -47,6 +48,11 @@ export default function SampleDetailPage() {
   const { data: catalogItems = [] } = useQuery({
     queryKey: ["test-catalog"],
     queryFn: () => testCatalogApi.list({ active_only: true }).then((r) => r.data),
+  });
+
+  const { data: qualifiers = [] } = useQuery<ResultQualifier[]>({
+    queryKey: ["result-qualifiers"],
+    queryFn: () => resultQualifiersApi.list({ active_only: true }).then((r) => r.data),
   });
 
   const { data: staffUsers = [] } = useQuery({
@@ -171,33 +177,10 @@ export default function SampleDetailPage() {
   const physicochemical = requestedItems.filter((c) => c.category === "physicochemical");
   const microbiological = requestedItems.filter((c) => c.category === "microbiological");
 
-  // Compliance helper
-  const getCompliance = (item: TestCatalogItem, value: string): string | null => {
-    if (!value || !item.standard_limit || item.standard_limit === "—") return null;
-    const limit = item.standard_limit;
-    if (limit === "Not Detectable") {
-      const lower = value.toLowerCase();
-      return lower === "nd" || lower === "not detectable" || lower === "not detected" || lower === "0"
-        ? "COMPLIANT"
-        : "NON-COMPLIANT";
-    }
-    // Range like "5.5 – 7.5" or "6.5-8.5"
-    const rangeMatch = limit.match(/^([\d.]+)\s*[–-]\s*([\d.]+)$/);
-    if (rangeMatch) {
-      const num = parseFloat(value);
-      if (isNaN(num)) return null;
-      const lo = parseFloat(rangeMatch[1]);
-      const hi = parseFloat(rangeMatch[2]);
-      return num >= lo && num <= hi ? "COMPLIANT" : "NON-COMPLIANT";
-    }
-    // Single numeric limit — result must be ≤ limit
-    const limitNum = parseFloat(limit);
-    const valNum = parseFloat(value);
-    if (!isNaN(limitNum) && !isNaN(valNum)) {
-      return valNum <= limitNum ? "COMPLIANT" : "NON-COMPLIANT";
-    }
-    return null;
-  };
+  // Compliance is evaluated by the shared helper against the editable qualifier
+  // vocabulary, so the entry screen and the printed report always agree.
+  const getRemark = (item: TestCatalogItem, value: string): Remark =>
+    evaluateRemark(item.standard_limit, value, qualifiers);
 
   if (sampleLoading) {
     return (
@@ -465,7 +448,7 @@ export default function SampleDetailPage() {
                         existingResult={resultByCatalog[item.id]}
                         onUpdate={updateDraft}
                         onValidate={(rid) => validateMutation.mutate(rid)}
-                        getCompliance={getCompliance}
+                        getRemark={getRemark}
                       />
                     ))}
                   </tbody>
@@ -495,7 +478,7 @@ export default function SampleDetailPage() {
                         existingResult={resultByCatalog[item.id]}
                         onUpdate={updateDraft}
                         onValidate={(rid) => validateMutation.mutate(rid)}
-                        getCompliance={getCompliance}
+                        getRemark={getRemark}
                       />
                     ))}
                   </tbody>
@@ -582,17 +565,17 @@ function ResultEntryRow({
   existingResult,
   onUpdate,
   onValidate,
-  getCompliance,
+  getRemark,
 }: {
   item: TestCatalogItem;
   draft: { result_value: string; notes: string };
   existingResult?: TestResult;
   onUpdate: (catalogId: number, field: "result_value" | "notes", value: string) => void;
   onValidate: (resultId: number) => void;
-  getCompliance: (item: TestCatalogItem, value: string) => string | null;
+  getRemark: (item: TestCatalogItem, value: string) => Remark;
 }) {
   const value = draft.result_value;
-  const compliance = getCompliance(item, value);
+  const remark = getRemark(item, value);
   const isValidated = existingResult?.status === "validated";
 
   return (
@@ -630,18 +613,23 @@ function ResultEntryRow({
 
       {/* Compliance remarks */}
       <td className="px-3 py-1.5 text-center">
-        {value && compliance ? (
+        {value ? (
           <span
+            title={remark.advisory ?? undefined}
             className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded ${
-              compliance === "COMPLIANT"
+              remark.kind === "compliant"
                 ? "bg-green-100 text-green-800"
-                : "bg-red-100 text-red-800"
+                : remark.kind === "non_compliant"
+                  ? "bg-red-100 text-red-800"
+                  : remark.advisory
+                    // Out of range / cannot be evaluated — needs the analyst's attention
+                    // even though no conformity statement is possible.
+                    ? "bg-amber-100 text-amber-800 cursor-help"
+                    : "bg-gray-100 text-gray-500"
             }`}
           >
-            {compliance}
+            {remark.kind === "out_of_range" ? "OUT OF RANGE" : remark.label}
           </span>
-        ) : value ? (
-          <span className="text-[10px] text-gray-400">NS</span>
         ) : null}
       </td>
 

@@ -4,37 +4,15 @@ import { useRef, useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Printer, X, Clock } from "lucide-react";
-import { samplesApi, testResultsApi, testCatalogApi, contractsApi, customersApi, reportsApi } from "@/lib/api";
-import type { Sample, TestResult, TestCatalogItem, Contract, Customer, Report, User } from "@/lib/types";
+import { samplesApi, testResultsApi, testCatalogApi, contractsApi, customersApi, reportsApi, resultQualifiersApi } from "@/lib/api";
+import type { Sample, TestResult, TestCatalogItem, Contract, Customer, Report, User, ResultQualifier } from "@/lib/types";
+import { evaluateRemark, legendEntries } from "@/lib/compliance";
 
 interface TestReportPrintProps {
   sampleId: number;
   reportId?: number;
   onClose: () => void;
   signatories?: User[];
-}
-
-function getCompliance(item: TestCatalogItem, value: string): string {
-  if (!value || !item.standard_limit || item.standard_limit === "—") return "";
-  const limit = item.standard_limit;
-  if (limit === "Not Detectable") {
-    const lower = value.toLowerCase();
-    return lower === "nd" || lower === "not detectable" || lower === "not detected" || lower === "0"
-      ? "COMPLIANT"
-      : "NON-COMPLIANT";
-  }
-  const rangeMatch = limit.match(/^([\d.]+)\s*[–-]\s*([\d.]+)$/);
-  if (rangeMatch) {
-    const num = parseFloat(value);
-    if (isNaN(num)) return "";
-    return num >= parseFloat(rangeMatch[1]) && num <= parseFloat(rangeMatch[2]) ? "COMPLIANT" : "NON-COMPLIANT";
-  }
-  const limitNum = parseFloat(limit);
-  const valNum = parseFloat(value);
-  if (!isNaN(limitNum) && !isNaN(valNum)) {
-    return valNum <= limitNum ? "COMPLIANT" : "NON-COMPLIANT";
-  }
-  return "";
 }
 
 export default function TestReportPrint({ sampleId, reportId, onClose, signatories = [] }: TestReportPrintProps) {
@@ -56,16 +34,25 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
     queryFn: () => testCatalogApi.list({ active_only: true }).then((r) => r.data),
   });
 
+  const { data: qualifiers = [] } = useQuery<ResultQualifier[]>({
+    queryKey: ["result-qualifiers"],
+    queryFn: () => resultQualifiersApi.list({ active_only: true }).then((r) => r.data),
+  });
+
   const { data: contract } = useQuery<Contract>({
     queryKey: ["contract", sample?.contract_id],
     queryFn: () => contractsApi.get(sample!.contract_id!).then((r) => r.data),
     enabled: !!sample?.contract_id,
   });
 
+  // A sample may be linked to a client directly (standalone sample) or through its
+  // contract. The direct link wins — it is the more specific of the two.
+  const customerId = sample?.customer_id ?? contract?.customer_id;
+
   const { data: customer } = useQuery<Customer>({
-    queryKey: ["customer", contract?.customer_id],
-    queryFn: () => customersApi.get(contract!.customer_id).then((r) => r.data),
-    enabled: !!contract?.customer_id,
+    queryKey: ["customer", customerId],
+    queryFn: () => customersApi.get(customerId!).then((r) => r.data),
+    enabled: !!customerId,
   });
 
   const { data: allReports = [] } = useQuery<Report[]>({
@@ -108,18 +95,21 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
   const physicochemical = requestedItems.filter((c) => c.category === "physicochemical");
   const microbiological = requestedItems.filter((c) => c.category === "microbiological");
 
-  const allResults = requestedItems
-    .map((item) => {
-      const tr = resultByCatalog[item.id];
-      if (!tr?.result_value) return null;
-      return getCompliance(item, tr.result_value);
-    })
-    .filter(Boolean);
-  const hasNonCompliant = allResults.includes("NON-COMPLIANT");
-  const nonCompliantItems = requestedItems.filter((item) => {
-    const tr = resultByCatalog[item.id];
-    return tr?.result_value && getCompliance(item, tr.result_value) === "NON-COMPLIANT";
+  // A parameter with no result is reported as untested. It is never defaulted to a
+  // value and never counts towards a conformity statement — reporting a result the lab
+  // did not measure is falsification (ISO/IEC 17025 §7.8.2).
+  const rows = requestedItems.map((item) => {
+    const value = resultByCatalog[item.id]?.result_value?.trim() ?? "";
+    return { item, value, remark: evaluateRemark(item.standard_limit, value, qualifiers) };
   });
+  const rowsByItemId = new Map(rows.map((r) => [r.item.id, r]));
+
+  const nonCompliantItems = rows.filter((r) => r.remark.kind === "non_compliant").map((r) => r.item);
+  const hasNonCompliant = nonCompliantItems.length > 0;
+  const untestedItems = rows.filter((r) => r.remark.kind === "not_tested").map((r) => r.item);
+  const evaluatedCount = rows.filter(
+    (r) => r.remark.kind === "compliant" || r.remark.kind === "non_compliant"
+  ).length;
 
   const handlePrint = () => {
     setPrinting(true);
@@ -204,8 +194,17 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
   }
 
   const sampledBy: string = rc.sampled_by || sample.sampled_by_name || "AQUACHECK LABORATORIES LTD";
-  const submittedBy: string = rc.submitted_by || (sample as Sample & { submitted_by?: string }).submitted_by || customer?.name || "—";
-  const contactPerson: string = rc.client_contact || (sample as Sample & { contact_person?: string }).contact_person || (customer?.contact_person ? `${customer.contact_person}${customer.phone ? ` - ${customer.phone}` : ""}` : "—");
+  const contactPerson: string =
+    rc.client_contact ||
+    sample.contact_person ||
+    (customer?.contact_person
+      ? `${customer.contact_person}${customer.phone ? ` - ${customer.phone}` : ""}`
+      : "") ||
+    "—";
+  // The client is the party the report is issued to, so a linked one takes precedence.
+  // Without a client (walk-in or ad-hoc sample) the contact person stands in.
+  const submittedBy: string =
+    rc.submitted_by || customer?.name || sample.submitted_by || contactPerson;
   const sampleLabId: string = rc.sample_lab_id || sample.physical_sample_id || sample.sample_code;
   const authorizerName: string = rc.authorizer_name || "Victor Mutai";
   const authorizerTitle: string = rc.authorizer_title || "Water Chemist";
@@ -347,19 +346,21 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
                   </tr>
                 )}
                 {physicochemical.map((item) => {
-                  const tr = resultByCatalog[item.id];
-                  const value = tr?.result_value || "ND";
-                  const compliance = getCompliance(item, value);
+                  // Always present: `rows` is built from the same requestedItems list.
+                  const row = rowsByItemId.get(item.id)!;
+                  const remark = row.remark;
+                  const isFail = remark.kind === "non_compliant";
                   return (
                     <tr key={item.id}>
                       <td style={{ border: "1px solid #000", padding: "2px 5px" }}>{item.name}</td>
                       <td style={{ border: "1px solid #000", padding: "2px 5px" }}>{item.method_name || "—"}</td>
-                      <td style={{ border: "1px solid #000", padding: "2px 5px", textAlign: "center" }}>{value}</td>
+                      <td style={{ border: "1px solid #000", padding: "2px 5px", textAlign: "center" }}>{row.value || "—"}</td>
                       <td style={{ border: "1px solid #000", padding: "2px 5px", textAlign: "center" }}>{item.standard_limit || "NS"}</td>
                       <td style={{ border: "1px solid #000", padding: "2px 5px", textAlign: "center",
-                          color: compliance === "NON-COMPLIANT" ? "#c00" : compliance === "COMPLIANT" ? "#006600" : undefined,
-                          fontWeight: compliance === "NON-COMPLIANT" ? "bold" : "normal" }}>
-                        {compliance || "NS"}
+                          color: isFail ? "#c00" : remark.kind === "compliant" ? "#006600" : undefined,
+                          fontWeight: isFail ? "bold" : "normal",
+                          fontStyle: remark.kind === "not_tested" ? "italic" : "normal" }}>
+                        {remark.label}
                       </td>
                     </tr>
                   );
@@ -372,19 +373,21 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
                   </tr>
                 )}
                 {microbiological.map((item) => {
-                  const tr = resultByCatalog[item.id];
-                  const value = tr?.result_value || "ND";
-                  const compliance = getCompliance(item, value);
+                  // Always present: `rows` is built from the same requestedItems list.
+                  const row = rowsByItemId.get(item.id)!;
+                  const remark = row.remark;
+                  const isFail = remark.kind === "non_compliant";
                   return (
                     <tr key={item.id}>
                       <td style={{ border: "1px solid #000", padding: "2px 5px" }}>{item.name}</td>
                       <td style={{ border: "1px solid #000", padding: "2px 5px" }}>{item.method_name || "—"}</td>
-                      <td style={{ border: "1px solid #000", padding: "2px 5px", textAlign: "center" }}>{value}</td>
+                      <td style={{ border: "1px solid #000", padding: "2px 5px", textAlign: "center" }}>{row.value || "—"}</td>
                       <td style={{ border: "1px solid #000", padding: "2px 5px", textAlign: "center" }}>{item.standard_limit || "NS"}</td>
                       <td style={{ border: "1px solid #000", padding: "2px 5px", textAlign: "center",
-                          color: compliance === "NON-COMPLIANT" ? "#c00" : compliance === "COMPLIANT" ? "#006600" : undefined,
-                          fontWeight: compliance === "NON-COMPLIANT" ? "bold" : "normal" }}>
-                        {compliance || "NS"}
+                          color: isFail ? "#c00" : remark.kind === "compliant" ? "#006600" : undefined,
+                          fontWeight: isFail ? "bold" : "normal",
+                          fontStyle: remark.kind === "not_tested" ? "italic" : "normal" }}>
+                        {remark.label}
                       </td>
                     </tr>
                   );
@@ -394,10 +397,13 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
 
             {/* Legend */}
             <div style={{ fontSize: "9px", margin: "8px 0", lineHeight: "1.5" }}>
-              {isWaste
-                ? <p><strong>NS:</strong> No Set Standard, <strong>ND:</strong> Not Detectable, <strong>TNTC:</strong> Too numerous to count, <strong>USEPA:</strong> United States Environmental Protection Agency, <strong>APHA:</strong> American Public Health Association. <strong>NEMA:</strong> National Environmental Management Authority.</p>
-                : <p><strong>NS:</strong> No Set Standard, <strong>ND:</strong> Not Detectable, <strong>TNTC:</strong> Too Numerous to count, <strong>KS:</strong> Kenya Standard, <strong>EAS:</strong> East African Standard, <strong>APHA:</strong> American Public Health Association, <strong>CFU:</strong> Colony forming units. <strong>ISO:</strong> International Organisation for Standardisation.</p>
-              }
+              <p>
+                {legendEntries(qualifiers, isWaste).map((q, i, all) => (
+                  <span key={q.id}>
+                    <strong>{q.code}:</strong> {q.label}{i < all.length - 1 ? ", " : "."}
+                  </span>
+                ))}
+              </p>
             </div>
 
             {/* Disclaimer */}
@@ -408,7 +414,7 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
             </div>
 
             {/* Comments */}
-            {(hasNonCompliant || allResults.length > 0 || finalComment) && (
+            {(hasNonCompliant || evaluatedCount > 0 || untestedItems.length > 0 || finalComment) && (
               <div style={{ fontSize: "10px", margin: "8px 0", lineHeight: "1.4" }}>
                 <p><strong style={{ textDecoration: "underline" }}>COMMENTS.</strong></p>
                 {finalComment
@@ -417,8 +423,15 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
                     ? isWaste
                       ? <p>The parameters; {nonCompliantItems.map((i) => i.name).join(", ")} do not meet the set specifications for {scheduleContext}. Treatment is therefore recommended.</p>
                       : <p>The sample does not comply with {scheduleContext}. The {nonCompliantItems.map((i) => i.name).join(", ")} exceeded the set limit. Further treatment is therefore recommended.</p>
-                    : <p>All tested parameters comply with {scheduleContext}.</p>
+                    : evaluatedCount > 0
+                      ? <p>All tested parameters comply with {scheduleContext}.</p>
+                      : null
                 }
+                {/* The conformity statement above covers only parameters actually
+                    measured, so any gap is stated rather than left to inference. */}
+                {untestedItems.length > 0 && (
+                  <p>The following requested {untestedItems.length === 1 ? "parameter was" : "parameters were"} not tested and {untestedItems.length === 1 ? "is" : "are"} excluded from the statement above: {untestedItems.map((i) => i.name).join(", ")}.</p>
+                )}
               </div>
             )}
 
