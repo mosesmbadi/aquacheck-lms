@@ -290,7 +290,7 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
                   <td style={{ padding: "2px 4px", textAlign: "right" }}>{samplingDate}</td>
                 </tr>
                 <tr>
-                  <td style={{ padding: "2px 4px" }}><strong>SUBMITTED BY:</strong></td>
+                  <td style={{ padding: "2px 4px" }}><strong>SUBMITTED BY/CLIENT:</strong></td>
                   <td style={{ padding: "2px 4px", textTransform: "uppercase" }} colSpan={2}>{submittedBy}</td>
                   <td style={{ padding: "2px 4px", textAlign: "right" }}><strong>RECEIVED ON:</strong></td>
                   <td style={{ padding: "2px 4px", textAlign: "right" }}>{receivedDate}</td>

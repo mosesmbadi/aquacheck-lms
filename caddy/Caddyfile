@@ -9,6 +9,11 @@ lims.aquachecklab.com {
             directives `
                 Include @coraza.conf-recommended
                 Include @crs-setup.conf.example
+                # CRS rule 911100 enforces tx.allowed_methods, which defaults to
+                # "GET HEAD POST OPTIONS". That blocks every update and delete in this API
+                # at the WAF — the backend never sees the request, so the 403 comes back
+                # from Caddy with an empty body and looks like a permissions failure.
+                SecAction "id:900200,phase:1,nolog,pass,t:none,setvar:'tx.allowed_methods=GET HEAD POST OPTIONS PUT PATCH DELETE'"
                 Include @owasp_crs/*.conf
                 SecRuleEngine On
                 SecRequestBodyAccess On

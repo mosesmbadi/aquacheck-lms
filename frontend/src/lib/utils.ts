@@ -8,8 +8,14 @@ export function cn(...classes: (string | undefined | null | false)[]): string {
  * of Pydantic validation error objects.
  */
 export function apiErrorMessage(err: unknown, fallback = "An unexpected error occurred."): string {
-  const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
-  if (!detail) return fallback;
+  const response = (err as { response?: { status?: number; data?: { detail?: unknown } } })?.response;
+  const detail = response?.data?.detail;
+  if (!detail) {
+    // Nothing in the body to explain the failure. A request blocked upstream (WAF,
+    // proxy) looks identical to an application error here, and callers pass a guessed
+    // cause as the fallback — so show the status rather than asserting that guess alone.
+    return response?.status ? `${fallback} (HTTP ${response.status})` : fallback;
+  }
   if (typeof detail === "string") return detail;
   if (Array.isArray(detail)) {
     return detail
