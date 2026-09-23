@@ -113,7 +113,7 @@ export default function CatalogTestsPage() {
       closeModal();
     },
     onError: (err: unknown) => {
-      setMutationError(apiErrorMessage(err, "Failed to save test. You may not have permission."));
+      setMutationError(apiErrorMessage(err, "Could not save the test."));
     },
   });
 
@@ -125,7 +125,7 @@ export default function CatalogTestsPage() {
       closeModal();
     },
     onError: (err: unknown) => {
-      setMutationError(apiErrorMessage(err, "Failed to save changes. You may not have permission (admin/manager required)."));
+      setMutationError(apiErrorMessage(err, "Could not save your changes."));
     },
   });
 
@@ -144,7 +144,7 @@ export default function CatalogTestsPage() {
       setMutationError("");
     },
     onError: (err: unknown) => {
-      setMutationError(apiErrorMessage(err, "Failed to delete. Admin or manager role required."));
+      setMutationError(apiErrorMessage(err, "Could not delete the selected test(s)."));
     },
   });
 
