@@ -146,10 +146,24 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
         </html>
       `);
       win.document.close();
-      win.focus();
-      win.print();
-      win.close();
-      setPrinting(false);
+      // Wait for images (the QR code is fetched remotely) before printing,
+      // otherwise the print snapshot is taken with an empty placeholder.
+      const pending = Array.from(win.document.images)
+        .filter((img) => !img.complete)
+        .map(
+          (img) =>
+            new Promise<void>((resolve) => {
+              img.onload = () => resolve();
+              img.onerror = () => resolve();
+            })
+        );
+      const timeout = new Promise<void>((resolve) => setTimeout(resolve, 5000));
+      Promise.race([Promise.all(pending), timeout]).then(() => {
+        win.focus();
+        win.print();
+        win.close();
+        setPrinting(false);
+      });
     }, 300);
   };
 
@@ -194,6 +208,12 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
   }
 
   const sampledBy: string = rc.sampled_by || sample.sampled_by_name || "AQUACHECK LABORATORIES LTD";
+  // Lab-collected samples (no override, the assigned lab sampler, or the lab itself)
+  // don't carry the sampling-errors liability clause; client-collected ones do.
+  const sampledByLab: boolean =
+    !rc.sampled_by ||
+    rc.sampled_by === sample.sampled_by_name ||
+    /aquacheck/i.test(rc.sampled_by);
   const contactPerson: string =
     rc.client_contact ||
     sample.contact_person ||
@@ -409,7 +429,7 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
             {/* Disclaimer */}
             <div style={{ fontSize: "9px", margin: "8px 0", lineHeight: "1.4" }}>
               <p><strong style={{ textDecoration: "underline" }}>DISCLAIMER</strong></p>
-              <p>{disclaimer || "These results only apply to the sample submitted and the recommendations/comments are only based on the tested parameters. The laboratory will not be held responsible for any sampling errors, which may include improper collection techniques, contamination during the sampling process, or inadequate sample representation."}</p>
+              <p>{disclaimer || `These results only apply to the sample submitted and the recommendations/comments are only based on the tested parameters.${sampledByLab ? "" : " The laboratory will not be held responsible for any sampling errors, which may include improper collection techniques, contamination during the sampling process, or inadequate sample representation."}`}</p>
               <p>The test report shall not be reproduced without the written approval of Aquacheck Laboratories Ltd.</p>
             </div>
 
@@ -487,10 +507,10 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
 
             {/* QR code — moved to bottom of report */}
             {qrApiUrl && (
-              <div style={{ textAlign: "center", marginTop: "16px" }}>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginTop: "16px" }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={qrApiUrl} alt="Report QR" style={{ width: "70px", height: "70px" }} />
-                <div style={{ fontSize: "7px", color: "#666", marginTop: "2px" }}>Scan to verify</div>
+                <img src={qrApiUrl} alt="Report QR" style={{ display: "block", width: "70px", height: "70px" }} />
+                <div style={{ width: "70px", textAlign: "center", fontSize: "7px", color: "#666", marginTop: "2px" }}>Scan to verify</div>
               </div>
             )}
 
