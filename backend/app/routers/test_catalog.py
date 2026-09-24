@@ -541,6 +541,108 @@ PACKAGED_DRINKING_WATER_TESTS = [
 
 _CHLORINE_NAMES = {"Free Chlorine mg/L", "Total Chlorine mg/L", "Chloramine as Cl₂ mg/L"}
 
+
+# ─── Default report order for drinking-water types ───────────────────────────
+# Mirrors the parameter order on the lab's established test report. Applies to the
+# dialysis/potable/packaged sets; waste schedules keep their NEMA schedule order.
+# Tests not listed here sort after the listed ones, keeping their relative order.
+
+DEFAULT_REPORT_ORDER = [
+    # Physicochemical
+    "pH",
+    "Colour TCU",
+    "Odour",
+    "Taste",
+    "Turbidity NTU",
+    "Total Dissolved Solids mg/L",
+    "Conductivity µS/cm",
+    "P. Alkalinity as CaCO₃ mg/L",
+    "Total Alkalinity as CaCO₃ mg/L",
+    "Fluoride as F mg/L",
+    "Iron as Fe µg/L",
+    "Chloride as Cl mg/L",
+    "Nitrate as NO₃⁻ mg/L",
+    "Nitrite as NO₂⁻ mg/L",
+    "Sulphates as SO₄ mg/L",
+    "Ammonia as NH₃-N mg/L",
+    "Zinc as Zn µg/L",
+    "Phosphates as PO₄³⁻ mg/L",
+    "Carbonates as CaCO₃ mg/L",
+    "Bicarbonates as CaCO₃ mg/L",
+    "Calcium as Ca mg/L",
+    "Magnesium as Mg mg/L",
+    "Total Hardness as CaCO₃ mg/L",
+    "Silica as SiO₂ mg/L",
+    "Sodium as Na mg/L",
+    "Potassium as K mg/L",
+    "Free Chlorine mg/L",
+    "Total Chlorine mg/L",
+    "Chloramine as Cl₂ mg/L",
+    "Dissolved Oxygen mg/L",
+    "Total Organic Carbon mg/L",
+    "Oxidizable Substances mg/L",
+    "Aluminium as Al µg/L",
+    "Manganese as Mn µg/L",
+    "Copper as Cu µg/L",
+    "Lead as Pb µg/L",
+    "Arsenic as As µg/L",
+    "Chromium as Cr µg/L",
+    "Cadmium as Cd µg/L",
+    "Mercury as Hg µg/L",
+    "Cyanide as CN⁻ µg/L",
+    "Selenium as Se µg/L",
+    "Antimony as Sb µg/L",
+    "Barium as Ba µg/L",
+    "Silver as Ag µg/L",
+    "Beryllium as Be µg/L",
+    "Thallium as Tl µg/L",
+    # Microbiological
+    "E.coli CFU/100ml sample",
+    "Total Coliforms CFU/100ml sample",
+    "Total Viable Count CFU/ml at 37°C",
+    "Total Viable Count CFU/ml sample at 37°C",
+    "Total Viable Count CFU/ml at 22°C",
+    "Total Viable Count CFU/ml sample at 22°C",
+    "Pseudomonas aeruginosa CFU/100ml sample",
+    "Salmonella spp CFU/100ml sample",
+    "Streptococcus faecalis CFU/100ml sample",
+    "Staphylococcus aureus CFU/100ml sample",
+    "Endotoxins (Pyrogens) EU/mL",
+]
+# Gaps of 10 leave room to slot a test in between from the catalog screen.
+_DEFAULT_ORDER_POSITION = {name: (i + 1) * 10 for i, name in enumerate(DEFAULT_REPORT_ORDER)}
+_UNLISTED_ORDER_OFFSET = (len(DEFAULT_REPORT_ORDER) + 1) * 10
+
+
+def default_sort_order(name: str, current: int = 0) -> int:
+    if name in _DEFAULT_ORDER_POSITION:
+        return _DEFAULT_ORDER_POSITION[name]
+    current = current or 0
+    # Already pushed past the listed tests (e.g. by an earlier run) — leave as is.
+    if current >= _UNLISTED_ORDER_OFFSET:
+        return current
+    return _UNLISTED_ORDER_OFFSET + current
+
+
+def _is_waste_type(water_type) -> bool:
+    return str(water_type or "").startswith("waste_")
+
+
+def apply_default_report_order(db: Session) -> int:
+    """Reset Sort Order on existing drinking-water catalog items to DEFAULT_REPORT_ORDER.
+    Overwrites manual Sort Order edits on those items. Returns count updated."""
+    updated = 0
+    for item in db.query(TestCatalogItem).all():
+        if _is_waste_type(item.water_type):
+            continue
+        target = default_sort_order(item.name, item.sort_order)
+        if item.sort_order != target:
+            item.sort_order = target
+            updated += 1
+    if updated:
+        db.commit()
+    return updated
+
 def seed_catalog(db: Session) -> int:
     """Insert default catalog tests if not already present. Keyed by (name, water_type). Returns count added."""
     existing_pairs = {
@@ -562,6 +664,8 @@ def seed_catalog(db: Session) -> int:
     for item in all_items:
         key = (item["name"], item.get("water_type", "dialysis_potable"))
         if key not in existing_pairs:
+            if not _is_waste_type(item.get("water_type")):
+                item = {**item, "sort_order": default_sort_order(item["name"], item.get("sort_order", 0))}
             db.add(TestCatalogItem(**item))
             added += 1
     if added:
@@ -731,3 +835,14 @@ def reseed_catalog(
 ):
     added = seed_catalog(db)
     return {"added": added, "message": f"Seeded {added} new catalog items."}
+
+
+@router.post("/apply-default-order", response_model=dict)
+def apply_default_order(
+    db: Session = Depends(get_db),
+    _=Depends(require_role(UserRole.admin)),
+):
+    """One-off: reset drinking-water tests to the default report order.
+    Overwrites any manual Sort Order on those tests; waste schedules are untouched."""
+    updated = apply_default_report_order(db)
+    return {"updated": updated, "message": f"Applied default report order to {updated} catalog items."}

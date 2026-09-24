@@ -395,6 +395,15 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
             item.id: item
             for item in db.query(TestCatalogItem).filter(TestCatalogItem.id.in_(catalog_ids)).all()
         }
+    # Report rows follow the catalog's Sort Order (as the print view does), not the
+    # order results happened to be entered. Results without a catalog item go last.
+    def _catalog_position(result):
+        item = catalog_by_id.get(result.catalog_item_id)
+        if item is None:
+            return (1, 0, "")
+        return (0, item.sort_order or 0, item.name or "")
+
+    test_results = sorted(test_results, key=_catalog_position)
     qualifiers = (
         db.query(ResultQualifier)
         .filter(ResultQualifier.is_active == True)  # noqa: E712
