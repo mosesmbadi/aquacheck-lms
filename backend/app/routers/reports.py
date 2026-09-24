@@ -485,6 +485,16 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
             return sample.sampler.full_name
         return "AQUACHECK LABORATORIES LTD"
 
+    def _sampled_by_lab():
+        # Lab-collected samples (no override, the assigned lab sampler, or the lab
+        # itself) don't carry the sampling-errors liability clause; client-collected ones do.
+        override = _content_value(content, "sampled_by", None)
+        if not override:
+            return True
+        if sample and sample.sampler and override == sample.sampler.full_name:
+            return True
+        return "aquacheck" in str(override).lower()
+
     def _sample_lab_id_value():
         override = _content_value(content, "sample_lab_id", None)
         if override:
@@ -552,14 +562,17 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
     if legend_note:
         story.append(Paragraph(legend_note, small_style))
     story.append(Paragraph("<b>DISCLAIMER</b>", small_style))
+    sampling_clause = "" if _sampled_by_lab() else (
+        "The laboratory will not be held responsible for any sampling errors, which may include improper collection techniques, "
+        "contamination during the sampling process, or inadequate sample representation. "
+    )
     story.append(Paragraph(
         _content_value(
             content,
             "disclaimer",
             "These results only apply to the sample submitted and the recommendations/comments are only based on the tested parameters. "
-            "The laboratory will not be held responsible for any sampling errors, which may include improper collection techniques, "
-            "contamination during the sampling process, or inadequate sample representation. "
-            "The test report shall not be reproduced without the written approval of Aquacheck Laboratories Ltd.",
+            + sampling_clause
+            + "The test report shall not be reproduced without the written approval of Aquacheck Laboratories Ltd.",
         ),
         small_style,
     ))
@@ -603,10 +616,14 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
     if qr_image:
         story.append(Spacer(1, 0.5 * cm))
         qr_caption_style = ParagraphStyle("qr_caption", parent=styles["Normal"], fontSize=6, alignment=1, textColor=colors.HexColor("#666666"))
-        qr_table = Table([[qr_image]], colWidths=[17 * cm])
-        qr_table.setStyle(TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER")]))
+        # Image and caption share one centred column so they stay aligned.
+        qr_table = Table([[qr_image], [Paragraph("Scan to verify", qr_caption_style)]], colWidths=[17 * cm])
+        qr_table.setStyle(TableStyle([
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+        ]))
         story.append(qr_table)
-        story.append(Paragraph("Scan to verify", qr_caption_style))
 
     doc.build(story, canvasmaker=_NumberedCanvas)
     buffer.seek(0)
