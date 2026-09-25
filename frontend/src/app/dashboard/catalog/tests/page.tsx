@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/Button";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
-import { Plus, Pencil, ToggleLeft, ToggleRight, FlaskConical, Microscope, Droplets, Search, Trash2 } from "lucide-react";
+import { Plus, Pencil, ToggleLeft, ToggleRight, FlaskConical, Microscope, Droplets, Search, Trash2, ChevronUp, ChevronDown } from "lucide-react";
 
 // ─── Form schema ─────────────────────────────────────────────────────────────
 
@@ -24,6 +24,7 @@ const WATER_TYPE_OPTIONS = [
   { value: "potable_natural",         label: "Natural Potable Water" },
   { value: "potable_treated",         label: "Treated Potable Water" },
   { value: "packaged_drinking_water", label: "Packaged Drinking Water" },
+  { value: "paint",                   label: "Paints & Industrial Products" },
   { value: "waste_1",                 label: "Waste Water (Schedule 1)" },
   { value: "waste_2",                 label: "Waste Water (Schedule 2)" },
   { value: "waste_3",                 label: "Waste Water (Schedule 3)" },
@@ -31,6 +32,15 @@ const WATER_TYPE_OPTIONS = [
   { value: "waste_5",                 label: "Waste Water (Schedule 5)" },
   { value: "waste_6",                 label: "Waste Water (Schedule 6)" },
 ] as const;
+
+const WATER_TYPE_LABELS: Record<string, string> = Object.fromEntries(
+  WATER_TYPE_OPTIONS.map((o) => [o.value, o.label])
+);
+
+// Tests that print together on a report: same water type and same category.
+function sameReportGroup(a: TestCatalogItem, b: TestCatalogItem): boolean {
+  return (a.water_type ?? "dialysis_potable") === (b.water_type ?? "dialysis_potable") && a.category === b.category;
+}
 
 const schema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -42,8 +52,17 @@ const schema = z.object({
   description: z.string().optional(),
   price: z.coerce.number().min(0).default(0),
   sort_order: z.coerce.number().int().min(0).default(0),
+  // Blank → null, so the test falls back to its category's section.
+  section: z.preprocess((v) => (typeof v === "string" && v.trim() === "" ? null : v), z.string().nullable().optional()),
+  remark_rule: z.enum(["compliance", "contamination_rating", "manual"]).default("compliance"),
   is_active: z.boolean().default(true),
 });
+
+const REMARK_RULE_OPTIONS = [
+  { value: "compliance",           label: "Compliance — compare with Standard Limit" },
+  { value: "contamination_rating", label: "Contamination rating — from colony count (0 / 1–9 / 10–99 / 100+ / TNTC)" },
+  { value: "manual",               label: "Entered by analyst (e.g. Resistant)" },
+] as const;
 type FormData = z.infer<typeof schema>;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -53,7 +72,7 @@ const CATEGORY_LABELS: Record<TestCategory, string> = {
   microbiological: "Microbiological",
 };
 
-type WaterTypeFilter = "all" | "dialysis" | "waste_water" | "packaged_drinking_water" | "potable";
+type WaterTypeFilter = "all" | "dialysis" | "waste_water" | "packaged_drinking_water" | "potable" | "paint";
 
 const WATER_TYPE_FILTERS: { value: WaterTypeFilter; label: string }[] = [
   { value: "all",                      label: "All Water Types" },
@@ -61,6 +80,7 @@ const WATER_TYPE_FILTERS: { value: WaterTypeFilter; label: string }[] = [
   { value: "waste_water",              label: "Waste Water" },
   { value: "packaged_drinking_water",  label: "Packaged Drinking Water" },
   { value: "potable",                  label: "Potable Water" },
+  { value: "paint",                    label: "Paints & Industrial" },
 ];
 
 function matchesWaterType(waterType: string | undefined | null, filter: WaterTypeFilter): boolean {
@@ -70,6 +90,7 @@ function matchesWaterType(waterType: string | undefined | null, filter: WaterTyp
   if (filter === "waste_water")             return wt.startsWith("waste");
   if (filter === "packaged_drinking_water") return wt === "packaged_drinking_water";
   if (filter === "potable")                 return wt.startsWith("potable");
+  if (filter === "paint")                   return wt === "paint";
   return false;
 }
 
@@ -135,6 +156,15 @@ export default function CatalogTestsPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["test-catalog"] }),
   });
 
+  const moveMutation = useMutation({
+    mutationFn: ({ id, direction }: { id: number; direction: "up" | "down" }) =>
+      testCatalogApi.move(id, direction),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["test-catalog"] }),
+    onError: (err: unknown) => {
+      setMutationError(apiErrorMessage(err, "Could not change the order."));
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (ids: number[]) =>
       Promise.all(ids.map((id) => testCatalogApi.delete(id))),
@@ -156,7 +186,7 @@ export default function CatalogTestsPage() {
   } = useForm<FormData>({ resolver: zodResolver(schema), mode: "onChange" });
 
   function openCreate() {
-    reset({ category: "physicochemical", water_type: "dialysis_potable", sort_order: 0, is_active: true, price: 0 });
+    reset({ category: "physicochemical", water_type: "dialysis_potable", sort_order: 0, section: "", remark_rule: "compliance", is_active: true, price: 0 });
     setEditing(null);
     setShowModal(true);
   }
@@ -172,6 +202,8 @@ export default function CatalogTestsPage() {
       description: item.description ?? "",
       price: item.price ?? 0,
       sort_order: item.sort_order,
+      section: item.section ?? "",
+      remark_rule: item.remark_rule ?? "compliance",
       is_active: item.is_active,
     });
     setEditing(item);
@@ -355,6 +387,9 @@ export default function CatalogTestsPage() {
                   onSelect={toggleSelect}
                   onSelectAll={(checked) => toggleSelectAll(physioItems, checked)}
                   packagesByTestId={packagesByTestId}
+                  allItems={items}
+                  onMove={(id, direction) => moveMutation.mutate({ id, direction })}
+                  moving={moveMutation.isPending}
                 />
               </Card>
             )}
@@ -376,6 +411,9 @@ export default function CatalogTestsPage() {
                   onSelect={toggleSelect}
                   onSelectAll={(checked) => toggleSelectAll(microItems, checked)}
                   packagesByTestId={packagesByTestId}
+                  allItems={items}
+                  onMove={(id, direction) => moveMutation.mutate({ id, direction })}
+                  moving={moveMutation.isPending}
                 />
               </Card>
             )}
@@ -420,11 +458,30 @@ export default function CatalogTestsPage() {
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <Input label="Sort Order" type="number" error={errors.sort_order?.message} {...register("sort_order")} />
+            <Input
+              label={editing ? "Sort Order" : "Sort Order (0 = place automatically)"}
+              type="number"
+              error={errors.sort_order?.message}
+              {...register("sort_order")}
+            />
             <div className="flex items-center gap-2 pt-6">
               <input type="checkbox" id="is_active" {...register("is_active")} className="rounded border-gray-300" />
               <label htmlFor="is_active" className="text-sm text-gray-700">Active</label>
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Select label="Remarks" error={errors.remark_rule?.message} {...register("remark_rule")}>
+              {REMARK_RULE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </Select>
+            <Input
+              label="Report Section (optional)"
+              error={errors.section?.message}
+              {...register("section")}
+              placeholder="Blank = by category, e.g. Susceptibility Test"
+            />
           </div>
 
           <Textarea label="Description (optional)" {...register("description")} rows={2} placeholder="Additional notes…" />
@@ -450,6 +507,9 @@ function TestTable({
   onSelect,
   onSelectAll,
   packagesByTestId,
+  allItems,
+  onMove,
+  moving,
 }: {
   items: TestCatalogItem[];
   onEdit: (item: TestCatalogItem) => void;
@@ -458,6 +518,10 @@ function TestTable({
   onSelect: (id: number, checked: boolean) => void;
   onSelectAll: (checked: boolean) => void;
   packagesByTestId: Map<number, string[]>;
+  /** Unfiltered list, so first/last is judged within the whole report group. */
+  allItems: TestCatalogItem[];
+  onMove: (id: number, direction: "up" | "down") => void;
+  moving: boolean;
 }) {
   const allSelected = items.length > 0 && items.every((i) => selectedIds.has(i.id));
   const someSelected = !allSelected && items.some((i) => selectedIds.has(i.id));
@@ -476,7 +540,7 @@ function TestTable({
                 className="rounded border-gray-300"
               />
             </th>
-            <th className="px-5 py-3 font-medium text-gray-500 w-8">#</th>
+            <th className="px-3 py-3 font-medium text-gray-500 w-24" title="Order on the report, within the test's water type">Order</th>
             <th className="px-5 py-3 font-medium text-gray-500">Test / Parameter</th>
             <th className="px-5 py-3 font-medium text-gray-500">Unit</th>
             <th className="px-5 py-3 font-medium text-gray-500">Method</th>
@@ -487,9 +551,12 @@ function TestTable({
           </tr>
         </thead>
         <tbody>
-          {items.map((item, idx) => {
+          {items.map((item) => {
             const isSelected = selectedIds.has(item.id);
             const pkgNames = packagesByTestId.get(item.id) ?? [];
+            const group = allItems.filter((other) => sameReportGroup(other, item));
+            const groupIndex = group.findIndex((other) => other.id === item.id);
+            const waterTypeLabel = WATER_TYPE_LABELS[item.water_type ?? "dialysis_potable"] ?? item.water_type;
             return (
               <tr
                 key={item.id}
@@ -503,8 +570,33 @@ function TestTable({
                     className="rounded border-gray-300"
                   />
                 </td>
-                <td className="px-5 py-2.5 text-gray-400 text-xs">{idx + 1}</td>
-                <td className="px-5 py-2.5 font-medium text-gray-800">{item.name}</td>
+                <td className="px-3 py-2.5">
+                  <div className="flex items-center gap-1">
+                    <span className="w-8 text-right text-xs text-gray-500 tabular-nums">{item.sort_order}</span>
+                    <div className="flex flex-col">
+                      <button
+                        onClick={() => onMove(item.id, "up")}
+                        disabled={moving || groupIndex <= 0}
+                        className="p-0.5 text-gray-400 hover:text-gray-700 disabled:opacity-30 disabled:hover:text-gray-400"
+                        title={`Move up within ${waterTypeLabel}`}
+                      >
+                        <ChevronUp className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => onMove(item.id, "down")}
+                        disabled={moving || groupIndex === -1 || groupIndex >= group.length - 1}
+                        className="p-0.5 text-gray-400 hover:text-gray-700 disabled:opacity-30 disabled:hover:text-gray-400"
+                        title={`Move down within ${waterTypeLabel}`}
+                      >
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-5 py-2.5">
+                  <div className="font-medium text-gray-800">{item.name}</div>
+                  <div className="text-[11px] text-gray-400">{waterTypeLabel}</div>
+                </td>
                 <td className="px-5 py-2.5 text-gray-500">{item.unit || "—"}</td>
                 <td className="px-5 py-2.5 text-gray-500 text-xs">{item.method_name || "—"}</td>
                 <td className="px-5 py-2.5 text-gray-600">{item.standard_limit || "—"}</td>

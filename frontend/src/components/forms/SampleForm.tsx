@@ -18,6 +18,7 @@ import {
   Leaf,
   Building2,
   AlertCircle,
+  PaintBucket,
 } from "lucide-react";
 import { CustomerSearch } from "@/components/ui/CustomerSearch";
 
@@ -28,6 +29,7 @@ const SAMPLE_CATEGORIES = [
   { value: "potable", label: "Potable Water", icon: Waves, color: "teal" },
   { value: "waste", label: "Waste Water", icon: Factory, color: "orange" },
   { value: "packaged_drinking_water", label: "Packaged Drinking Water", icon: FlaskConical, color: "purple" },
+  { value: "paint", label: "Paints & Industrial Products", icon: PaintBucket, color: "rose" },
 ] as const;
 
 const DISCHARGE_DESTINATIONS = [
@@ -57,6 +59,7 @@ function getWaterType(category: string, potableType?: string | null): string {
     return ""; // not ready until sub-type is chosen
   }
   if (category === "packaged_drinking_water") return "packaged_drinking_water";
+  if (category === "paint") return "paint";
   return "";
 }
 
@@ -75,7 +78,7 @@ const schema = z
       (v) => (v === "" || v === null || v === undefined ? undefined : v),
       z.coerce.number().int().positive().optional()
     ),
-    sample_category: z.enum(["dialysis", "potable", "waste", "packaged_drinking_water"], {
+    sample_category: z.enum(["dialysis", "potable", "waste", "packaged_drinking_water", "paint"], {
       required_error: "Sample category is required",
     }),
     potable_type: z.enum(["natural", "treated"]).optional().nullable(),
@@ -295,6 +298,9 @@ function CategoryCard({
     purple: selected
       ? "border-purple-500 bg-purple-50 text-purple-700"
       : "border-gray-200 hover:border-purple-300 hover:bg-purple-50 text-gray-600",
+    rose: selected
+      ? "border-rose-500 bg-rose-50 text-rose-700"
+      : "border-gray-200 hover:border-rose-300 hover:bg-rose-50 text-gray-600",
   } as const;
 
   return (
@@ -449,7 +455,7 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
         ? !!potableType && !!nonWasteWaterType
         : !!nonWasteWaterType;
 
-  function handleCategoryChange(value: "dialysis" | "potable" | "waste" | "packaged_drinking_water") {
+  function handleCategoryChange(value: (typeof SAMPLE_CATEGORIES)[number]["value"]) {
     setValue("sample_category", value, { shouldValidate: true });
     setValue("potable_type", null);
     setValue("waste_industry_type", null);

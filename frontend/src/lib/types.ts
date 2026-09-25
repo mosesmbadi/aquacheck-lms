@@ -2,7 +2,7 @@
 
 export type TestCategory = "physicochemical" | "microbiological";
 
-export type SampleCategory = "dialysis" | "potable" | "waste" | "packaged_drinking_water";
+export type SampleCategory = "dialysis" | "potable" | "waste" | "packaged_drinking_water" | "paint";
 
 export type WaterType =
   | "dialysis_potable"
@@ -10,6 +10,7 @@ export type WaterType =
   | "potable_natural"
   | "potable_treated"
   | "packaged_drinking_water"
+  | "paint"
   | "waste_1"
   | "waste_2"
   | "waste_3"
@@ -106,10 +107,16 @@ export interface TestCatalogItem {
   description?: string;
   price?: number;
   sort_order: number;
+  /** Report section heading when it isn't the category's (e.g. "SUSCEPTIBILITY TEST"). */
+  section?: string | null;
+  /** How the REMARKS column is filled; null/undefined means "compliance". */
+  remark_rule?: RemarkRule | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
 }
+
+export type RemarkRule = "compliance" | "contamination_rating" | "manual";
 
 // ─── Result Qualifiers ────────────────────────────────────────────────────────
 /** "qualifier" tokens are typed into a result box; "abbreviation" rows are legend-only. */

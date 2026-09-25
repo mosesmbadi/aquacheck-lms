@@ -40,6 +40,9 @@ class BulkResultRow(BaseModel):
     result_value: Optional[str] = None
     notes: Optional[str] = None
     compliance: Optional[str] = None
+    # Analyst-entered REMARKS text (tests with remark_rule "manual"). Stored in
+    # raw_observations["remarks"], which the report already treats as the remark.
+    remarks: Optional[str] = None
 
 
 class BulkResultCreate(BaseModel):

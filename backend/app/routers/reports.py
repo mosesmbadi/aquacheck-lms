@@ -2,6 +2,7 @@ from collections import OrderedDict
 from datetime import datetime, timezone
 from typing import List
 import io
+import re
 import base64
 import os
 from pathlib import Path
@@ -30,7 +31,7 @@ from app.models.result_qualifier import ResultQualifier
 from app.schemas.report import ReportCreate, ReportUpdate, ReportOut
 from app.services.audit import log_action
 from app.services.barcode import generate_barcode
-from app.services.compliance import evaluate_remark, legend_entries
+from app.services.compliance import evaluate_item_remark, legend_entries
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
 
@@ -81,6 +82,33 @@ def _legend_note(qualifiers, waste_schedule):
     return ", ".join(f"{q.code}: {q.label}" for q in entries) + "."
 
 
+PAINT_REMARKS_HEADER = "REMARKS/RATING SYSTEM"
+PAINT_COMMENT = "Each parameter's level is shown in the RESULTS table above for the sample submitted to the lab."
+_ASTM_LEGEND = ("ASTM", "American Society for Testing and Materials")
+
+
+def _is_paint(sample) -> bool:
+    category = getattr(sample, "sample_category", None) if sample else None
+    return getattr(category, "value", category) == "paint"
+
+
+def _paint_legend_note(qualifiers, result_sections):
+    """Paint reports list only the abbreviations that actually appear on them — the
+    water legend (KS, EAS, APHA…) means nothing here."""
+    text = " ".join(
+        f"{row.get('method', '')} {row.get('result', '')} {row.get('remarks', '')}"
+        for section in result_sections
+        for row in section.get("rows", [])
+    )
+    entries = []
+    if re.search(r"\bASTM\b", text) and not any(q.code.upper() == "ASTM" for q in qualifiers):
+        entries.append(_ASTM_LEGEND)
+    for q in qualifiers:
+        if q.is_active and q.show_in_legend and re.search(rf"\b{re.escape(q.code)}\b", text, re.IGNORECASE):
+            entries.append((q.code, q.label))
+    return ", ".join(f"{code}: {label}" for code, label in entries) + "." if entries else ""
+
+
 def _remarks_para(remarks, style):
     text = str(remarks) if remarks and remarks != "—" else "—"
     upper = text.upper()
@@ -128,6 +156,44 @@ def _auto_comment(sample, result_sections):
     )
 
 
+def load_report_results(db: Session, sample):
+    """A sample's results in report order, with the catalog items and qualifier
+    vocabulary needed to render them. Returns (results, catalog_by_id, qualifiers)."""
+    test_results = []
+    if sample:
+        test_results = (
+            db.query(TestResult)
+            .filter(TestResult.sample_id == sample.id)
+            .order_by(TestResult.created_at.asc())
+            .all()
+        )
+
+    catalog_by_id = {}
+    catalog_ids = [r.catalog_item_id for r in test_results if r.catalog_item_id]
+    if catalog_ids:
+        catalog_by_id = {
+            item.id: item
+            for item in db.query(TestCatalogItem).filter(TestCatalogItem.id.in_(catalog_ids)).all()
+        }
+
+    # Report rows follow the catalog's Sort Order (as the print view does), not the
+    # order results happened to be entered. Results without a catalog item go last.
+    def _catalog_position(result):
+        item = catalog_by_id.get(result.catalog_item_id)
+        if item is None:
+            return (1, 0, "")
+        return (0, item.sort_order or 0, item.name or "")
+
+    test_results = sorted(test_results, key=_catalog_position)
+    qualifiers = (
+        db.query(ResultQualifier)
+        .filter(ResultQualifier.is_active == True)  # noqa: E712
+        .order_by(ResultQualifier.sort_order, ResultQualifier.code)
+        .all()
+    )
+    return test_results, catalog_by_id, qualifiers
+
+
 def _result_sections(test_results, content: dict, sample=None, catalog_by_id=None, qualifiers=()):
     manual_sections = content.get("result_sections")
     if isinstance(manual_sections, list) and manual_sections:
@@ -137,13 +203,19 @@ def _result_sections(test_results, content: dict, sample=None, catalog_by_id=Non
     waste_schedule = getattr(sample, "waste_schedule", None) if sample else None
     default_spec_header = _SCHEDULE_SPEC_HEADERS.get(waste_schedule, "SPECIFICATION")
 
+    is_paint = _is_paint(sample)
     sections = OrderedDict()
     for result in test_results:
         raw = result.raw_observations or {}
         catalog_item = catalog_by_id.get(result.catalog_item_id)
-        section_name = raw.get("section") or (
-            _CATEGORY_SECTIONS.get(getattr(catalog_item, "category", None)) if catalog_item else None
-        ) or "TEST"
+        category = getattr(catalog_item, "category", None) if catalog_item else None
+        section_name = (
+            raw.get("section")
+            or (catalog_item.section if catalog_item and catalog_item.section else None)
+            or ("MICROBIOLOGY TEST" if is_paint and category == TestCategory.microbiological else None)
+            or _CATEGORY_SECTIONS.get(category)
+            or "TEST"
+        )
         specification = (
             raw.get("specification")
             or raw.get("standard_limit")
@@ -155,7 +227,13 @@ def _result_sections(test_results, content: dict, sample=None, catalog_by_id=Non
         # use; a remark stored on the result only ever acts as a manual override.
         # A parameter with no result reports as untested — never defaulted to a value
         # and never counted as a pass (ISO/IEC 17025 §7.8.2).
-        remark = evaluate_remark(specification, result.result_value, qualifiers)
+        remark = evaluate_item_remark(
+            getattr(catalog_item, "remark_rule", None),
+            specification,
+            result.result_value,
+            qualifiers,
+            raw.get("remarks"),
+        )
         remarks = raw.get("remarks") or raw.get("compliance") or remark.label
         sections.setdefault(section_name, []).append(
             {
@@ -366,6 +444,9 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
 
     contract = db.query(Contract).filter(Contract.id == report.contract_id).first() if report.contract_id else None
+    content = report.content or {}
+    sample_id = content.get("sample_id")
+    sample = db.query(Sample).filter(Sample.id == sample_id).first() if sample_id else None
 
     # A sample may be linked to a client directly (standalone sample) or through its
     # contract; fall back through both before giving up.
@@ -376,40 +457,7 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
     )
     customer = db.query(Customer).filter(Customer.id == customer_id).first() if customer_id else None
     issuer = db.query(User).filter(User.id == report.issued_by).first() if report.issued_by else None
-    content = report.content or {}
-    sample_id = content.get("sample_id")
-    sample = db.query(Sample).filter(Sample.id == sample_id).first() if sample_id else None
-    test_results = []
-    if sample:
-        test_results = (
-            db.query(TestResult)
-            .filter(TestResult.sample_id == sample.id)
-            .order_by(TestResult.created_at.asc())
-            .all()
-        )
-
-    catalog_by_id = {}
-    catalog_ids = [r.catalog_item_id for r in test_results if r.catalog_item_id]
-    if catalog_ids:
-        catalog_by_id = {
-            item.id: item
-            for item in db.query(TestCatalogItem).filter(TestCatalogItem.id.in_(catalog_ids)).all()
-        }
-    # Report rows follow the catalog's Sort Order (as the print view does), not the
-    # order results happened to be entered. Results without a catalog item go last.
-    def _catalog_position(result):
-        item = catalog_by_id.get(result.catalog_item_id)
-        if item is None:
-            return (1, 0, "")
-        return (0, item.sort_order or 0, item.name or "")
-
-    test_results = sorted(test_results, key=_catalog_position)
-    qualifiers = (
-        db.query(ResultQualifier)
-        .filter(ResultQualifier.is_active == True)  # noqa: E712
-        .order_by(ResultQualifier.sort_order, ResultQualifier.code)
-        .all()
-    )
+    test_results, catalog_by_id, qualifiers = load_report_results(db, sample)
 
     waste_schedule = getattr(sample, "waste_schedule", None) if sample else None
 
@@ -533,26 +581,45 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
     story.append(Spacer(1, 0.2 * cm))
 
     result_sections = _result_sections(test_results, content, sample, catalog_by_id, qualifiers)
+    is_paint = _is_paint(sample)
     if result_sections:
         for section in result_sections:
-            spec_header = section.get("specification_header", "SPECIFICATION")
-            result_rows = [[
-                Paragraph(section.get("title", "TEST"), header_cell_style),
-                Paragraph("METHOD", header_cell_style),
-                Paragraph("RESULTS", header_cell_style),
-                Paragraph(spec_header.replace("\n", "<br/>"), header_cell_style),
-                Paragraph("REMARKS", header_cell_style),
-            ]]
-            for row in section.get("rows", []):
-                result_rows.append([
-                    row.get("parameter", "—"),
-                    row.get("method", "—"),
-                    row.get("result", "—"),
-                    row.get("specification", "—"),
-                    _remarks_para(row.get("remarks", "—"), cell_style),
-                ])
+            if is_paint:
+                # Rated, not judged against a specification — no limit column.
+                result_rows = [[
+                    Paragraph(section.get("title", "TEST"), header_cell_style),
+                    Paragraph("METHOD", header_cell_style),
+                    Paragraph("RESULTS", header_cell_style),
+                    Paragraph(PAINT_REMARKS_HEADER, header_cell_style),
+                ]]
+                for row in section.get("rows", []):
+                    result_rows.append([
+                        row.get("parameter", "—"),
+                        row.get("method", "—"),
+                        Paragraph(str(row.get("result", "—")), cell_style),
+                        Paragraph(str(row.get("remarks", "—")), cell_style),
+                    ])
+                col_widths = [5.0 * cm, 3.6 * cm, 4.6 * cm, 3.8 * cm]
+            else:
+                spec_header = section.get("specification_header", "SPECIFICATION")
+                result_rows = [[
+                    Paragraph(section.get("title", "TEST"), header_cell_style),
+                    Paragraph("METHOD", header_cell_style),
+                    Paragraph("RESULTS", header_cell_style),
+                    Paragraph(spec_header.replace("\n", "<br/>"), header_cell_style),
+                    Paragraph("REMARKS", header_cell_style),
+                ]]
+                for row in section.get("rows", []):
+                    result_rows.append([
+                        row.get("parameter", "—"),
+                        row.get("method", "—"),
+                        row.get("result", "—"),
+                        row.get("specification", "—"),
+                        _remarks_para(row.get("remarks", "—"), cell_style),
+                    ])
+                col_widths = [5.5 * cm, 4.1 * cm, 1.5 * cm, 3.2 * cm, 2.7 * cm]
 
-            results_table = Table(result_rows, colWidths=[5.5 * cm, 4.1 * cm, 1.5 * cm, 3.2 * cm, 2.7 * cm])
+            results_table = Table(result_rows, colWidths=col_widths)
             results_table.setStyle(TableStyle([
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e5e7eb")),
                 ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#9ca3af")),
@@ -566,7 +633,9 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
     else:
         story.append(Paragraph("No analytical results are linked to this report yet.", styles["Normal"]))
 
-    legend_note = _content_value(content, "ns_definition", None) or _legend_note(qualifiers, waste_schedule)
+    legend_note = _content_value(content, "ns_definition", None) or (
+        _paint_legend_note(qualifiers, result_sections) if is_paint else _legend_note(qualifiers, waste_schedule)
+    )
     story.append(Spacer(1, 0.2 * cm))
     if legend_note:
         story.append(Paragraph(legend_note, small_style))
@@ -586,7 +655,7 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
         small_style,
     ))
     story.append(Paragraph("<b>COMMENTS.</b>", small_style))
-    auto_comment = _auto_comment(sample, result_sections)
+    auto_comment = PAINT_COMMENT if is_paint else _auto_comment(sample, result_sections)
     story.append(Paragraph(
         _content_value(
             content,

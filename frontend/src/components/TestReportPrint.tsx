@@ -1,12 +1,15 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
+import { Fragment, useRef, useState, useEffect, type CSSProperties } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Printer, X, Clock } from "lucide-react";
 import { samplesApi, testResultsApi, testCatalogApi, contractsApi, customersApi, reportsApi, resultQualifiersApi } from "@/lib/api";
 import type { Sample, TestResult, TestCatalogItem, Contract, Customer, Report, User, ResultQualifier } from "@/lib/types";
-import { evaluateRemark, legendEntries } from "@/lib/compliance";
+import { evaluateItemRemark, legendEntries, storedRemark } from "@/lib/compliance";
+import { reportSections } from "@/lib/reportSections";
+
+const PAINT_COMMENT = "Each parameter's level is shown in the RESULTS table above for the sample submitted to the lab.";
 
 interface TestReportPrintProps {
   sampleId: number;
@@ -92,15 +95,15 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
   const requestedItems =
     requestedIds.size > 0 ? catalogItems.filter((c) => requestedIds.has(c.id)) : catalogItems;
 
-  const physicochemical = requestedItems.filter((c) => c.category === "physicochemical");
-  const microbiological = requestedItems.filter((c) => c.category === "microbiological");
+  const sections = reportSections(requestedItems, sample?.sample_category);
 
   // A parameter with no result is reported as untested. It is never defaulted to a
   // value and never counts towards a conformity statement — reporting a result the lab
   // did not measure is falsification (ISO/IEC 17025 §7.8.2).
   const rows = requestedItems.map((item) => {
-    const value = resultByCatalog[item.id]?.result_value?.trim() ?? "";
-    return { item, value, remark: evaluateRemark(item.standard_limit, value, qualifiers) };
+    const result = resultByCatalog[item.id];
+    const value = result?.result_value?.trim() ?? "";
+    return { item, value, remark: evaluateItemRemark(item, value, qualifiers, storedRemark(result)) };
   });
   const rowsByItemId = new Map(rows.map((r) => [r.item.id, r]));
 
@@ -180,6 +183,27 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
 
   const isWaste = sample.sample_category === "waste";
   const isPackaged = sample.sample_category === "packaged_drinking_water";
+  // Paint reports are rated, not judged against a specification: no limit column,
+  // no conformity statement.
+  const isPaint = sample.sample_category === "paint";
+  const columnCount = isPaint ? 4 : 5;
+
+  // The water legend (KS, EAS, APHA…) means nothing on a paint report, so it lists only
+  // the abbreviations that actually appear in its methods, results and remarks.
+  const reportText = rows.map((r) => `${r.item.method_name ?? ""} ${r.value} ${r.remark.label}`).join(" ");
+  const appearsOnReport = (code: string) =>
+    new RegExp(`\\b${code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(reportText);
+  const legend: { code: string; label: string }[] = isPaint
+    ? [
+        ...(/\bASTM\b/.test(reportText) && !qualifiers.some((q) => q.code.toUpperCase() === "ASTM")
+          ? [{ code: "ASTM", label: "American Society for Testing and Materials" }]
+          : []),
+        ...[...qualifiers]
+          .filter((q) => q.is_active && q.show_in_legend && appearsOnReport(q.code))
+          .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+          .map((q) => ({ code: q.code, label: q.label })),
+      ]
+    : legendEntries(qualifiers, isWaste).map((q) => ({ code: q.code, label: q.label }));
 
   const SCHEDULE_SPEC_HEADERS: Record<number, string> = {
     3: "NEMA STANDARD FOR EFFLUENT WATER;\nTHIRD SCHEDULE.\nMaximum levels Permissible.",
@@ -203,8 +227,15 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
     specHeader = "KS EAS 12:2018\nPackaged Drinking Water Limit";
     scheduleContext = "KS EAS 12:2018 specifications for packaged drinking water";
   } else {
-    specHeader = rc.specification_title || "KS EAS 12:2018\nTreated Potable Water Limit";
-    scheduleContext = "KS EAS 12:2018 specifications for treated potable water";
+    // The natural/treated choice isn't stored on the sample; the requested tests come
+    // from that sub-type's catalog set, so they tell us which one was picked.
+    const isNaturalPotable =
+      sample.sample_category === "potable" &&
+      ((requestedIds.size > 0 && requestedItems.some((c) => c.water_type === "potable_natural")) ||
+        /natural/i.test(sample.sample_type ?? ""));
+    const potableLabel = isNaturalPotable ? "Natural Potable Water" : "Treated Potable Water";
+    specHeader = rc.specification_title || `KS EAS 12:2018\n${potableLabel} Limit`;
+    scheduleContext = `KS EAS 12:2018 specifications for ${potableLabel.toLowerCase()}`;
   }
 
   const sampledBy: string = rc.sampled_by || sample.sampled_by_name || "AQUACHECK LABORATORIES LTD";
@@ -349,78 +380,61 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
                   <th style={{ border: "1px solid #000", padding: "3px 5px", textAlign: "left" }}>TEST</th>
                   <th style={{ border: "1px solid #000", padding: "3px 5px", textAlign: "left" }}>METHOD</th>
                   <th style={{ border: "1px solid #000", padding: "3px 5px", textAlign: "center" }}>RESULTS</th>
+                  {!isPaint && (
+                    <th style={{ border: "1px solid #000", padding: "3px 5px", textAlign: "center" }}>
+                      {specHeader.split("\n").map((line, i) => (
+                        <span key={i}>{line}{i < specHeader.split("\n").length - 1 && <br />}</span>
+                      ))}
+                    </th>
+                  )}
                   <th style={{ border: "1px solid #000", padding: "3px 5px", textAlign: "center" }}>
-                    {specHeader.split("\n").map((line, i) => (
-                      <span key={i}>{line}{i < specHeader.split("\n").length - 1 && <br />}</span>
-                    ))}
+                    {isPaint ? "REMARKS/RATING SYSTEM" : "REMARKS"}
                   </th>
-                  <th style={{ border: "1px solid #000", padding: "3px 5px", textAlign: "center" }}>REMARKS</th>
                 </tr>
               </thead>
               <tbody>
-                {!isWaste && physicochemical.length > 0 && (
-                  <tr style={{ pageBreakAfter: "avoid", breakAfter: "avoid" }}>
-                    <td colSpan={5} style={{ background: "#333", color: "#fff", border: "1px solid #000", padding: "4px 5px", fontWeight: "bold", textTransform: "uppercase" }}>
-                      Physio-Chemical Test
-                    </td>
-                  </tr>
-                )}
-                {physicochemical.map((item) => {
-                  // Always present: `rows` is built from the same requestedItems list.
-                  const row = rowsByItemId.get(item.id)!;
-                  const remark = row.remark;
-                  const isFail = remark.kind === "non_compliant";
-                  return (
-                    <tr key={item.id}>
-                      <td style={{ border: "1px solid #000", padding: "2px 5px" }}>{item.name}</td>
-                      <td style={{ border: "1px solid #000", padding: "2px 5px" }}>{item.method_name || "—"}</td>
-                      <td style={{ border: "1px solid #000", padding: "2px 5px", textAlign: "center" }}>{row.value || "—"}</td>
-                      <td style={{ border: "1px solid #000", padding: "2px 5px", textAlign: "center" }}>{item.standard_limit || "NS"}</td>
-                      <td style={{ border: "1px solid #000", padding: "2px 5px", textAlign: "center",
-                          color: isFail ? "#c00" : remark.kind === "compliant" ? "#006600" : undefined,
-                          fontWeight: isFail ? "bold" : "normal",
-                          fontStyle: remark.kind === "not_tested" ? "italic" : "normal" }}>
-                        {remark.label}
-                      </td>
-                    </tr>
-                  );
-                })}
-                {!isWaste && microbiological.length > 0 && (
-                  <tr style={{ pageBreakAfter: "avoid", breakAfter: "avoid" }}>
-                    <td colSpan={5} style={{ background: "#333", color: "#fff", border: "1px solid #000", padding: "4px 5px", fontWeight: "bold", textTransform: "uppercase" }}>
-                      Microbiological Test
-                    </td>
-                  </tr>
-                )}
-                {microbiological.map((item) => {
-                  // Always present: `rows` is built from the same requestedItems list.
-                  const row = rowsByItemId.get(item.id)!;
-                  const remark = row.remark;
-                  const isFail = remark.kind === "non_compliant";
-                  return (
-                    <tr key={item.id}>
-                      <td style={{ border: "1px solid #000", padding: "2px 5px" }}>{item.name}</td>
-                      <td style={{ border: "1px solid #000", padding: "2px 5px" }}>{item.method_name || "—"}</td>
-                      <td style={{ border: "1px solid #000", padding: "2px 5px", textAlign: "center" }}>{row.value || "—"}</td>
-                      <td style={{ border: "1px solid #000", padding: "2px 5px", textAlign: "center" }}>{item.standard_limit || "NS"}</td>
-                      <td style={{ border: "1px solid #000", padding: "2px 5px", textAlign: "center",
-                          color: isFail ? "#c00" : remark.kind === "compliant" ? "#006600" : undefined,
-                          fontWeight: isFail ? "bold" : "normal",
-                          fontStyle: remark.kind === "not_tested" ? "italic" : "normal" }}>
-                        {remark.label}
-                      </td>
-                    </tr>
-                  );
-                })}
+                {sections.map((section) => (
+                  <Fragment key={section.title}>
+                    {!isWaste && (
+                      <tr style={{ pageBreakAfter: "avoid", breakAfter: "avoid" }}>
+                        <td colSpan={columnCount} style={{ background: "#333", color: "#fff", border: "1px solid #000", padding: "4px 5px", fontWeight: "bold", textTransform: "uppercase" }}>
+                          {section.title}
+                        </td>
+                      </tr>
+                    )}
+                    {section.items.map((item) => {
+                      // Always present: `rows` is built from the same requestedItems list.
+                      const row = rowsByItemId.get(item.id)!;
+                      const remark = row.remark;
+                      const isFail = remark.kind === "non_compliant";
+                      return (
+                        <tr key={item.id}>
+                          <td style={{ border: "1px solid #000", padding: "2px 5px" }}>{item.name}</td>
+                          <td style={{ border: "1px solid #000", padding: "2px 5px" }}>{item.method_name || "—"}</td>
+                          <td style={{ border: "1px solid #000", padding: "2px 5px", textAlign: "center" }}>{row.value || "—"}</td>
+                          {!isPaint && (
+                            <td style={{ border: "1px solid #000", padding: "2px 5px", textAlign: "center" }}>{item.standard_limit || "NS"}</td>
+                          )}
+                          <td style={{ border: "1px solid #000", padding: "2px 5px", textAlign: "center",
+                              color: isFail ? "#c00" : remark.kind === "compliant" ? "#006600" : undefined,
+                              fontWeight: isFail ? "bold" : "normal",
+                              fontStyle: remark.kind === "not_tested" ? "italic" : "normal" }}>
+                            {remark.label}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </Fragment>
+                ))}
               </tbody>
             </table>
 
-            {/* Legend */}
+            {/* Legend — paint reports list only the abbreviations that appear on them */}
             <div style={{ fontSize: "9px", margin: "8px 0", lineHeight: "1.5" }}>
               <p>
-                {legendEntries(qualifiers, isWaste).map((q, i, all) => (
-                  <span key={q.id}>
-                    <strong>{q.code}:</strong> {q.label}{i < all.length - 1 ? ", " : "."}
+                {legend.map((entry, i, all) => (
+                  <span key={entry.code}>
+                    <strong>{entry.code}:</strong> {entry.label}{i < all.length - 1 ? ", " : "."}
                   </span>
                 ))}
               </p>
@@ -434,11 +448,13 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
             </div>
 
             {/* Comments */}
-            {(hasNonCompliant || evaluatedCount > 0 || untestedItems.length > 0 || finalComment) && (
+            {(isPaint || hasNonCompliant || evaluatedCount > 0 || untestedItems.length > 0 || finalComment) && (
               <div style={{ fontSize: "10px", margin: "8px 0", lineHeight: "1.4" }}>
                 <p><strong style={{ textDecoration: "underline" }}>COMMENTS.</strong></p>
                 {finalComment
                   ? <p>{finalComment}</p>
+                  : isPaint
+                    ? <p>{PAINT_COMMENT}</p>
                   : hasNonCompliant
                     ? isWaste
                       ? <p>The parameters; {nonCompliantItems.map((i) => i.name).join(", ")} do not meet the set specifications for {scheduleContext}. Treatment is therefore recommended.</p>
@@ -450,14 +466,17 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
                 {/* The conformity statement above covers only parameters actually
                     measured, so any gap is stated rather than left to inference. */}
                 {untestedItems.length > 0 && (
-                  <p>The following requested {untestedItems.length === 1 ? "parameter was" : "parameters were"} not tested and {untestedItems.length === 1 ? "is" : "are"} excluded from the statement above: {untestedItems.map((i) => i.name).join(", ")}.</p>
+                  isPaint
+                    ? <p>The following requested {untestedItems.length === 1 ? "parameter was" : "parameters were"} not tested: {untestedItems.map((i) => i.name).join(", ")}.</p>
+                    : <p>The following requested {untestedItems.length === 1 ? "parameter was" : "parameters were"} not tested and {untestedItems.length === 1 ? "is" : "are"} excluded from the statement above: {untestedItems.map((i) => i.name).join(", ")}.</p>
                 )}
               </div>
             )}
 
-            {/* Signatures */}
-            <div style={{ display: "flex", justifyContent: signatories.length > 0 ? "space-around" : "space-between", marginTop: "40px", fontSize: "11px", flexWrap: "wrap", gap: "16px", pageBreakInside: "avoid", breakInside: "avoid" }}>
-              {signatories.length > 0 ? signatories.map((sig) => (
+            {/* Signatures, with the date and QR code in the middle column — stacking them
+                below the signatures pushed the QR code onto a page of its own. */}
+            {(() => {
+              const signatureBlocks = signatories.length > 0 ? signatories.map((sig) => (
                 <div key={sig.id} style={{ textAlign: "center" }}>
                   {sig.signature_b64 && (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -472,59 +491,52 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
                     <div style={{ fontStyle: "italic" }}>{sig.job_title || sig.role.replace("_", " ")}</div>
                   </div>
                 </div>
-              )) : (
-                <>
-                  <div style={{ textAlign: "center" }}>
-                    <div style={{ borderTop: "1px solid #000", width: "180px", paddingTop: "4px" }}>
-                      <div style={{ fontWeight: "bold", textTransform: "uppercase" }}>{authorizerName || "___________________"}</div>
-                      <div style={{ fontStyle: "italic" }}>{authorizerTitle || "Authorised Signatory"}</div>
-                    </div>
+              )) : [
+                <div key="authorizer" style={{ textAlign: "center" }}>
+                  <div style={{ borderTop: "1px solid #000", width: "180px", paddingTop: "4px" }}>
+                    <div style={{ fontWeight: "bold", textTransform: "uppercase" }}>{authorizerName || "___________________"}</div>
+                    <div style={{ fontStyle: "italic" }}>{authorizerTitle || "Authorised Signatory"}</div>
                   </div>
-                  {analystName && (
-                    <div style={{ textAlign: "center" }}>
-                      <div style={{ borderTop: "1px solid #000", width: "180px", paddingTop: "4px" }}>
-                        <div style={{ fontWeight: "bold", textTransform: "uppercase" }}>{analystName}</div>
-                        <div style={{ fontStyle: "italic" }}>{analystTitle}</div>
-                      </div>
-                    </div>
-                  )}
-                  {!analystName && (
-                    <div style={{ textAlign: "center" }}>
-                      <div style={{ borderTop: "1px solid #000", width: "180px", paddingTop: "4px" }}>
-                        <div style={{ fontWeight: "bold", textTransform: "uppercase" }}>___________________</div>
-                        <div style={{ fontStyle: "italic" }}>Authorised Signatory</div>
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-
-            {/* Date stamp */}
-            <div style={{ textAlign: "center", marginTop: "20px", fontSize: "12px", fontWeight: "bold" }}>
-              {reportIssuedDate}
-            </div>
-
-            {/* QR code — moved to bottom of report */}
-            {qrApiUrl && (
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginTop: "16px" }}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={qrApiUrl} alt="Report QR" style={{ display: "block", width: "70px", height: "70px" }} />
-                <div style={{ width: "70px", textAlign: "center", fontSize: "7px", color: "#666", marginTop: "2px" }}>Scan to verify</div>
-              </div>
-            )}
+                </div>,
+                <div key="analyst" style={{ textAlign: "center" }}>
+                  <div style={{ borderTop: "1px solid #000", width: "180px", paddingTop: "4px" }}>
+                    <div style={{ fontWeight: "bold", textTransform: "uppercase" }}>{analystName || "___________________"}</div>
+                    <div style={{ fontStyle: "italic" }}>{analystName ? analystTitle : "Authorised Signatory"}</div>
+                  </div>
+                </div>,
+              ];
+              const half = Math.ceil(signatureBlocks.length / 2);
+              const column: CSSProperties ={ display: "flex", flexDirection: "column", gap: "12px", alignItems: "center" };
+              return (
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginTop: "36px", fontSize: "11px", gap: "12px", pageBreakInside: "avoid", breakInside: "avoid" }}>
+                  <div style={column}>{signatureBlocks.slice(0, half)}</div>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                    {qrApiUrl && (
+                      <>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={qrApiUrl} alt="Report QR" style={{ display: "block", width: "64px", height: "64px" }} />
+                        <div style={{ width: "64px", textAlign: "center", fontSize: "7px", color: "#666", marginTop: "2px" }}>Scan to verify</div>
+                      </>
+                    )}
+                    <div style={{ marginTop: "6px", fontSize: "12px", fontWeight: "bold" }}>{reportIssuedDate}</div>
+                  </div>
+                  <div style={column}>{signatureBlocks.slice(half)}</div>
+                </div>
+              );
+            })()}
 
             {/* Revision history — only show if there are entries */}
             {revisionHistory.length > 0 && (
-              <div style={{ marginTop: "12px", borderTop: "1px solid #ccc", paddingTop: "6px", fontSize: "8px", color: "#555" }}>
-                <p style={{ fontWeight: "bold", textTransform: "uppercase", marginBottom: "4px" }}>Revision History</p>
+              <div style={{ marginTop: "8px", borderTop: "1px solid #ccc", paddingTop: "4px", fontSize: "8px", color: "#555" }}>
+                <strong style={{ textTransform: "uppercase" }}>Revision History: </strong>
                 {[...revisionHistory].reverse().map((entry, i) => (
-                  <div key={i} style={{ marginBottom: "3px" }}>
+                  <span key={i}>
+                    {i > 0 && "; "}
                     <strong>{entry.action?.toUpperCase()}</strong>
                     {" — "}
                     {entry.timestamp ? format(new Date(entry.timestamp), "dd MMM yyyy HH:mm") : ""}
                     {entry.reason ? ` — ${entry.reason}` : ""}
-                  </div>
+                  </span>
                 ))}
               </div>
             )}

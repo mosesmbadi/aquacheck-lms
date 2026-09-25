@@ -94,7 +94,7 @@ export const testResultsApi = {
   create: (data: Partial<TestResult>) => api.post<TestResult>("/test-results", data),
   update: (id: number, data: Partial<TestResult>) => api.put<TestResult>(`/test-results/${id}`, data),
   validate: (id: number) => api.post<TestResult>(`/test-results/${id}/validate`),
-  bulkSave: (data: { sample_id: number; rows: { catalog_item_id: number; result_value?: string; notes?: string }[] }) =>
+  bulkSave: (data: { sample_id: number; rows: { catalog_item_id: number; result_value?: string; notes?: string; remarks?: string }[] }) =>
     api.post<TestResult[]>("/test-results/bulk", data),
   calculateUncertainty: (id: number, values: number[], coverage_factor = 2.0) =>
     api.post(`/test-results/${id}/calculate-uncertainty`, { values, coverage_factor }),
@@ -330,6 +330,8 @@ export const testCatalogApi = {
   update: (id: number, data: Partial<TestCatalogItem>) =>
     api.put<TestCatalogItem>(`/test-catalog/${id}`, data),
   delete: (id: number) => api.delete(`/test-catalog/${id}`),
+  move: (id: number, direction: "up" | "down") =>
+    api.post<{ moved: boolean }>(`/test-catalog/${id}/move`, { direction }),
   seed: () => api.post<{ added: number; message: string }>("/test-catalog/seed"),
   industryTypes: () =>
     api.get<{ value: string; label: string }[]>("/test-catalog/industry-types"),

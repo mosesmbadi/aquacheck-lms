@@ -7,7 +7,7 @@
  * without a code change. Mirror of `backend/app/services/compliance.py`; keep the two
  * in step.
  */
-import type { ResultQualifier } from "./types";
+import type { ResultQualifier, TestCatalogItem, TestResult } from "./types";
 
 export const COMPLIANT = "COMPLIANT";
 export const NON_COMPLIANT = "NON-COMPLIANT";
@@ -61,7 +61,11 @@ export type RemarkKind =
   /** Above the measurable range with no standard to fail against (e.g. TNTC vs "—"). */
   | "out_of_range"
   /** A standard exists but the result cannot be compared to it. */
-  | "indeterminate";
+  | "indeterminate"
+  /** Rated on a scale rather than judged against a limit (e.g. contamination rating). */
+  | "rating"
+  /** Remark written by the analyst. */
+  | "manual";
 
 export interface Remark {
   kind: RemarkKind;
@@ -71,7 +75,7 @@ export interface Remark {
   advisory: string | null;
 }
 
-const REMARKS: Record<RemarkKind, Remark> = {
+const REMARKS: Record<Exclude<RemarkKind, "rating" | "manual">, Remark> = {
   compliant: { kind: "compliant", label: COMPLIANT, advisory: null },
   non_compliant: { kind: "non_compliant", label: NON_COMPLIANT, advisory: null },
   no_standard: { kind: "no_standard", label: "NS", advisory: null },
@@ -148,6 +152,70 @@ export function evaluateRemark(
   const limitNumber = toNumber(limit);
   if (limitNumber === null) return REMARKS.indeterminate;
   return number <= limitNumber ? REMARKS.compliant : REMARKS.non_compliant;
+}
+
+// Contamination rating scale (lab work instruction, ASTM D5588), by colony count.
+export const NO_CONTAMINATION = "No Contamination";
+export const TRACE_CONTAMINATION = "Trace Contamination";
+export const LIGHT_CONTAMINATION = "Light Contamination";
+export const MODERATE_CONTAMINATION = "Moderate Contamination";
+export const HEAVY_CONTAMINATION = "Heavy Contamination";
+
+const rating = (label: string): Remark => ({ kind: "rating", label, advisory: null });
+
+/** Rate a colony count: 0 none, 1–9 trace, 10–99 light, 100+ moderate, TNTC heavy. */
+export function contaminationRating(
+  resultValue: string | null | undefined,
+  qualifiers: ResultQualifier[]
+): Remark {
+  const value = (resultValue ?? "").trim();
+  if (!value) return REMARKS.not_tested;
+
+  const resultQ = matchQualifier(value, qualifiers);
+  let number: number | null;
+  if (resultQ) {
+    // TNTC — continuous growth, colonies indistinguishable.
+    if (resultQ.exceeds_limit) return rating(HEAVY_CONTAMINATION);
+    if (!resultQ.is_detected) return rating(NO_CONTAMINATION);
+    number = resultQ.numeric_equivalent ?? null;
+  } else {
+    number = toNumber(value);
+  }
+  if (number === null) {
+    return {
+      kind: "indeterminate",
+      label: "—",
+      advisory: "Enter a colony count (or TNTC) so the contamination rating can be set.",
+    };
+  }
+
+  if (number <= 0) return rating(NO_CONTAMINATION);
+  if (number < 10) return rating(TRACE_CONTAMINATION);
+  if (number < 100) return rating(LIGHT_CONTAMINATION);
+  return rating(MODERATE_CONTAMINATION);
+}
+
+/** REMARKS column for a catalog test, following its remark rule. */
+export function evaluateItemRemark(
+  item: Pick<TestCatalogItem, "remark_rule" | "standard_limit">,
+  resultValue: string | null | undefined,
+  qualifiers: ResultQualifier[],
+  manualRemark?: string | null
+): Remark {
+  if (item.remark_rule === "contamination_rating") return contaminationRating(resultValue, qualifiers);
+  if (item.remark_rule === "manual") {
+    if (!(resultValue ?? "").trim()) return REMARKS.not_tested;
+    const text = (manualRemark ?? "").trim();
+    if (text) return { kind: "manual", label: text, advisory: null };
+    return { kind: "indeterminate", label: "—", advisory: "Enter the remark for this test." };
+  }
+  return evaluateRemark(item.standard_limit, resultValue, qualifiers);
+}
+
+/** Analyst-entered remark stored on a result, if any. */
+export function storedRemark(result?: TestResult | null): string {
+  const remarks = result?.raw_observations?.remarks;
+  return typeof remarks === "string" ? remarks : "";
 }
 
 /** Legend rows for a report, in display order. */

@@ -30,6 +30,8 @@ interface PublicReport {
     specification?: string;
     remarks?: string;
   }>;
+  /** False for rated reports (paints), which have no specification column. */
+  show_specification?: boolean;
   authorized: boolean;
   laboratory: string;
   note: string;
@@ -134,7 +136,7 @@ export default function PublicReportPage() {
                       {data.authorized && (
                         <>
                           <th className="pb-2">Result</th>
-                          <th className="pb-2">Specification</th>
+                          {data.show_specification !== false && <th className="pb-2">Specification</th>}
                           <th className="pb-2">Remarks</th>
                         </>
                       )}
@@ -148,7 +150,9 @@ export default function PublicReportPage() {
                         {data.authorized && (
                           <>
                             <td className="py-1.5 text-gray-800 font-medium">{p.result}</td>
-                            <td className="py-1.5 text-gray-500 text-xs">{p.specification}</td>
+                            {data.show_specification !== false && (
+                              <td className="py-1.5 text-gray-500 text-xs">{p.specification}</td>
+                            )}
                             <td className="py-1.5 text-gray-500 text-xs">{p.remarks}</td>
                           </>
                         )}

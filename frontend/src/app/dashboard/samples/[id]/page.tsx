@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { Fragment, useState, useCallback, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Save, CheckCircle, Clock, FlaskConical, MapPin, Calendar, Printer, ShieldCheck, Pencil, Check, X } from "lucide-react";
@@ -11,13 +11,18 @@ import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { SampleStatusBadge, TestStatusBadge } from "@/components/ui/Badge";
 import { samplesApi, testResultsApi, testCatalogApi, usersApi, resultQualifiersApi } from "@/lib/api";
 import type { TestResult, TestCatalogItem, User, Sample, ResultQualifier } from "@/lib/types";
-import { evaluateRemark, type Remark } from "@/lib/compliance";
+import { evaluateItemRemark, storedRemark, type Remark } from "@/lib/compliance";
+import { reportSections } from "@/lib/reportSections";
 import TestReportPrint from "@/components/TestReportPrint";
 
 type ResultDraft = {
   result_value: string;
   notes: string;
+  /** Analyst's remark — only used by tests whose remark rule is "manual". */
+  remarks: string;
 };
+
+const EMPTY_DRAFT: ResultDraft = { result_value: "", notes: "", remarks: "" };
 
 export default function SampleDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -83,6 +88,7 @@ export default function SampleDetailPage() {
           next[item.id] = {
             result_value: existing?.result_value || "",
             notes: existing?.notes || "",
+            remarks: storedRemark(existing),
           };
           changed = true;
         }
@@ -101,7 +107,7 @@ export default function SampleDetailPage() {
   }, []);
 
   const bulkSaveMutation = useMutation({
-    mutationFn: (rows: { catalog_item_id: number; result_value?: string; notes?: string }[]) =>
+    mutationFn: (rows: { catalog_item_id: number; result_value?: string; notes?: string; remarks?: string }[]) =>
       testResultsApi.bulkSave({ sample_id: sampleId, rows }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["test-results", { sample_id: sampleId }] });
@@ -156,12 +162,15 @@ export default function SampleDetailPage() {
   }
 
   const handleSaveAll = () => {
+    const manualIds = new Set(catalogItems.filter((c) => c.remark_rule === "manual").map((c) => c.id));
     const rows = Object.entries(drafts)
       .filter(([, d]) => d.result_value.trim() !== "")
       .map(([catalogId, d]) => ({
         catalog_item_id: Number(catalogId),
         result_value: d.result_value.trim(),
         notes: d.notes.trim() || undefined,
+        // Sent (even blank, to clear it) only for tests whose remark the analyst writes.
+        remarks: manualIds.has(Number(catalogId)) ? d.remarks.trim() : undefined,
       }));
     if (rows.length > 0) {
       bulkSaveMutation.mutate(rows);
@@ -173,14 +182,13 @@ export default function SampleDetailPage() {
   const requestedItems =
     requestedIds.size > 0 ? catalogItems.filter((c) => requestedIds.has(c.id)) : catalogItems;
 
-  // Separate catalog items by category
-  const physicochemical = requestedItems.filter((c) => c.category === "physicochemical");
-  const microbiological = requestedItems.filter((c) => c.category === "microbiological");
+  // Grouped the way the printed report groups them (category, or the test's own section).
+  const sections = reportSections(requestedItems, sample?.sample_category);
 
-  // Compliance is evaluated by the shared helper against the editable qualifier
-  // vocabulary, so the entry screen and the printed report always agree.
-  const getRemark = (item: TestCatalogItem, value: string): Remark =>
-    evaluateRemark(item.standard_limit, value, qualifiers);
+  // Remarks come from the shared helper and the editable qualifier vocabulary, so the
+  // entry screen and the printed report always agree.
+  const getRemark = (item: TestCatalogItem, draft: ResultDraft): Remark =>
+    evaluateItemRemark(item, draft.result_value, qualifiers, draft.remarks);
 
   if (sampleLoading) {
     return (
@@ -423,65 +431,38 @@ export default function SampleDetailPage() {
             ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm border-collapse">
-                  {/* ── Physicochemical Section ─── */}
-                  <thead>
-                    <tr className="bg-gray-700 text-white">
-                      <th className="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide" colSpan={6}>
-                        Physio-Chemical Test
-                      </th>
-                    </tr>
-                    <tr className="bg-gray-100 border-b border-gray-300">
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 uppercase w-[280px]">Parameter</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 uppercase w-[220px]">Method</th>
-                      <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700 uppercase w-[120px]">Results</th>
-                      <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700 uppercase w-[130px]">Standard Limit</th>
-                      <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700 uppercase w-[130px]">Remarks</th>
-                      <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700 uppercase w-[80px]">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {physicochemical.map((item) => (
-                      <ResultEntryRow
-                        key={item.id}
-                        item={item}
-                        draft={drafts[item.id] || { result_value: "", notes: "" }}
-                        existingResult={resultByCatalog[item.id]}
-                        onUpdate={updateDraft}
-                        onValidate={(rid) => validateMutation.mutate(rid)}
-                        getRemark={getRemark}
-                      />
-                    ))}
-                  </tbody>
-
-                  {/* ── Microbiological Section ─── */}
-                  <thead>
-                    <tr className="bg-gray-700 text-white">
-                      <th className="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide" colSpan={6}>
-                        Microbiological Test
-                      </th>
-                    </tr>
-                    <tr className="bg-gray-100 border-b border-gray-300">
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 uppercase">Parameter</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 uppercase">Method</th>
-                      <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700 uppercase">Results</th>
-                      <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700 uppercase">Standard Limit</th>
-                      <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700 uppercase">Remarks</th>
-                      <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700 uppercase">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {microbiological.map((item) => (
-                      <ResultEntryRow
-                        key={item.id}
-                        item={item}
-                        draft={drafts[item.id] || { result_value: "", notes: "" }}
-                        existingResult={resultByCatalog[item.id]}
-                        onUpdate={updateDraft}
-                        onValidate={(rid) => validateMutation.mutate(rid)}
-                        getRemark={getRemark}
-                      />
-                    ))}
-                  </tbody>
+                  {sections.map((section, index) => (
+                    <Fragment key={section.title}>
+                      <thead>
+                        <tr className="bg-gray-700 text-white">
+                          <th className="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide" colSpan={6}>
+                            {section.title}
+                          </th>
+                        </tr>
+                        <tr className="bg-gray-100 border-b border-gray-300">
+                          <th className={`px-3 py-2 text-left text-xs font-semibold text-gray-700 uppercase ${index === 0 ? "w-[280px]" : ""}`}>Parameter</th>
+                          <th className={`px-3 py-2 text-left text-xs font-semibold text-gray-700 uppercase ${index === 0 ? "w-[220px]" : ""}`}>Method</th>
+                          <th className={`px-3 py-2 text-center text-xs font-semibold text-gray-700 uppercase ${index === 0 ? "w-[120px]" : ""}`}>Results</th>
+                          <th className={`px-3 py-2 text-center text-xs font-semibold text-gray-700 uppercase ${index === 0 ? "w-[130px]" : ""}`}>Standard Limit</th>
+                          <th className={`px-3 py-2 text-center text-xs font-semibold text-gray-700 uppercase ${index === 0 ? "w-[130px]" : ""}`}>Remarks</th>
+                          <th className={`px-3 py-2 text-center text-xs font-semibold text-gray-700 uppercase ${index === 0 ? "w-[80px]" : ""}`}>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {section.items.map((item) => (
+                          <ResultEntryRow
+                            key={item.id}
+                            item={item}
+                            draft={drafts[item.id] || EMPTY_DRAFT}
+                            existingResult={resultByCatalog[item.id]}
+                            onUpdate={updateDraft}
+                            onValidate={(rid) => validateMutation.mutate(rid)}
+                            getRemark={getRemark}
+                          />
+                        ))}
+                      </tbody>
+                    </Fragment>
+                  ))}
                 </table>
               </div>
             )}
@@ -568,15 +549,16 @@ function ResultEntryRow({
   getRemark,
 }: {
   item: TestCatalogItem;
-  draft: { result_value: string; notes: string };
+  draft: ResultDraft;
   existingResult?: TestResult;
-  onUpdate: (catalogId: number, field: "result_value" | "notes", value: string) => void;
+  onUpdate: (catalogId: number, field: keyof ResultDraft, value: string) => void;
   onValidate: (resultId: number) => void;
-  getRemark: (item: TestCatalogItem, value: string) => Remark;
+  getRemark: (item: TestCatalogItem, draft: ResultDraft) => Remark;
 }) {
   const value = draft.result_value;
-  const remark = getRemark(item, value);
+  const remark = getRemark(item, draft);
   const isValidated = existingResult?.status === "validated";
+  const isManualRemark = item.remark_rule === "manual";
 
   return (
     <tr className={`hover:bg-blue-50/50 transition-colors ${isValidated ? "bg-green-50/30" : ""}`}>
@@ -594,7 +576,7 @@ function ResultEntryRow({
       <td className="px-3 py-1 text-center">
         <input
           type="text"
-          className={`w-full max-w-[100px] mx-auto px-2 py-1 text-center text-sm border rounded
+          className={`w-full ${item.remark_rule === "manual" ? "max-w-[220px]" : "max-w-[100px]"} mx-auto px-2 py-1 text-center text-sm border rounded
             ${isValidated
               ? "bg-green-50 border-green-200 text-green-800 cursor-not-allowed"
               : "border-gray-300 focus:border-primary-400 focus:ring-1 focus:ring-primary-400"
@@ -611,9 +593,25 @@ function ResultEntryRow({
         {item.standard_limit || "—"}
       </td>
 
-      {/* Compliance remarks */}
+      {/* Remarks — written by the analyst for "manual" tests, derived otherwise */}
       <td className="px-3 py-1.5 text-center">
-        {value ? (
+        {isManualRemark ? (
+          <input
+            type="text"
+            className={`w-full max-w-[140px] mx-auto px-2 py-1 text-center text-xs border rounded outline-none
+              ${isValidated
+                ? "bg-green-50 border-green-200 text-green-800 cursor-not-allowed"
+                : value && !draft.remarks.trim()
+                  ? "border-amber-400 focus:ring-1 focus:ring-amber-400"
+                  : "border-gray-300 focus:border-primary-400 focus:ring-1 focus:ring-primary-400"
+              }`}
+            value={draft.remarks}
+            onChange={(e) => onUpdate(item.id, "remarks", e.target.value)}
+            placeholder="e.g. Resistant"
+            title={remark.advisory ?? undefined}
+            disabled={isValidated}
+          />
+        ) : value ? (
           <span
             title={remark.advisory ?? undefined}
             className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded ${
@@ -621,7 +619,9 @@ function ResultEntryRow({
                 ? "bg-green-100 text-green-800"
                 : remark.kind === "non_compliant"
                   ? "bg-red-100 text-red-800"
-                  : remark.advisory
+                  : remark.kind === "rating"
+                    ? "bg-slate-100 text-slate-700"
+                    : remark.advisory
                     // Out of range / cannot be evaluated — needs the analyst's attention
                     // even though no conformity statement is possible.
                     ? "bg-amber-100 text-amber-800 cursor-help"

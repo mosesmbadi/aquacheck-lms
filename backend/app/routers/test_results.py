@@ -16,6 +16,18 @@ from app.routers.inventory import deduct_reagents_for_test_result
 router = APIRouter(prefix="/test-results", tags=["Test Results"])
 
 
+def _with_remarks(raw_observations: Optional[dict], remarks: str) -> dict:
+    """Copy of raw_observations with the analyst's remark set (blank clears it).
+    A new dict so the plain JSON column registers the change."""
+    updated = dict(raw_observations or {})
+    remarks = remarks.strip()
+    if remarks:
+        updated["remarks"] = remarks
+    else:
+        updated.pop("remarks", None)
+    return updated
+
+
 def _maybe_complete_sample(sample: Sample, db: Session) -> None:
     """Mark sample as completed if every requested (or saved) test has a validated result."""
     # flush so the just-validated result is visible in this transaction
@@ -217,6 +229,8 @@ def bulk_upsert_results(
             tr.result_value = row.result_value
             tr.result_unit = unit
             tr.notes = row.notes or tr.notes
+            if row.remarks is not None:
+                tr.raw_observations = _with_remarks(tr.raw_observations, row.remarks)
             if tr.status == TestStatus.pending or tr.status == TestStatus.in_progress:
                 tr.status = TestStatus.completed
                 tr.completed_at = now
@@ -230,6 +244,7 @@ def bulk_upsert_results(
                 result_value=row.result_value,
                 result_unit=unit,
                 notes=row.notes,
+                raw_observations=_with_remarks({}, row.remarks) if row.remarks is not None else {},
                 status=TestStatus.completed if row.result_value else TestStatus.in_progress,
                 started_at=now,
                 completed_at=now if row.result_value else None,

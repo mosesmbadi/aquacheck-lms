@@ -420,6 +420,30 @@ def ensure_schema_compatibility():
             ))
             print("[LIMS] Added reports.customer_id column and backfilled from contracts.")
 
+        # Extend samplecategory enum with paint (paints / raw materials / plant swabs)
+        paint_exists = connection.execute(
+            text(
+                "SELECT 1 FROM pg_enum e JOIN pg_type t ON e.enumtypid = t.oid "
+                "WHERE t.typname = 'samplecategory' AND e.enumlabel = 'paint'"
+            )
+        ).scalar()
+        if not paint_exists:
+            connection.execute(text("ALTER TYPE samplecategory ADD VALUE IF NOT EXISTS 'paint'"))
+            print("[LIMS] Added 'paint' to samplecategory enum.")
+
+        # test_catalog.section / remark_rule — custom report section and remark logic
+        for column in ("section", "remark_rule"):
+            column_exists = connection.execute(
+                text(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_name = 'test_catalog' AND column_name = :column"
+                ),
+                {"column": column},
+            ).scalar()
+            if not column_exists:
+                connection.execute(text(f"ALTER TABLE test_catalog ADD COLUMN {column} VARCHAR"))
+                print(f"[LIMS] Added test_catalog.{column} column.")
+
         # samples.sampled_by — user who physically collected the sample (optional)
         sampled_by_exists = connection.execute(
             text(
