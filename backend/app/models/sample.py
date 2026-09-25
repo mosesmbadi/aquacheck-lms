@@ -20,6 +20,9 @@ class SampleCategory(str, enum.Enum):
     potable = "potable"
     waste = "waste"
     packaged_drinking_water = "packaged_drinking_water"
+    # Paints, paint raw materials and plant-area swabs (ASTM D5588 / D4300) — rated, not
+    # checked against a specification.
+    paint = "paint"
 
 
 class Sample(Base):

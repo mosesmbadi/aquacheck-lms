@@ -1,6 +1,6 @@
 import re
 import unicodedata
-from typing import List, Optional
+from typing import List, Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
@@ -136,6 +136,10 @@ SCHEDULE_4_PARAMETERS: dict[str, list[str]] = {
 
 # ─── Pydantic schemas ─────────────────────────────────────────────────────────
 
+# Plain strings (not the Enum) so they drop straight into the String column.
+RemarkRuleValue = Literal["compliance", "contamination_rating", "manual"]
+
+
 class CatalogItemBase(BaseModel):
     name: str
     category: TestCategory
@@ -146,6 +150,8 @@ class CatalogItemBase(BaseModel):
     description: Optional[str] = None
     price: float = 0
     sort_order: int = 0
+    section: Optional[str] = None
+    remark_rule: Optional[RemarkRuleValue] = None
     is_active: bool = True
 
 
@@ -163,6 +169,8 @@ class CatalogItemUpdate(BaseModel):
     description: Optional[str] = None
     price: Optional[float] = None
     sort_order: Optional[int] = None
+    section: Optional[str] = None
+    remark_rule: Optional[RemarkRuleValue] = None
     is_active: Optional[bool] = None
 
 
@@ -187,6 +195,8 @@ class CatalogItemOut(CatalogItemBase):
             "description": obj.description,
             "price": float(obj.price) if obj.price is not None else 0,
             "sort_order": obj.sort_order,
+            "section": obj.section,
+            "remark_rule": obj.remark_rule,
             "is_active": obj.is_active,
             "created_at": obj.created_at.isoformat() if obj.created_at else "",
             "updated_at": obj.updated_at.isoformat() if obj.updated_at else "",
@@ -541,6 +551,18 @@ PACKAGED_DRINKING_WATER_TESTS = [
 ]
 
 
+# ─── Paints, paint raw materials & plant areas — ASTM D5588 / D4300 ─────────
+# No specification column on these reports: D5588 counts are rated on the lab's
+# contamination scale, D4300 susceptibility results are rated by the analyst.
+
+PAINT_TESTS = [
+    {"name": "Total Bacterial Count", "category": "microbiological", "unit": "CFU", "method_name": "ASTM D 5588-97", "standard_limit": "—", "remark_rule": "contamination_rating", "sort_order": 10},
+    {"name": "Yeast and Molds", "category": "microbiological", "unit": "CFU", "method_name": "ASTM D 5588-97", "standard_limit": "—", "remark_rule": "contamination_rating", "sort_order": 20},
+    {"name": "Potato Dextrose Agar", "category": "microbiological", "unit": "", "method_name": "ASTM D 4300-01", "standard_limit": "—", "remark_rule": "manual", "section": "SUSCEPTIBILITY TEST", "sort_order": 30},
+    {"name": "Mineral Salts Agar", "category": "microbiological", "unit": "", "method_name": "ASTM D 4300-01", "standard_limit": "—", "remark_rule": "manual", "section": "SUSCEPTIBILITY TEST", "sort_order": 40},
+]
+
+
 _CHLORINE_NAMES = {"Free Chlorine mg/L", "Total Chlorine mg/L", "Chloramine as Cl₂ mg/L"}
 
 
@@ -660,8 +682,10 @@ def default_sort_order(name: str, current: int = 0) -> int:
     return _UNLISTED_ORDER_OFFSET + current
 
 
-def _is_waste_type(water_type) -> bool:
-    return str(water_type or "").startswith("waste_")
+def _uses_default_order(water_type) -> bool:
+    # Waste schedules follow NEMA order; paint tests have their own short list.
+    wt = str(water_type or "")
+    return not wt.startswith("waste_") and wt != "paint"
 
 
 def apply_default_report_order(db: Session) -> int:
@@ -669,7 +693,7 @@ def apply_default_report_order(db: Session) -> int:
     Overwrites manual Sort Order edits on those items. Returns count updated."""
     updated = 0
     for item in db.query(TestCatalogItem).all():
-        if _is_waste_type(item.water_type):
+        if not _uses_default_order(item.water_type):
             continue
         target = default_sort_order(item.name, item.sort_order)
         if item.sort_order != target:
@@ -695,12 +719,13 @@ def seed_catalog(db: Session) -> int:
         + [{**item, "water_type": "potable_natural"} for item in potable_natural]
         + [{**item, "water_type": "packaged_drinking_water"} for item in PACKAGED_DRINKING_WATER_TESTS]
         + WASTE_SCHEDULE_TESTS
+        + [{**item, "water_type": "paint"} for item in PAINT_TESTS]
     )
     added = 0
     for item in all_items:
         key = (item["name"], item.get("water_type", "dialysis_potable"))
         if key not in existing_pairs:
-            if not _is_waste_type(item.get("water_type")):
+            if _uses_default_order(item.get("water_type")):
                 item = {**item, "sort_order": default_sort_order(item["name"], item.get("sort_order", 0))}
             db.add(TestCatalogItem(**item))
             added += 1
@@ -780,7 +805,7 @@ def create_catalog_item(
 ):
     item = TestCatalogItem(**payload.model_dump())
     # Sort Order left at 0 means "not chosen" — slot the test into the default report order.
-    if not item.sort_order and not _is_waste_type(item.water_type):
+    if not item.sort_order and _uses_default_order(item.water_type):
         item.sort_order = default_sort_order(item.name)
     db.add(item)
     db.commit()

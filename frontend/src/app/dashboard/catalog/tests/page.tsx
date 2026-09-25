@@ -24,6 +24,7 @@ const WATER_TYPE_OPTIONS = [
   { value: "potable_natural",         label: "Natural Potable Water" },
   { value: "potable_treated",         label: "Treated Potable Water" },
   { value: "packaged_drinking_water", label: "Packaged Drinking Water" },
+  { value: "paint",                   label: "Paints & Industrial Products" },
   { value: "waste_1",                 label: "Waste Water (Schedule 1)" },
   { value: "waste_2",                 label: "Waste Water (Schedule 2)" },
   { value: "waste_3",                 label: "Waste Water (Schedule 3)" },
@@ -51,8 +52,17 @@ const schema = z.object({
   description: z.string().optional(),
   price: z.coerce.number().min(0).default(0),
   sort_order: z.coerce.number().int().min(0).default(0),
+  // Blank → null, so the test falls back to its category's section.
+  section: z.preprocess((v) => (typeof v === "string" && v.trim() === "" ? null : v), z.string().nullable().optional()),
+  remark_rule: z.enum(["compliance", "contamination_rating", "manual"]).default("compliance"),
   is_active: z.boolean().default(true),
 });
+
+const REMARK_RULE_OPTIONS = [
+  { value: "compliance",           label: "Compliance — compare with Standard Limit" },
+  { value: "contamination_rating", label: "Contamination rating — from colony count (0 / 1–9 / 10–99 / 100+ / TNTC)" },
+  { value: "manual",               label: "Entered by analyst (e.g. Resistant)" },
+] as const;
 type FormData = z.infer<typeof schema>;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -62,7 +72,7 @@ const CATEGORY_LABELS: Record<TestCategory, string> = {
   microbiological: "Microbiological",
 };
 
-type WaterTypeFilter = "all" | "dialysis" | "waste_water" | "packaged_drinking_water" | "potable";
+type WaterTypeFilter = "all" | "dialysis" | "waste_water" | "packaged_drinking_water" | "potable" | "paint";
 
 const WATER_TYPE_FILTERS: { value: WaterTypeFilter; label: string }[] = [
   { value: "all",                      label: "All Water Types" },
@@ -70,6 +80,7 @@ const WATER_TYPE_FILTERS: { value: WaterTypeFilter; label: string }[] = [
   { value: "waste_water",              label: "Waste Water" },
   { value: "packaged_drinking_water",  label: "Packaged Drinking Water" },
   { value: "potable",                  label: "Potable Water" },
+  { value: "paint",                    label: "Paints & Industrial" },
 ];
 
 function matchesWaterType(waterType: string | undefined | null, filter: WaterTypeFilter): boolean {
@@ -79,6 +90,7 @@ function matchesWaterType(waterType: string | undefined | null, filter: WaterTyp
   if (filter === "waste_water")             return wt.startsWith("waste");
   if (filter === "packaged_drinking_water") return wt === "packaged_drinking_water";
   if (filter === "potable")                 return wt.startsWith("potable");
+  if (filter === "paint")                   return wt === "paint";
   return false;
 }
 
@@ -174,7 +186,7 @@ export default function CatalogTestsPage() {
   } = useForm<FormData>({ resolver: zodResolver(schema), mode: "onChange" });
 
   function openCreate() {
-    reset({ category: "physicochemical", water_type: "dialysis_potable", sort_order: 0, is_active: true, price: 0 });
+    reset({ category: "physicochemical", water_type: "dialysis_potable", sort_order: 0, section: "", remark_rule: "compliance", is_active: true, price: 0 });
     setEditing(null);
     setShowModal(true);
   }
@@ -190,6 +202,8 @@ export default function CatalogTestsPage() {
       description: item.description ?? "",
       price: item.price ?? 0,
       sort_order: item.sort_order,
+      section: item.section ?? "",
+      remark_rule: item.remark_rule ?? "compliance",
       is_active: item.is_active,
     });
     setEditing(item);
@@ -454,6 +468,20 @@ export default function CatalogTestsPage() {
               <input type="checkbox" id="is_active" {...register("is_active")} className="rounded border-gray-300" />
               <label htmlFor="is_active" className="text-sm text-gray-700">Active</label>
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Select label="Remarks" error={errors.remark_rule?.message} {...register("remark_rule")}>
+              {REMARK_RULE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </Select>
+            <Input
+              label="Report Section (optional)"
+              error={errors.section?.message}
+              {...register("section")}
+              placeholder="Blank = by category, e.g. Susceptibility Test"
+            />
           </div>
 
           <Textarea label="Description (optional)" {...register("description")} rows={2} placeholder="Additional notes…" />

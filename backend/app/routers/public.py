@@ -9,7 +9,7 @@ from app.models.customer import Customer
 from app.models.sample import Sample
 from app.models.test_result import TestResult
 from app.models.user import User, UserRole
-from app.routers.reports import _result_sections
+from app.routers.reports import _result_sections, _is_paint, load_report_results
 
 router = APIRouter(prefix="/public", tags=["Public"])
 
@@ -47,12 +47,9 @@ def get_public_report(
     )
 
     if is_authorized:
-        test_results = (
-            db.query(TestResult).filter(TestResult.sample_id == sample.id).order_by(TestResult.created_at.asc()).all()
-            if sample
-            else []
-        )
-        result_sections = _result_sections(test_results, content, sample)
+        # Same loading as the PDF, so sections, order and remarks match the report.
+        test_results, catalog_by_id, qualifiers = load_report_results(db, sample)
+        result_sections = _result_sections(test_results, content, sample, catalog_by_id, qualifiers)
         parameters = [
             {
                 "parameter": row.get("parameter", "—"),
@@ -90,6 +87,8 @@ def get_public_report(
         "sampling_date": content.get("sampling_date", str(sample.collection_date) if sample and sample.collection_date else "—"),
         "sampled_by": content.get("sampled_by") or (sample.sampler.full_name if sample and sample.sampler else None) or "AQUACHECK LABORATORIES LTD",
         "parameters": parameters,
+        # Paint reports are rated, not checked against a specification.
+        "show_specification": not _is_paint(sample),
         "authorized": is_authorized,
         "laboratory": "AquaCheck Laboratories Limited",
         "note": note,

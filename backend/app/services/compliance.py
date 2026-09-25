@@ -75,6 +75,10 @@ class RemarkKind(str, Enum):
     out_of_range = "out_of_range"
     #: A standard exists but the result cannot be compared to it.
     indeterminate = "indeterminate"
+    #: Rated on a scale rather than judged against a limit (e.g. contamination rating).
+    rating = "rating"
+    #: Remark written by the analyst.
+    manual = "manual"
 
 
 @dataclass(frozen=True)
@@ -171,6 +175,72 @@ def evaluate_remark(
         return _REMARKS[RemarkKind.indeterminate]
     ok = number <= limit_number
     return _REMARKS[RemarkKind.compliant if ok else RemarkKind.non_compliant]
+
+
+# Contamination rating scale (lab work instruction, ASTM D5588), by colony count.
+NO_CONTAMINATION = "No Contamination"
+TRACE_CONTAMINATION = "Trace Contamination"
+LIGHT_CONTAMINATION = "Light Contamination"
+MODERATE_CONTAMINATION = "Moderate Contamination"
+HEAVY_CONTAMINATION = "Heavy Contamination"
+
+
+def contamination_rating(
+    result_value: Optional[str], qualifiers: Iterable[ResultQualifier]
+) -> Remark:
+    """
+    Rate a colony count: 0 none, 1–9 trace, 10–99 light, 100+ moderate, TNTC heavy.
+    """
+    value = (result_value or "").strip()
+    if not value:
+        return _REMARKS[RemarkKind.not_tested]
+
+    result_q = match_qualifier(value, list(qualifiers))
+    if result_q is not None:
+        if result_q.exceeds_limit:
+            # TNTC — continuous growth, colonies indistinguishable.
+            return Remark(RemarkKind.rating, HEAVY_CONTAMINATION)
+        if not result_q.is_detected:
+            return Remark(RemarkKind.rating, NO_CONTAMINATION)
+        number = result_q.numeric_equivalent
+    else:
+        number = _to_float(value)
+    if number is None:
+        return Remark(
+            RemarkKind.indeterminate,
+            "—",
+            "Enter a colony count (or TNTC) so the contamination rating can be set.",
+        )
+
+    if number <= 0:
+        label = NO_CONTAMINATION
+    elif number < 10:
+        label = TRACE_CONTAMINATION
+    elif number < 100:
+        label = LIGHT_CONTAMINATION
+    else:
+        label = MODERATE_CONTAMINATION
+    return Remark(RemarkKind.rating, label)
+
+
+def evaluate_item_remark(
+    remark_rule: Optional[str],
+    standard_limit: Optional[str],
+    result_value: Optional[str],
+    qualifiers: Iterable[ResultQualifier],
+    manual_remark: Optional[str] = None,
+) -> Remark:
+    """REMARKS column for a catalog test, following its remark rule."""
+    if remark_rule == "contamination_rating":
+        return contamination_rating(result_value, qualifiers)
+    if remark_rule == "manual":
+        if not (result_value or "").strip():
+            return _REMARKS[RemarkKind.not_tested]
+        text = (manual_remark or "").strip()
+        if text:
+            return Remark(RemarkKind.manual, text)
+        return Remark(RemarkKind.indeterminate, "—", "Enter the remark for this test.")
+    return evaluate_remark(standard_limit, result_value, qualifiers)
 
 
 def legend_entries(
