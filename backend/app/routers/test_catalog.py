@@ -1,3 +1,5 @@
+import re
+import unicodedata
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import or_
@@ -545,78 +547,112 @@ _CHLORINE_NAMES = {"Free Chlorine mg/L", "Total Chlorine mg/L", "Chloramine as C
 # ─── Default report order for drinking-water types ───────────────────────────
 # Mirrors the parameter order on the lab's established test report. Applies to the
 # dialysis/potable/packaged sets; waste schedules keep their NEMA schedule order.
-# Tests not listed here sort after the listed ones, keeping their relative order.
+#
+# Each entry lists the names a parameter may go by. Matching is on the start of the
+# test name, ignoring case, units, punctuation, subscripts and plurals — so tests the
+# lab adds itself ("Total Suspended Solids mg/L", "Calcium Hardness as CaCO3") slot
+# into place too. An alias given as (name, token) also needs that token in the name,
+# e.g. to tell the 37°C and 22°C plate counts apart. Tests matching nothing sort after
+# the listed ones, keeping their relative order.
 
 DEFAULT_REPORT_ORDER = [
     # Physicochemical
-    "pH",
-    "Colour TCU",
-    "Odour",
-    "Taste",
-    "Turbidity NTU",
-    "Total Dissolved Solids mg/L",
-    "Conductivity µS/cm",
-    "P. Alkalinity as CaCO₃ mg/L",
-    "Total Alkalinity as CaCO₃ mg/L",
-    "Fluoride as F mg/L",
-    "Iron as Fe µg/L",
-    "Chloride as Cl mg/L",
-    "Nitrate as NO₃⁻ mg/L",
-    "Nitrite as NO₂⁻ mg/L",
-    "Sulphates as SO₄ mg/L",
-    "Ammonia as NH₃-N mg/L",
-    "Zinc as Zn µg/L",
-    "Phosphates as PO₄³⁻ mg/L",
-    "Carbonates as CaCO₃ mg/L",
-    "Bicarbonates as CaCO₃ mg/L",
-    "Calcium as Ca mg/L",
-    "Magnesium as Mg mg/L",
-    "Total Hardness as CaCO₃ mg/L",
-    "Silica as SiO₂ mg/L",
-    "Sodium as Na mg/L",
-    "Potassium as K mg/L",
-    "Free Chlorine mg/L",
-    "Total Chlorine mg/L",
-    "Chloramine as Cl₂ mg/L",
-    "Dissolved Oxygen mg/L",
-    "Total Organic Carbon mg/L",
-    "Oxidizable Substances mg/L",
-    "Aluminium as Al µg/L",
-    "Manganese as Mn µg/L",
-    "Copper as Cu µg/L",
-    "Lead as Pb µg/L",
-    "Arsenic as As µg/L",
-    "Chromium as Cr µg/L",
-    "Cadmium as Cd µg/L",
-    "Mercury as Hg µg/L",
-    "Cyanide as CN⁻ µg/L",
-    "Selenium as Se µg/L",
-    "Antimony as Sb µg/L",
-    "Barium as Ba µg/L",
-    "Silver as Ag µg/L",
-    "Beryllium as Be µg/L",
-    "Thallium as Tl µg/L",
+    ["ph"],
+    ["colour", "color"],
+    ["odour", "odor"],
+    ["taste"],
+    ["turbidity"],
+    ["total suspended solids", "suspended solids", "tss"],
+    ["total dissolved solids", "dissolved solids", "tds"],
+    ["conductivity", "electrical conductivity", "ec"],
+    ["p alkalinity", "phenolphthalein alkalinity"],
+    ["total alkalinity", "alkalinity"],
+    ["fluoride"],
+    ["iron", "total iron", "dissolved iron"],
+    ["chloride"],
+    ["nitrate"],
+    ["nitrite"],
+    ["sulphate", "sulfate"],
+    ["ammonia"],
+    ["zinc"],
+    ["phosphate", "orthophosphate"],
+    ["carbonate"],
+    ["bicarbonate"],
+    ["calcium"],
+    ["magnesium"],
+    ["calcium hardness"],
+    ["magnesium hardness"],
+    ["total hardness", "hardness"],
+    ["silica"],
+    ["sodium"],
+    ["potassium"],
+    ["free chlorine", "free residual chlorine"],
+    ["total chlorine", "residual chlorine"],
+    ["chloramine"],
+    ["dissolved oxygen"],
+    ["total organic carbon", "toc"],
+    ["oxidizable substance", "oxidisable substance"],
+    ["aluminium", "aluminum"],
+    ["manganese"],
+    ["copper"],
+    ["lead"],
+    ["arsenic"],
+    ["chromium"],
+    ["cadmium"],
+    ["mercury"],
+    ["cyanide"],
+    ["selenium"],
+    ["antimony"],
+    ["barium"],
+    ["silver"],
+    ["beryllium"],
+    ["thallium"],
     # Microbiological
-    "E.coli CFU/100ml sample",
-    "Total Coliforms CFU/100ml sample",
-    "Total Viable Count CFU/ml at 37°C",
-    "Total Viable Count CFU/ml sample at 37°C",
-    "Total Viable Count CFU/ml at 22°C",
-    "Total Viable Count CFU/ml sample at 22°C",
-    "Pseudomonas aeruginosa CFU/100ml sample",
-    "Salmonella spp CFU/100ml sample",
-    "Streptococcus faecalis CFU/100ml sample",
-    "Staphylococcus aureus CFU/100ml sample",
-    "Endotoxins (Pyrogens) EU/mL",
+    ["e coli", "ecoli", "escherichia coli"],
+    ["total coliform"],
+    ["faecal coliform", "fecal coliform"],
+    [("total viable count", "37"), ("tvc", "37"), "total viable count", "tvc"],
+    [("total viable count", "22"), ("tvc", "22")],
+    ["pseudomonas"],
+    ["salmonella"],
+    ["streptococcus", "faecal streptococci", "fecal streptococci", "enterococci"],
+    ["staphylococcus"],
+    ["endotoxin"],
 ]
 # Gaps of 10 leave room to slot a test in between from the catalog screen.
-_DEFAULT_ORDER_POSITION = {name: (i + 1) * 10 for i, name in enumerate(DEFAULT_REPORT_ORDER)}
 _UNLISTED_ORDER_OFFSET = (len(DEFAULT_REPORT_ORDER) + 1) * 10
 
 
+def _name_tokens(text: str) -> list:
+    # NFKD turns subscripts/superscripts into plain digits (CaCO₃ → CaCO3).
+    text = unicodedata.normalize("NFKD", text).lower()
+    words = re.sub(r"[^a-z0-9]+", " ", text).split()
+    # Drop a plural "s" so "Sulphates" and "Sulphate" compare equal.
+    return [w[:-1] if len(w) > 3 and w.endswith("s") else w for w in words]
+
+
+def _default_order_position(name: str):
+    tokens = _name_tokens(name)
+    best = None  # (score, position)
+    for index, aliases in enumerate(DEFAULT_REPORT_ORDER):
+        for alias in aliases:
+            prefix, required = alias if isinstance(alias, tuple) else (alias, None)
+            prefix_tokens = _name_tokens(prefix)
+            if tokens[: len(prefix_tokens)] != prefix_tokens:
+                continue
+            if required and required not in tokens:
+                continue
+            # The longest (most specific) alias wins: "calcium hardness" over "calcium".
+            score = len(prefix_tokens) + (0.5 if required else 0)
+            if best is None or score > best[0]:
+                best = (score, (index + 1) * 10)
+    return best[1] if best else None
+
+
 def default_sort_order(name: str, current: int = 0) -> int:
-    if name in _DEFAULT_ORDER_POSITION:
-        return _DEFAULT_ORDER_POSITION[name]
+    position = _default_order_position(name)
+    if position is not None:
+        return position
     current = current or 0
     # Already pushed past the listed tests (e.g. by an earlier run) — leave as is.
     if current >= _UNLISTED_ORDER_OFFSET:
@@ -743,6 +779,9 @@ def create_catalog_item(
     _=Depends(require_role(UserRole.admin, UserRole.manager)),
 ):
     item = TestCatalogItem(**payload.model_dump())
+    # Sort Order left at 0 means "not chosen" — slot the test into the default report order.
+    if not item.sort_order and not _is_waste_type(item.water_type):
+        item.sort_order = default_sort_order(item.name)
     db.add(item)
     db.commit()
     db.refresh(item)
@@ -764,6 +803,51 @@ def update_catalog_item(
     db.commit()
     db.refresh(item)
     return CatalogItemOut.model_validate(item)
+
+
+class MoveRequest(BaseModel):
+    direction: str  # "up" | "down"
+
+
+@router.post("/{item_id}/move", response_model=dict)
+def move_catalog_item(
+    item_id: int,
+    payload: MoveRequest,
+    db: Session = Depends(get_db),
+    _=Depends(require_role(UserRole.admin, UserRole.manager)),
+):
+    """Move a test one place up/down within its report group (same water type and
+    category — the tests that print together), then renumber that group in steps of 10
+    so positions stay distinct. Inactive tests are included so they keep their place."""
+    if payload.direction not in ("up", "down"):
+        raise HTTPException(status_code=422, detail="direction must be 'up' or 'down'")
+    item = db.query(TestCatalogItem).filter(TestCatalogItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Catalog item not found")
+
+    group = (
+        db.query(TestCatalogItem)
+        .filter(
+            TestCatalogItem.water_type == item.water_type,
+            TestCatalogItem.category == item.category,
+        )
+        .order_by(TestCatalogItem.sort_order, TestCatalogItem.name, TestCatalogItem.id)
+        .all()
+    )
+    index = next(i for i, g in enumerate(group) if g.id == item.id)
+    step = -1 if payload.direction == "up" else 1
+    target = index + step
+    # An active test steps past inactive ones — they're hidden in the catalog list by
+    # default, so swapping with one would look like nothing happened.
+    while item.is_active and 0 <= target < len(group) and not group[target].is_active:
+        target += step
+    moved = 0 <= target < len(group)
+    if moved:
+        group.insert(target, group.pop(index))
+    for position, g in enumerate(group):
+        g.sort_order = (position + 1) * 10
+    db.commit()
+    return {"moved": moved}
 
 
 @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)

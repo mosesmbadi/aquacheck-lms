@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, type CSSProperties } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Printer, X, Clock } from "lucide-react";
@@ -203,8 +203,15 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
     specHeader = "KS EAS 12:2018\nPackaged Drinking Water Limit";
     scheduleContext = "KS EAS 12:2018 specifications for packaged drinking water";
   } else {
-    specHeader = rc.specification_title || "KS EAS 12:2018\nTreated Potable Water Limit";
-    scheduleContext = "KS EAS 12:2018 specifications for treated potable water";
+    // The natural/treated choice isn't stored on the sample; the requested tests come
+    // from that sub-type's catalog set, so they tell us which one was picked.
+    const isNaturalPotable =
+      sample.sample_category === "potable" &&
+      ((requestedIds.size > 0 && requestedItems.some((c) => c.water_type === "potable_natural")) ||
+        /natural/i.test(sample.sample_type ?? ""));
+    const potableLabel = isNaturalPotable ? "Natural Potable Water" : "Treated Potable Water";
+    specHeader = rc.specification_title || `KS EAS 12:2018\n${potableLabel} Limit`;
+    scheduleContext = `KS EAS 12:2018 specifications for ${potableLabel.toLowerCase()}`;
   }
 
   const sampledBy: string = rc.sampled_by || sample.sampled_by_name || "AQUACHECK LABORATORIES LTD";
@@ -455,9 +462,10 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
               </div>
             )}
 
-            {/* Signatures */}
-            <div style={{ display: "flex", justifyContent: signatories.length > 0 ? "space-around" : "space-between", marginTop: "40px", fontSize: "11px", flexWrap: "wrap", gap: "16px", pageBreakInside: "avoid", breakInside: "avoid" }}>
-              {signatories.length > 0 ? signatories.map((sig) => (
+            {/* Signatures, with the date and QR code in the middle column — stacking them
+                below the signatures pushed the QR code onto a page of its own. */}
+            {(() => {
+              const signatureBlocks = signatories.length > 0 ? signatories.map((sig) => (
                 <div key={sig.id} style={{ textAlign: "center" }}>
                   {sig.signature_b64 && (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -472,59 +480,52 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
                     <div style={{ fontStyle: "italic" }}>{sig.job_title || sig.role.replace("_", " ")}</div>
                   </div>
                 </div>
-              )) : (
-                <>
-                  <div style={{ textAlign: "center" }}>
-                    <div style={{ borderTop: "1px solid #000", width: "180px", paddingTop: "4px" }}>
-                      <div style={{ fontWeight: "bold", textTransform: "uppercase" }}>{authorizerName || "___________________"}</div>
-                      <div style={{ fontStyle: "italic" }}>{authorizerTitle || "Authorised Signatory"}</div>
-                    </div>
+              )) : [
+                <div key="authorizer" style={{ textAlign: "center" }}>
+                  <div style={{ borderTop: "1px solid #000", width: "180px", paddingTop: "4px" }}>
+                    <div style={{ fontWeight: "bold", textTransform: "uppercase" }}>{authorizerName || "___________________"}</div>
+                    <div style={{ fontStyle: "italic" }}>{authorizerTitle || "Authorised Signatory"}</div>
                   </div>
-                  {analystName && (
-                    <div style={{ textAlign: "center" }}>
-                      <div style={{ borderTop: "1px solid #000", width: "180px", paddingTop: "4px" }}>
-                        <div style={{ fontWeight: "bold", textTransform: "uppercase" }}>{analystName}</div>
-                        <div style={{ fontStyle: "italic" }}>{analystTitle}</div>
-                      </div>
-                    </div>
-                  )}
-                  {!analystName && (
-                    <div style={{ textAlign: "center" }}>
-                      <div style={{ borderTop: "1px solid #000", width: "180px", paddingTop: "4px" }}>
-                        <div style={{ fontWeight: "bold", textTransform: "uppercase" }}>___________________</div>
-                        <div style={{ fontStyle: "italic" }}>Authorised Signatory</div>
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-
-            {/* Date stamp */}
-            <div style={{ textAlign: "center", marginTop: "20px", fontSize: "12px", fontWeight: "bold" }}>
-              {reportIssuedDate}
-            </div>
-
-            {/* QR code — moved to bottom of report */}
-            {qrApiUrl && (
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginTop: "16px" }}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={qrApiUrl} alt="Report QR" style={{ display: "block", width: "70px", height: "70px" }} />
-                <div style={{ width: "70px", textAlign: "center", fontSize: "7px", color: "#666", marginTop: "2px" }}>Scan to verify</div>
-              </div>
-            )}
+                </div>,
+                <div key="analyst" style={{ textAlign: "center" }}>
+                  <div style={{ borderTop: "1px solid #000", width: "180px", paddingTop: "4px" }}>
+                    <div style={{ fontWeight: "bold", textTransform: "uppercase" }}>{analystName || "___________________"}</div>
+                    <div style={{ fontStyle: "italic" }}>{analystName ? analystTitle : "Authorised Signatory"}</div>
+                  </div>
+                </div>,
+              ];
+              const half = Math.ceil(signatureBlocks.length / 2);
+              const column: CSSProperties ={ display: "flex", flexDirection: "column", gap: "12px", alignItems: "center" };
+              return (
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginTop: "36px", fontSize: "11px", gap: "12px", pageBreakInside: "avoid", breakInside: "avoid" }}>
+                  <div style={column}>{signatureBlocks.slice(0, half)}</div>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                    {qrApiUrl && (
+                      <>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={qrApiUrl} alt="Report QR" style={{ display: "block", width: "64px", height: "64px" }} />
+                        <div style={{ width: "64px", textAlign: "center", fontSize: "7px", color: "#666", marginTop: "2px" }}>Scan to verify</div>
+                      </>
+                    )}
+                    <div style={{ marginTop: "6px", fontSize: "12px", fontWeight: "bold" }}>{reportIssuedDate}</div>
+                  </div>
+                  <div style={column}>{signatureBlocks.slice(half)}</div>
+                </div>
+              );
+            })()}
 
             {/* Revision history — only show if there are entries */}
             {revisionHistory.length > 0 && (
-              <div style={{ marginTop: "12px", borderTop: "1px solid #ccc", paddingTop: "6px", fontSize: "8px", color: "#555" }}>
-                <p style={{ fontWeight: "bold", textTransform: "uppercase", marginBottom: "4px" }}>Revision History</p>
+              <div style={{ marginTop: "8px", borderTop: "1px solid #ccc", paddingTop: "4px", fontSize: "8px", color: "#555" }}>
+                <strong style={{ textTransform: "uppercase" }}>Revision History: </strong>
                 {[...revisionHistory].reverse().map((entry, i) => (
-                  <div key={i} style={{ marginBottom: "3px" }}>
+                  <span key={i}>
+                    {i > 0 && "; "}
                     <strong>{entry.action?.toUpperCase()}</strong>
                     {" — "}
                     {entry.timestamp ? format(new Date(entry.timestamp), "dd MMM yyyy HH:mm") : ""}
                     {entry.reason ? ` — ${entry.reason}` : ""}
-                  </div>
+                  </span>
                 ))}
               </div>
             )}

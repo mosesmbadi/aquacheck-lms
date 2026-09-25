@@ -330,6 +330,8 @@ export const testCatalogApi = {
   update: (id: number, data: Partial<TestCatalogItem>) =>
     api.put<TestCatalogItem>(`/test-catalog/${id}`, data),
   delete: (id: number) => api.delete(`/test-catalog/${id}`),
+  move: (id: number, direction: "up" | "down") =>
+    api.post<{ moved: boolean }>(`/test-catalog/${id}/move`, { direction }),
   seed: () => api.post<{ added: number; message: string }>("/test-catalog/seed"),
   industryTypes: () =>
     api.get<{ value: string; label: string }[]>("/test-catalog/industry-types"),
