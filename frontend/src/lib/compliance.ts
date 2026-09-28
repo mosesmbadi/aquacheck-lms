@@ -195,12 +195,31 @@ export function contaminationRating(
   return rating(MODERATE_CONTAMINATION);
 }
 
-/** REMARKS column for a catalog test, following its remark rule. */
+// Which of two remarks on the same result wins: a failure against either limit is a
+// failure; a pass against one limit is a pass even where the other sets none.
+const PRECEDENCE: RemarkKind[] = ["non_compliant", "indeterminate", "compliant", "out_of_range"];
+
+function stricter(first: Remark, second: Remark): Remark {
+  for (const kind of PRECEDENCE) {
+    if (first.kind === kind) return first;
+    if (second.kind === kind) return second;
+  }
+  return first;
+}
+
+/**
+ * REMARKS column for a catalog test, following its remark rule.
+ *
+ * `whoLimit` is passed only when the report prints the WHO column. The remark then has
+ * to hold against both printed limits — a result beside a WHO limit it exceeds must not
+ * read COMPLIANT.
+ */
 export function evaluateItemRemark(
   item: Pick<TestCatalogItem, "remark_rule" | "standard_limit">,
   resultValue: string | null | undefined,
   qualifiers: ResultQualifier[],
-  manualRemark?: string | null
+  manualRemark?: string | null,
+  whoLimit?: string | null
 ): Remark {
   if (item.remark_rule === "contamination_rating") return contaminationRating(resultValue, qualifiers);
   if (item.remark_rule === "manual") {
@@ -209,7 +228,9 @@ export function evaluateItemRemark(
     if (text) return { kind: "manual", label: text, advisory: null };
     return { kind: "indeterminate", label: "—", advisory: "Enter the remark for this test." };
   }
-  return evaluateRemark(item.standard_limit, resultValue, qualifiers);
+  const remark = evaluateRemark(item.standard_limit, resultValue, qualifiers);
+  if (whoLimit === undefined || whoLimit === null) return remark;
+  return stricter(remark, evaluateRemark(whoLimit, resultValue, qualifiers));
 }
 
 /** Analyst-entered remark stored on a result, if any. */

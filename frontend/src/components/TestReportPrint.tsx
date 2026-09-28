@@ -10,6 +10,8 @@ import { evaluateItemRemark, legendEntries, storedRemark } from "@/lib/complianc
 import { reportSections } from "@/lib/reportSections";
 
 const PAINT_COMMENT = "Each parameter's level is shown in the RESULTS table above for the sample submitted to the lab.";
+const NO_REMARKS_COMMENT = "The level of each parameter is shown in the RESULTS table above for the water submitted to the lab.";
+const WHO_CONTEXT = "the World Health Organization (WHO) Guidelines for Drinking-water Quality";
 
 interface TestReportPrintProps {
   sampleId: number;
@@ -86,6 +88,18 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
 
   const rc = report?.content || {};
 
+  // Layout options: a value stored on the report wins, else the client's default
+  // (issuing the report stores the resolved value). WHO drinking-water guidelines mean
+  // nothing for effluent or paint, and a paint report's remarks are its ratings.
+  const category = sample?.sample_category;
+  const showWho =
+    category !== "waste" &&
+    category !== "paint" &&
+    (typeof rc.show_who_limits === "boolean" ? rc.show_who_limits : !!customer?.report_show_who);
+  const showRemarks =
+    category === "paint" ||
+    !(typeof rc.hide_remarks === "boolean" ? rc.hide_remarks : !!customer?.report_hide_remarks);
+
   const resultByCatalog: Record<number, TestResult> = {};
   for (const tr of testResults) {
     if (tr.catalog_item_id) resultByCatalog[tr.catalog_item_id] = tr;
@@ -103,7 +117,8 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
   const rows = requestedItems.map((item) => {
     const result = resultByCatalog[item.id];
     const value = result?.result_value?.trim() ?? "";
-    return { item, value, remark: evaluateItemRemark(item, value, qualifiers, storedRemark(result)) };
+    const whoLimit = showWho ? item.who_limit || "NS" : undefined;
+    return { item, value, remark: evaluateItemRemark(item, value, qualifiers, storedRemark(result), whoLimit) };
   });
   const rowsByItemId = new Map(rows.map((r) => [r.item.id, r]));
 
@@ -186,7 +201,7 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
   // Paint reports are rated, not judged against a specification: no limit column,
   // no conformity statement.
   const isPaint = sample.sample_category === "paint";
-  const columnCount = isPaint ? 4 : 5;
+  const columnCount = 3 + (isPaint ? 0 : 1) + (showWho ? 1 : 0) + (showRemarks ? 1 : 0);
 
   // The water legend (KS, EAS, APHA…) means nothing on a paint report, so it lists only
   // the abbreviations that actually appear in its methods, results and remarks.
@@ -203,7 +218,12 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
           .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
           .map((q) => ({ code: q.code, label: q.label })),
       ]
-    : legendEntries(qualifiers, isWaste).map((q) => ({ code: q.code, label: q.label }));
+    : [
+        ...legendEntries(qualifiers, isWaste).map((q) => ({ code: q.code, label: q.label })),
+        ...(showWho && !qualifiers.some((q) => q.code.toUpperCase() === "WHO")
+          ? [{ code: "WHO", label: "World Health Organization" }]
+          : []),
+      ];
 
   const SCHEDULE_SPEC_HEADERS: Record<number, string> = {
     3: "NEMA STANDARD FOR EFFLUENT WATER;\nTHIRD SCHEDULE.\nMaximum levels Permissible.",
@@ -237,6 +257,7 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
     specHeader = rc.specification_title || `KS EAS 12:2018\n${potableLabel} Limit`;
     scheduleContext = `KS EAS 12:2018 specifications for ${potableLabel.toLowerCase()}`;
   }
+  if (showWho) scheduleContext = `${scheduleContext} and ${WHO_CONTEXT}`;
 
   const sampledBy: string = rc.sampled_by || sample.sampled_by_name || "AQUACHECK LABORATORIES LTD";
   // Lab-collected samples (no override, the assigned lab sampler, or the lab itself)
@@ -310,7 +331,7 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
                 <div>P.O. Box 216 – 00300, NAIROBI</div>
                 <div>Westlands Commercial Centre</div>
                 <div>Off Ring Road, Parklands Rd</div>
-                <div>Email: aquachecklab@gmail.com</div>
+                <div>Email: info@aquachecklab.com</div>
                 <div>Website: www.aquachecklab.com</div>
                 <div>TEL: 0755596064/0734933839</div>
               </div>
@@ -387,9 +408,16 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
                       ))}
                     </th>
                   )}
-                  <th style={{ border: "1px solid #000", padding: "3px 5px", textAlign: "center" }}>
-                    {isPaint ? "REMARKS/RATING SYSTEM" : "REMARKS"}
-                  </th>
+                  {showWho && (
+                    <th style={{ border: "1px solid #000", padding: "3px 5px", textAlign: "center" }}>
+                      W.H.O<br />Standard<br />Limit
+                    </th>
+                  )}
+                  {showRemarks && (
+                    <th style={{ border: "1px solid #000", padding: "3px 5px", textAlign: "center" }}>
+                      {isPaint ? "REMARKS/RATING SYSTEM" : "REMARKS"}
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -415,12 +443,17 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
                           {!isPaint && (
                             <td style={{ border: "1px solid #000", padding: "2px 5px", textAlign: "center" }}>{item.standard_limit || "NS"}</td>
                           )}
-                          <td style={{ border: "1px solid #000", padding: "2px 5px", textAlign: "center",
-                              color: isFail ? "#c00" : remark.kind === "compliant" ? "#006600" : undefined,
-                              fontWeight: isFail ? "bold" : "normal",
-                              fontStyle: remark.kind === "not_tested" ? "italic" : "normal" }}>
-                            {remark.label}
-                          </td>
+                          {showWho && (
+                            <td style={{ border: "1px solid #000", padding: "2px 5px", textAlign: "center" }}>{item.who_limit || "NS"}</td>
+                          )}
+                          {showRemarks && (
+                            <td style={{ border: "1px solid #000", padding: "2px 5px", textAlign: "center",
+                                color: isFail ? "#c00" : remark.kind === "compliant" ? "#006600" : undefined,
+                                fontWeight: isFail ? "bold" : "normal",
+                                fontStyle: remark.kind === "not_tested" ? "italic" : "normal" }}>
+                              {remark.label}
+                            </td>
+                          )}
                         </tr>
                       );
                     })}
@@ -448,13 +481,17 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
             </div>
 
             {/* Comments */}
-            {(isPaint || hasNonCompliant || evaluatedCount > 0 || untestedItems.length > 0 || finalComment) && (
+            {(isPaint || !showRemarks || hasNonCompliant || evaluatedCount > 0 || untestedItems.length > 0 || finalComment) && (
               <div style={{ fontSize: "10px", margin: "8px 0", lineHeight: "1.4" }}>
                 <p><strong style={{ textDecoration: "underline" }}>COMMENTS.</strong></p>
                 {finalComment
                   ? <p>{finalComment}</p>
                   : isPaint
                     ? <p>{PAINT_COMMENT}</p>
+                  // Without remarks the report makes no conformity statement, so
+                  // neither may the comment.
+                  : !showRemarks
+                    ? <p>{NO_REMARKS_COMMENT}</p>
                   : hasNonCompliant
                     ? isWaste
                       ? <p>The parameters; {nonCompliantItems.map((i) => i.name).join(", ")} do not meet the set specifications for {scheduleContext}. Treatment is therefore recommended.</p>
@@ -466,7 +503,7 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
                 {/* The conformity statement above covers only parameters actually
                     measured, so any gap is stated rather than left to inference. */}
                 {untestedItems.length > 0 && (
-                  isPaint
+                  isPaint || !showRemarks
                     ? <p>The following requested {untestedItems.length === 1 ? "parameter was" : "parameters were"} not tested: {untestedItems.map((i) => i.name).join(", ")}.</p>
                     : <p>The following requested {untestedItems.length === 1 ? "parameter was" : "parameters were"} not tested and {untestedItems.length === 1 ? "is" : "are"} excluded from the statement above: {untestedItems.map((i) => i.name).join(", ")}.</p>
                 )}

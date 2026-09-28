@@ -74,12 +74,14 @@ _SCHEDULE_CONTEXT = {
 }
 
 
-def _legend_note(qualifiers, waste_schedule):
+def _legend_note(qualifiers, waste_schedule, show_who=False):
     """Legend line under the results table, built from the editable qualifier table."""
-    entries = legend_entries(qualifiers, is_waste=bool(waste_schedule))
+    entries = [(q.code, q.label) for q in legend_entries(qualifiers, is_waste=bool(waste_schedule))]
+    if show_who and not any(code.upper() == "WHO" for code, _ in entries):
+        entries.append(WHO_LEGEND)
     if not entries:
         return ""
-    return ", ".join(f"{q.code}: {q.label}" for q in entries) + "."
+    return ", ".join(f"{code}: {label}" for code, label in entries) + "."
 
 
 PAINT_REMARKS_HEADER = "REMARKS/RATING SYSTEM"
@@ -90,6 +92,34 @@ _ASTM_LEGEND = ("ASTM", "American Society for Testing and Materials")
 def _is_paint(sample) -> bool:
     category = getattr(sample, "sample_category", None) if sample else None
     return getattr(category, "value", category) == "paint"
+
+
+WHO_SPEC_HEADER = "W.H.O\nStandard\nLimit"
+WHO_LEGEND = ("WHO", "World Health Organization")
+NO_REMARKS_COMMENT = "The level of each parameter is shown in the RESULTS table above for the water submitted to the lab."
+
+
+def report_options(content: dict, customer, sample):
+    """(show_who, show_remarks) for a report.
+
+    A value stored on the report wins; otherwise the client's default applies. Issuing
+    a report writes the resolved values onto it, so changing a client's defaults later
+    never alters a report already issued. WHO drinking-water guidelines mean nothing for
+    effluent or paint, and a paint report's remarks are its ratings, so neither option
+    applies to those."""
+    content = content or {}
+    category = getattr(sample, "sample_category", None) if sample else None
+    category = getattr(category, "value", category)
+
+    def _option(key, customer_attr):
+        value = content.get(key)
+        if isinstance(value, bool):
+            return value
+        return bool(getattr(customer, customer_attr, False)) if customer else False
+
+    show_who = category not in ("waste", "paint") and _option("show_who_limits", "report_show_who")
+    hide_remarks = category != "paint" and _option("hide_remarks", "report_hide_remarks")
+    return show_who, not hide_remarks
 
 
 def _paint_legend_note(qualifiers, result_sections):
@@ -194,7 +224,7 @@ def load_report_results(db: Session, sample):
     return test_results, catalog_by_id, qualifiers
 
 
-def _result_sections(test_results, content: dict, sample=None, catalog_by_id=None, qualifiers=()):
+def _result_sections(test_results, content: dict, sample=None, catalog_by_id=None, qualifiers=(), show_who=False):
     manual_sections = content.get("result_sections")
     if isinstance(manual_sections, list) and manual_sections:
         return manual_sections
@@ -223,6 +253,11 @@ def _result_sections(test_results, content: dict, sample=None, catalog_by_id=Non
             or (catalog_item.standard_limit if catalog_item else None)
             or "—"
         )
+        who_specification = (
+            (raw.get("who_limit") or (catalog_item.who_limit if catalog_item else None) or "NS")
+            if show_who
+            else None
+        )
         # Remarks are derived from the same rules the entry screen and the print view
         # use; a remark stored on the result only ever acts as a manual override.
         # A parameter with no result reports as untested — never defaulted to a value
@@ -233,10 +268,12 @@ def _result_sections(test_results, content: dict, sample=None, catalog_by_id=Non
             result.result_value,
             qualifiers,
             raw.get("remarks"),
+            who_specification,
         )
         remarks = raw.get("remarks") or raw.get("compliance") or remark.label
         sections.setdefault(section_name, []).append(
             {
+                "who_specification": who_specification,
                 "parameter": raw.get("parameter_name") or (catalog_item.name if catalog_item else None) or (result.method.name if result.method else f"Method #{result.method_id}"),
                 "method": raw.get("method_name") or (
                     result.method.standard_reference
@@ -397,6 +434,23 @@ def issue_report(
     report = db.query(Report).filter(Report.id == report_id).first()
     if not report:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
+    # Freeze the layout options onto the report, so a later change to the client's
+    # defaults can't alter what was issued.
+    content = dict(report.content or {})
+    sample = db.query(Sample).filter(Sample.id == content.get("sample_id")).first() if content.get("sample_id") else None
+    contract = db.query(Contract).filter(Contract.id == report.contract_id).first() if report.contract_id else None
+    customer_id = (
+        report.customer_id
+        or (contract.customer_id if contract else None)
+        or (sample.customer_id if sample else None)
+    )
+    customer = db.query(Customer).filter(Customer.id == customer_id).first() if customer_id else None
+    show_who, show_remarks = report_options(content, customer, sample)
+    content["show_who_limits"] = show_who
+    content["hide_remarks"] = not show_remarks
+    report.content = content
+    flag_modified(report, "content")
+
     report.status = ReportStatus.issued
     report.issued_by = current_user.id
     report.issued_at = datetime.now(timezone.utc)
@@ -490,7 +544,7 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
     header_cols = [
         logo_cell,
         Paragraph(
-            "AQUACHECK LABORATORIES LIMITED<br/>P.O. Box 216 - 00300, NAIROBI<br/>Westlands Commercial Centre<br/>Off Ring Road, Parklands Rd<br/>Email: aquachecklab@gmail.com<br/>Website: www.aquachecklab.com<br/>Tel: 0755596064/0734933819",
+            "AQUACHECK LABORATORIES LIMITED<br/>P.O. Box 216 - 00300, NAIROBI<br/>Westlands Commercial Centre<br/>Off Ring Road, Parklands Rd<br/>Email: info@aquachecklab.com<br/>Website: www.aquachecklab.com<br/>Tel: 0755596064/0734933819",
             company_style,
         ),
     ]
@@ -580,7 +634,8 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
     story.append(info_table)
     story.append(Spacer(1, 0.2 * cm))
 
-    result_sections = _result_sections(test_results, content, sample, catalog_by_id, qualifiers)
+    show_who, show_remarks = report_options(content, customer, sample)
+    result_sections = _result_sections(test_results, content, sample, catalog_by_id, qualifiers, show_who)
     is_paint = _is_paint(sample)
     if result_sections:
         for section in result_sections:
@@ -602,22 +657,36 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
                 col_widths = [5.0 * cm, 3.6 * cm, 4.6 * cm, 3.8 * cm]
             else:
                 spec_header = section.get("specification_header", "SPECIFICATION")
-                result_rows = [[
+                header_row = [
                     Paragraph(section.get("title", "TEST"), header_cell_style),
                     Paragraph("METHOD", header_cell_style),
                     Paragraph("RESULTS", header_cell_style),
                     Paragraph(spec_header.replace("\n", "<br/>"), header_cell_style),
-                    Paragraph("REMARKS", header_cell_style),
-                ]]
+                ]
+                if show_who:
+                    header_row.append(Paragraph(WHO_SPEC_HEADER.replace("\n", "<br/>"), header_cell_style))
+                if show_remarks:
+                    header_row.append(Paragraph("REMARKS", header_cell_style))
+                result_rows = [header_row]
                 for row in section.get("rows", []):
-                    result_rows.append([
+                    cells = [
                         row.get("parameter", "—"),
                         row.get("method", "—"),
                         row.get("result", "—"),
                         row.get("specification", "—"),
-                        _remarks_para(row.get("remarks", "—"), cell_style),
-                    ])
-                col_widths = [5.5 * cm, 4.1 * cm, 1.5 * cm, 3.2 * cm, 2.7 * cm]
+                    ]
+                    if show_who:
+                        cells.append(row.get("who_specification") or "NS")
+                    if show_remarks:
+                        cells.append(_remarks_para(row.get("remarks", "—"), cell_style))
+                    result_rows.append(cells)
+                # Widths sum to 17cm whichever optional columns are printed.
+                col_widths = [w * cm for w in {
+                    (False, True): [5.5, 4.1, 1.5, 3.2, 2.7],
+                    (True, True): [4.6, 3.6, 1.5, 2.7, 2.2, 2.4],
+                    (False, False): [6.2, 5.0, 1.8, 4.0],
+                    (True, False): [5.2, 4.2, 1.6, 3.0, 3.0],
+                }[(show_who, show_remarks)]]
 
             results_table = Table(result_rows, colWidths=col_widths)
             results_table.setStyle(TableStyle([
@@ -634,7 +703,7 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
         story.append(Paragraph("No analytical results are linked to this report yet.", styles["Normal"]))
 
     legend_note = _content_value(content, "ns_definition", None) or (
-        _paint_legend_note(qualifiers, result_sections) if is_paint else _legend_note(qualifiers, waste_schedule)
+        _paint_legend_note(qualifiers, result_sections) if is_paint else _legend_note(qualifiers, waste_schedule, show_who)
     )
     story.append(Spacer(1, 0.2 * cm))
     if legend_note:
@@ -655,7 +724,12 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
         small_style,
     ))
     story.append(Paragraph("<b>COMMENTS.</b>", small_style))
-    auto_comment = PAINT_COMMENT if is_paint else _auto_comment(sample, result_sections)
+    # Without remarks the report makes no conformity statement, so neither may the comment.
+    auto_comment = (
+        PAINT_COMMENT if is_paint
+        else NO_REMARKS_COMMENT if not show_remarks
+        else _auto_comment(sample, result_sections)
+    )
     story.append(Paragraph(
         _content_value(
             content,

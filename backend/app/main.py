@@ -431,8 +431,9 @@ def ensure_schema_compatibility():
             connection.execute(text("ALTER TYPE samplecategory ADD VALUE IF NOT EXISTS 'paint'"))
             print("[LIMS] Added 'paint' to samplecategory enum.")
 
-        # test_catalog.section / remark_rule — custom report section and remark logic
-        for column in ("section", "remark_rule"):
+        # test_catalog.section / remark_rule / who_limit — custom report section, remark
+        # logic and the WHO guideline value printed for international clients
+        for column in ("section", "remark_rule", "who_limit"):
             column_exists = connection.execute(
                 text(
                     "SELECT column_name FROM information_schema.columns "
@@ -473,6 +474,22 @@ def ensure_schema_compatibility():
                 "ALTER TABLE samples ADD COLUMN physical_sample_id VARCHAR"
             ))
             print("[LIMS] Added samples.physical_sample_id column.")
+
+        # customers.report_show_who / report_hide_remarks — per-client test report layout
+        # (international clients want the WHO limit column; drillers want no remarks)
+        for column in ("report_show_who", "report_hide_remarks"):
+            column_exists = connection.execute(
+                text(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_name = 'customers' AND column_name = :column"
+                ),
+                {"column": column},
+            ).scalar()
+            if not column_exists:
+                connection.execute(text(
+                    f"ALTER TABLE customers ADD COLUMN {column} BOOLEAN NOT NULL DEFAULT FALSE"
+                ))
+                print(f"[LIMS] Added customers.{column} column.")
 
 
 def backfill_sample_reports():

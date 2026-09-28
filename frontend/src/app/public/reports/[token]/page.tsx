@@ -28,10 +28,15 @@ interface PublicReport {
     section: string;
     result?: string;
     specification?: string;
-    remarks?: string;
+    who_specification?: string | null;
+    remarks?: string | null;
   }>;
   /** False for rated reports (paints), which have no specification column. */
   show_specification?: boolean;
+  /** Report prints a W.H.O limit column (international clients). */
+  show_who?: boolean;
+  /** False when the client's reports carry no REMARKS column (drillers). */
+  show_remarks?: boolean;
   authorized: boolean;
   laboratory: string;
   note: string;
@@ -137,7 +142,8 @@ export default function PublicReportPage() {
                         <>
                           <th className="pb-2">Result</th>
                           {data.show_specification !== false && <th className="pb-2">Specification</th>}
-                          <th className="pb-2">Remarks</th>
+                          {data.show_who && <th className="pb-2">W.H.O Limit</th>}
+                          {data.show_remarks !== false && <th className="pb-2">Remarks</th>}
                         </>
                       )}
                     </tr>
@@ -153,7 +159,12 @@ export default function PublicReportPage() {
                             {data.show_specification !== false && (
                               <td className="py-1.5 text-gray-500 text-xs">{p.specification}</td>
                             )}
-                            <td className="py-1.5 text-gray-500 text-xs">{p.remarks}</td>
+                            {data.show_who && (
+                              <td className="py-1.5 text-gray-500 text-xs">{p.who_specification || "NS"}</td>
+                            )}
+                            {data.show_remarks !== false && (
+                              <td className="py-1.5 text-gray-500 text-xs">{p.remarks}</td>
+                            )}
                           </>
                         )}
                       </tr>

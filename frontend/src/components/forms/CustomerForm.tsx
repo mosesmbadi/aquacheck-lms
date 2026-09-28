@@ -14,6 +14,8 @@ const schema = z.object({
   address: z.string().optional(),
   organization_type: z.string().optional(),
   currency: z.string().optional(),
+  report_show_who: z.boolean().optional(),
+  report_hide_remarks: z.boolean().optional(),
 });
 
 export type CustomerFormData = {
@@ -24,6 +26,8 @@ export type CustomerFormData = {
   address?: string;
   organization_type?: string;
   currency?: string;
+  report_show_who?: boolean;
+  report_hide_remarks?: boolean;
 };
 
 interface CustomerFormProps {
@@ -50,6 +54,8 @@ export function CustomerForm({ onSubmit, onCancel, loading, initialValues, submi
       address: initialValues?.address ?? "",
       organization_type: initialValues?.organization_type ?? "",
       currency: initialValues?.currency ?? "KES",
+      report_show_who: initialValues?.report_show_who ?? false,
+      report_hide_remarks: initialValues?.report_hide_remarks ?? false,
     },
   });
 
@@ -72,6 +78,18 @@ export function CustomerForm({ onSubmit, onCancel, loading, initialValues, submi
       </div>
 
       <Textarea label="Address" error={errors.address?.message} {...register("address")} rows={3} placeholder="Postal or physical address" />
+
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-medium text-gray-700 mb-1">Test report layout</legend>
+        <label className="flex items-start gap-2 text-sm text-gray-700">
+          <input type="checkbox" className="mt-0.5" {...register("report_show_who")} />
+          <span>Show W.H.O limits column <span className="text-gray-400">(international clients)</span></span>
+        </label>
+        <label className="flex items-start gap-2 text-sm text-gray-700">
+          <input type="checkbox" className="mt-0.5" {...register("report_hide_remarks")} />
+          <span>Hide the remarks column <span className="text-gray-400">(e.g. drillers)</span></span>
+        </label>
+      </fieldset>
 
       <div className="flex gap-3 justify-end pt-2">
         <Button type="button" variant="secondary" onClick={onCancel}>

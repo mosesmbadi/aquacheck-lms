@@ -45,6 +45,8 @@ const schema = z.object({
   analyst_name: z.string().optional(),
   analyst_title: z.string().optional(),
   final_comment: z.string().optional(),
+  show_who_limits: z.enum(["", "yes", "no"]).optional(),
+  hide_remarks: z.enum(["", "yes", "no"]).optional(),
 }).superRefine((data, ctx) => {
   if (["test_report", "sampling_report"].includes(data.report_type) && !data.sample_id) {
     ctx.addIssue({
@@ -55,6 +57,34 @@ const schema = z.object({
   }
 });
 type FormData = z.infer<typeof schema>;
+
+// Report layout options are three-way: unset follows the client's default.
+type LayoutChoice = "" | "yes" | "no";
+const toLayoutOption = (choice?: LayoutChoice) => (choice === "yes" ? true : choice === "no" ? false : undefined);
+const fromLayoutOption = (value: unknown): LayoutChoice => (value === true ? "yes" : value === false ? "no" : "");
+
+function LayoutOptionSelects({
+  showWho,
+  hideRemarks,
+}: {
+  showWho: React.SelectHTMLAttributes<HTMLSelectElement>;
+  hideRemarks: React.SelectHTMLAttributes<HTMLSelectElement>;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-4">
+      <Select label="W.H.O Limits Column" {...showWho}>
+        <option value="">Client default</option>
+        <option value="yes">Show</option>
+        <option value="no">Don't show</option>
+      </Select>
+      <Select label="Remarks Column" {...hideRemarks}>
+        <option value="">Client default</option>
+        <option value="no">Show</option>
+        <option value="yes">Hide</option>
+      </Select>
+    </div>
+  );
+}
 
 export default function ReportsPage() {
   const qc = useQueryClient();
@@ -119,6 +149,8 @@ export default function ReportsPage() {
       analyst_name: "",
       analyst_title: "Lab analyst",
       final_comment: "",
+      show_who_limits: "",
+      hide_remarks: "",
     },
   });
 
@@ -290,6 +322,8 @@ export default function ReportsPage() {
               analyst_name: data.analyst_name || undefined,
               analyst_title: data.analyst_title || undefined,
               final_comment: data.final_comment || undefined,
+              show_who_limits: toLayoutOption(data.show_who_limits),
+              hide_remarks: toLayoutOption(data.hide_remarks),
             },
           } as Partial<Report>);
           reset();
@@ -334,6 +368,7 @@ export default function ReportsPage() {
             <Input label="Analyst Name" error={errors.analyst_name?.message} {...register("analyst_name")} placeholder="Kipkemoi Josphat" />
             <Input label="Analyst Title" error={errors.analyst_title?.message} {...register("analyst_title")} placeholder="Lab analyst" />
           </div>
+          <LayoutOptionSelects showWho={register("show_who_limits")} hideRemarks={register("hide_remarks")} />
           <Textarea label="Conclusion / Remarks" error={errors.final_comment?.message} {...register("final_comment")} rows={4} placeholder="Summary of the final result and any remarks to appear on the report." />
           <Textarea label="Disclaimer Override" error={errors.disclaimer?.message} {...register("disclaimer")} rows={3} placeholder="Optional custom disclaimer text for this report." />
           <div className="flex gap-3 justify-end pt-2">
@@ -382,6 +417,10 @@ function ReportEditModal({
     final_comment: String(content.final_comment ?? ""),
     disclaimer: String(content.disclaimer ?? ""),
   });
+  const [layout, setLayout] = useState({
+    show_who_limits: fromLayoutOption(content.show_who_limits),
+    hide_remarks: fromLayoutOption(content.hide_remarks),
+  });
   const [amendmentReason, setAmendmentReason] = useState("");
   const [error, setError] = useState("");
 
@@ -397,7 +436,12 @@ function ReportEditModal({
     updateMutation.mutate({
       id: report.id,
       payload: {
-        content: { ...content, ...fields },
+        content: {
+          ...content,
+          ...fields,
+          show_who_limits: toLayoutOption(layout.show_who_limits),
+          hide_remarks: toLayoutOption(layout.hide_remarks),
+        },
         amendment_reason: amendmentReason || undefined,
       },
     }, {
@@ -451,6 +495,16 @@ function ReportEditModal({
           <Input label="Analyst Name" value={fields.analyst_name} onChange={set("analyst_name")} />
           <Input label="Analyst Title" value={fields.analyst_title} onChange={set("analyst_title")} />
         </div>
+        <LayoutOptionSelects
+          showWho={{
+            value: layout.show_who_limits,
+            onChange: (e) => setLayout((l) => ({ ...l, show_who_limits: e.target.value as LayoutChoice })),
+          }}
+          hideRemarks={{
+            value: layout.hide_remarks,
+            onChange: (e) => setLayout((l) => ({ ...l, hide_remarks: e.target.value as LayoutChoice })),
+          }}
+        />
         <Textarea label="Conclusion / Remarks" rows={3} value={fields.final_comment} onChange={set("final_comment")} />
         <Textarea label="Disclaimer Override" rows={2} value={fields.disclaimer} onChange={set("disclaimer")} />
 

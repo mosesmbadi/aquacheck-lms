@@ -9,7 +9,7 @@ from app.models.customer import Customer
 from app.models.sample import Sample
 from app.models.test_result import TestResult
 from app.models.user import User, UserRole
-from app.routers.reports import _result_sections, _is_paint, load_report_results
+from app.routers.reports import _result_sections, _is_paint, load_report_results, report_options
 
 router = APIRouter(prefix="/public", tags=["Public"])
 
@@ -46,17 +46,20 @@ def get_public_report(
         )
     )
 
+    show_who, show_remarks = report_options(content, customer, sample)
+
     if is_authorized:
         # Same loading as the PDF, so sections, order and remarks match the report.
         test_results, catalog_by_id, qualifiers = load_report_results(db, sample)
-        result_sections = _result_sections(test_results, content, sample, catalog_by_id, qualifiers)
+        result_sections = _result_sections(test_results, content, sample, catalog_by_id, qualifiers, show_who)
         parameters = [
             {
                 "parameter": row.get("parameter", "—"),
                 "method": row.get("method", "—"),
                 "result": row.get("result", "—"),
                 "specification": row.get("specification", "—"),
-                "remarks": row.get("remarks", "—"),
+                "who_specification": row.get("who_specification"),
+                "remarks": row.get("remarks", "—") if show_remarks else None,
                 "section": section.get("title", ""),
             }
             for section in result_sections
@@ -89,6 +92,8 @@ def get_public_report(
         "parameters": parameters,
         # Paint reports are rated, not checked against a specification.
         "show_specification": not _is_paint(sample),
+        "show_who": show_who,
+        "show_remarks": show_remarks,
         "authorized": is_authorized,
         "laboratory": "AquaCheck Laboratories Limited",
         "note": note,

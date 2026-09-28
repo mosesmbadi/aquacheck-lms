@@ -37,7 +37,7 @@ def build_quotation_pdf(quotation, customer) -> bytes:
         [[
             logo_cell,
             Paragraph(
-                "AQUACHECK LABORATORIES LIMITED<br/>P.O. Box 216 - 00300, NAIROBI<br/>Westlands Commercial Centre<br/>Off Ring Road, Parklands Rd<br/>Email: aquachecklab@gmail.com<br/>Website: www.aquachecklab.com<br/>Tel: 0755596064/0734933819",
+                "AQUACHECK LABORATORIES LIMITED<br/>P.O. Box 216 - 00300, NAIROBI<br/>Westlands Commercial Centre<br/>Off Ring Road, Parklands Rd<br/>Email: info@aquachecklab.com<br/>Website: www.aquachecklab.com<br/>Tel: 0755596064/0734933819",
                 company_style,
             ),
         ]],

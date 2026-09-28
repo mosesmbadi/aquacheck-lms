@@ -104,6 +104,8 @@ export interface TestCatalogItem {
   unit?: string;
   method_name?: string;
   standard_limit?: string;
+  /** WHO guideline value, printed only on reports for clients who ask for it. */
+  who_limit?: string | null;
   description?: string;
   price?: number;
   sort_order: number;
@@ -237,6 +239,10 @@ export interface Customer {
   address?: string;
   organization_type?: string;
   currency?: string;
+  /** Test reports print a W.H.O limit column (international clients). */
+  report_show_who?: boolean;
+  /** Test reports leave out the REMARKS column (drillers). */
+  report_hide_remarks?: boolean;
   is_active: boolean;
   created_at: string;
 }
@@ -411,6 +417,9 @@ export interface Report {
     }>;
     final_comment?: string;
     sample_description?: string;
+    /** Unset means the client's default; issuing the report fixes the value. */
+    show_who_limits?: boolean;
+    hide_remarks?: boolean;
     [key: string]: unknown;
   };
   issued_by?: number;

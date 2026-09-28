@@ -15,6 +15,10 @@ class Customer(Base):
     address = Column(String, nullable=True)
     organization_type = Column(String, nullable=True)
     currency = Column(String, nullable=True, default="KES")
+    # Test report layout for this client. International clients want the WHO limit
+    # column alongside KS EAS; drillers want results only, with no REMARKS column.
+    report_show_who = Column(Boolean, default=False, nullable=False)
+    report_hide_remarks = Column(Boolean, default=False, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
