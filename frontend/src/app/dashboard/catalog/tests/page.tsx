@@ -49,6 +49,7 @@ const schema = z.object({
   unit: z.string().optional(),
   method_name: z.string().optional(),
   standard_limit: z.string().optional(),
+  who_limit: z.string().optional(),
   description: z.string().optional(),
   price: z.coerce.number().min(0).default(0),
   sort_order: z.coerce.number().int().min(0).default(0),
@@ -199,6 +200,7 @@ export default function CatalogTestsPage() {
       unit: item.unit ?? "",
       method_name: item.method_name ?? "",
       standard_limit: item.standard_limit ?? "",
+      who_limit: item.who_limit ?? "",
       description: item.description ?? "",
       price: item.price ?? 0,
       sort_order: item.sort_order,
@@ -457,6 +459,13 @@ export default function CatalogTestsPage() {
             <Input label="Standard Limit" error={errors.standard_limit?.message} {...register("standard_limit")} placeholder="e.g. 0.2, Not Detectable" />
           </div>
 
+          <Input
+            label="W.H.O Limit (printed only for clients whose reports show the WHO column; blank = NS)"
+            error={errors.who_limit?.message}
+            {...register("who_limit")}
+            placeholder="e.g. 1.5, 6.5-8.5, Not Detectable"
+          />
+
           <div className="grid grid-cols-2 gap-4">
             <Input
               label={editing ? "Sort Order" : "Sort Order (0 = place automatically)"}
@@ -599,7 +608,10 @@ function TestTable({
                 </td>
                 <td className="px-5 py-2.5 text-gray-500">{item.unit || "—"}</td>
                 <td className="px-5 py-2.5 text-gray-500 text-xs">{item.method_name || "—"}</td>
-                <td className="px-5 py-2.5 text-gray-600">{item.standard_limit || "—"}</td>
+                <td className="px-5 py-2.5 text-gray-600">
+                  {item.standard_limit || "—"}
+                  {item.who_limit && <div className="text-[11px] text-gray-400">WHO: {item.who_limit}</div>}
+                </td>
                 <td className="px-5 py-2.5">
                   {pkgNames.length > 0 ? (
                     <div className="flex flex-wrap gap-1">

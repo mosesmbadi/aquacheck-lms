@@ -11,6 +11,8 @@ class CustomerBase(BaseModel):
     address: Optional[str] = None
     organization_type: Optional[str] = None
     currency: Optional[str] = "KES"
+    report_show_who: bool = False
+    report_hide_remarks: bool = False
     is_active: bool = True
 
 
@@ -26,6 +28,8 @@ class CustomerUpdate(BaseModel):
     address: Optional[str] = None
     organization_type: Optional[str] = None
     currency: Optional[str] = None
+    report_show_who: Optional[bool] = None
+    report_hide_remarks: Optional[bool] = None
     is_active: Optional[bool] = None
 
 

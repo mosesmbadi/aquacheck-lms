@@ -147,6 +147,7 @@ class CatalogItemBase(BaseModel):
     unit: Optional[str] = None
     method_name: Optional[str] = None
     standard_limit: Optional[str] = None
+    who_limit: Optional[str] = None
     description: Optional[str] = None
     price: float = 0
     sort_order: int = 0
@@ -166,6 +167,7 @@ class CatalogItemUpdate(BaseModel):
     unit: Optional[str] = None
     method_name: Optional[str] = None
     standard_limit: Optional[str] = None
+    who_limit: Optional[str] = None
     description: Optional[str] = None
     price: Optional[float] = None
     sort_order: Optional[int] = None
@@ -192,6 +194,7 @@ class CatalogItemOut(CatalogItemBase):
             "unit": obj.unit,
             "method_name": obj.method_name,
             "standard_limit": obj.standard_limit,
+            "who_limit": obj.who_limit,
             "description": obj.description,
             "price": float(obj.price) if obj.price is not None else 0,
             "sort_order": obj.sort_order,

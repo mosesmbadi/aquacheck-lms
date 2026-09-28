@@ -29,6 +29,9 @@ class TestCatalogItem(Base):
     unit = Column(String, nullable=True)
     method_name = Column(String, nullable=True)
     standard_limit = Column(String, nullable=True)
+    # WHO Guidelines for Drinking-water Quality value, printed as an extra column on
+    # reports for clients who ask for it. Blank means no WHO guideline value (NS).
+    who_limit = Column(String, nullable=True)
     description = Column(Text, nullable=True)
     price = Column(Numeric(12, 2), nullable=False, default=0)
     sort_order = Column(Integer, default=0)

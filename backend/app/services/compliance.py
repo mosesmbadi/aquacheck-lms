@@ -229,8 +229,13 @@ def evaluate_item_remark(
     result_value: Optional[str],
     qualifiers: Iterable[ResultQualifier],
     manual_remark: Optional[str] = None,
+    who_limit: Optional[str] = None,
 ) -> Remark:
-    """REMARKS column for a catalog test, following its remark rule."""
+    """REMARKS column for a catalog test, following its remark rule.
+
+    `who_limit` is passed only when the report prints the WHO column. The remark then
+    has to hold against both printed limits — a result beside a WHO limit it exceeds
+    must not read COMPLIANT."""
     if remark_rule == "contamination_rating":
         return contamination_rating(result_value, qualifiers)
     if remark_rule == "manual":
@@ -240,7 +245,29 @@ def evaluate_item_remark(
         if text:
             return Remark(RemarkKind.manual, text)
         return Remark(RemarkKind.indeterminate, "—", "Enter the remark for this test.")
-    return evaluate_remark(standard_limit, result_value, qualifiers)
+    qualifiers = list(qualifiers)
+    remark = evaluate_remark(standard_limit, result_value, qualifiers)
+    if who_limit is None:
+        return remark
+    return _stricter(remark, evaluate_remark(who_limit, result_value, qualifiers))
+
+
+# Which of two remarks on the same result wins: a failure against either limit is a
+# failure; a pass against one limit is a pass even where the other sets none.
+_PRECEDENCE = [
+    RemarkKind.non_compliant,
+    RemarkKind.indeterminate,
+    RemarkKind.compliant,
+    RemarkKind.out_of_range,
+]
+
+
+def _stricter(first: Remark, second: Remark) -> Remark:
+    for kind in _PRECEDENCE:
+        for remark in (first, second):
+            if remark.kind == kind:
+                return remark
+    return first
 
 
 def legend_entries(
