@@ -8,6 +8,7 @@ import { samplesApi, testResultsApi, testCatalogApi, contractsApi, customersApi,
 import type { Sample, TestResult, TestCatalogItem, Contract, Customer, Report, User, ResultQualifier } from "@/lib/types";
 import { evaluateItemRemark, legendEntries, storedRemark } from "@/lib/compliance";
 import { reportSections } from "@/lib/reportSections";
+import { MARK_LEGEND, SYSTEM_GENERATED_NOTE, parameterMark } from "@/lib/parameterMarks";
 
 const PAINT_COMMENT = "Each parameter's level is shown in the RESULTS table above for the sample submitted to the lab.";
 const NO_REMARKS_COMMENT = "The level of each parameter is shown in the RESULTS table above for the water submitted to the lab.";
@@ -121,6 +122,15 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
     return { item, value, remark: evaluateItemRemark(item, value, qualifiers, storedRemark(result), whoLimit) };
   });
   const rowsByItemId = new Map(rows.map((r) => [r.item.id, r]));
+
+  // "*" accredited / "✓" subcontracted after the parameter name. Accreditation is read
+  // from the list frozen onto the report at issue, falling back to the live catalog.
+  const markByItemId = new Map(
+    requestedItems.map((item) => [item.id, parameterMark(item, sample, rc.accredited_test_ids)])
+  );
+  const markLegend = MARK_LEGEND.filter(({ mark }) =>
+    Array.from(markByItemId.values()).includes(mark)
+  );
 
   const nonCompliantItems = rows.filter((r) => r.remark.kind === "non_compliant").map((r) => r.item);
   const hasNonCompliant = nonCompliantItems.length > 0;
@@ -437,7 +447,10 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
                       const isFail = remark.kind === "non_compliant";
                       return (
                         <tr key={item.id}>
-                          <td style={{ border: "1px solid #000", padding: "2px 5px" }}>{item.name}</td>
+                          <td style={{ border: "1px solid #000", padding: "2px 5px" }}>
+                            {item.name}
+                            {markByItemId.get(item.id) && <strong> {markByItemId.get(item.id)}</strong>}
+                          </td>
                           <td style={{ border: "1px solid #000", padding: "2px 5px" }}>{item.method_name || "—"}</td>
                           <td style={{ border: "1px solid #000", padding: "2px 5px", textAlign: "center" }}>{row.value || "—"}</td>
                           {!isPaint && (
@@ -471,6 +484,15 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
                   </span>
                 ))}
               </p>
+              {markLegend.length > 0 && (
+                <p>
+                  {markLegend.map(({ mark, label }, i) => (
+                    <span key={mark} style={{ marginRight: "12px" }}>
+                      <strong>{mark}</strong> {label}{i === markLegend.length - 1 ? "." : ""}
+                    </span>
+                  ))}
+                </p>
+              )}
             </div>
 
             {/* Disclaimer */}
@@ -577,6 +599,10 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
                 ))}
               </div>
             )}
+
+            <div style={{ marginTop: "10px", textAlign: "center", fontSize: "8px", fontStyle: "italic", color: "#555" }}>
+              {SYSTEM_GENERATED_NOTE}
+            </div>
           </div>
         </div>
 

@@ -13,6 +13,7 @@ import { samplesApi, testResultsApi, testCatalogApi, usersApi, resultQualifiersA
 import type { TestResult, TestCatalogItem, User, Sample, ResultQualifier } from "@/lib/types";
 import { evaluateItemRemark, storedRemark, type Remark } from "@/lib/compliance";
 import { reportSections } from "@/lib/reportSections";
+import { parameterMark, SUBCONTRACTED_MARK } from "@/lib/parameterMarks";
 import TestReportPrint from "@/components/TestReportPrint";
 
 type ResultDraft = {
@@ -123,6 +124,21 @@ export default function SampleDetailPage() {
       qc.invalidateQueries({ queryKey: ["sample", sampleId] });
       qc.invalidateQueries({ queryKey: ["samples"] });
       setEditingPhysicalId(false);
+    },
+  });
+
+  // Subcontracting can change after registration (e.g. an instrument goes down).
+  const toggleSubcontractedMutation = useMutation({
+    mutationFn: (catalogId: number) => {
+      const current = sample?.subcontracted_test_ids ?? [];
+      const next = current.includes(catalogId)
+        ? current.filter((id) => id !== catalogId)
+        : [...current, catalogId];
+      return samplesApi.update(sampleId, { subcontracted_test_ids: next } as Partial<Sample>);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["sample", sampleId] });
+      qc.invalidateQueries({ queryKey: ["samples"] });
     },
   });
 
@@ -458,6 +474,9 @@ export default function SampleDetailPage() {
                             onUpdate={updateDraft}
                             onValidate={(rid) => validateMutation.mutate(rid)}
                             getRemark={getRemark}
+                            mark={parameterMark(item, sample)}
+                            onToggleSubcontracted={() => toggleSubcontractedMutation.mutate(item.id)}
+                            togglingSubcontracted={toggleSubcontractedMutation.isPending}
                           />
                         ))}
                       </tbody>
@@ -547,6 +566,9 @@ function ResultEntryRow({
   onUpdate,
   onValidate,
   getRemark,
+  mark,
+  onToggleSubcontracted,
+  togglingSubcontracted,
 }: {
   item: TestCatalogItem;
   draft: ResultDraft;
@@ -554,6 +576,10 @@ function ResultEntryRow({
   onUpdate: (catalogId: number, field: keyof ResultDraft, value: string) => void;
   onValidate: (resultId: number) => void;
   getRemark: (item: TestCatalogItem, draft: ResultDraft) => Remark;
+  /** "*" accredited, "✓" subcontracted, "" neither — as printed on the report. */
+  mark: string;
+  onToggleSubcontracted: () => void;
+  togglingSubcontracted: boolean;
 }) {
   const value = draft.result_value;
   const remark = getRemark(item, draft);
@@ -564,7 +590,34 @@ function ResultEntryRow({
     <tr className={`hover:bg-blue-50/50 transition-colors ${isValidated ? "bg-green-50/30" : ""}`}>
       {/* Parameter name */}
       <td className="px-3 py-1.5 text-gray-900 font-medium text-xs">
-        {item.name}
+        <div className="flex items-center justify-between gap-2">
+          <span>
+            {item.name}
+            {mark && (
+              <span
+                className={`ml-1 font-semibold ${mark === SUBCONTRACTED_MARK ? "text-amber-600" : "text-primary-600"}`}
+                title={mark === SUBCONTRACTED_MARK ? "Subcontracted parameter" : "Accredited parameter"}
+              >
+                {mark}
+              </span>
+            )}
+          </span>
+          {!isValidated && (
+            <button
+              type="button"
+              onClick={onToggleSubcontracted}
+              disabled={togglingSubcontracted}
+              className={`flex-shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded border transition-colors disabled:opacity-50 ${
+                mark === SUBCONTRACTED_MARK
+                  ? "bg-amber-100 text-amber-800 border-amber-300"
+                  : "bg-white text-gray-400 border-gray-200 hover:text-amber-700 hover:border-amber-300"
+              }`}
+              title={mark === SUBCONTRACTED_MARK ? "Subcontracted to an external lab — click to undo" : "Mark as subcontracted to an external lab"}
+            >
+              {mark === SUBCONTRACTED_MARK ? "Subcontracted" : "Subcontract"}
+            </button>
+          )}
+        </div>
       </td>
 
       {/* Method */}

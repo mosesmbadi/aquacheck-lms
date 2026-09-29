@@ -113,6 +113,10 @@ export interface TestCatalogItem {
   section?: string | null;
   /** How the REMARKS column is filled; null/undefined means "compliance". */
   remark_rule?: RemarkRule | null;
+  /** In the lab's scope of accreditation — marked "*" on reports. */
+  is_accredited?: boolean;
+  /** Normally sent to an external lab — pre-ticks "subcontracted" on new samples. */
+  default_subcontracted?: boolean;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -310,6 +314,9 @@ export interface Sample {
   disposal_method?: string;
   chain_of_custody?: CustodyEntry[];
   requested_test_ids?: number[];
+  /** Requested tests performed by an external lab — marked "✓" on the report. */
+  subcontracted_test_ids?: number[];
+  subcontractor_name?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -420,6 +427,8 @@ export interface Report {
     /** Unset means the client's default; issuing the report fixes the value. */
     show_who_limits?: boolean;
     hide_remarks?: boolean;
+    /** Accredited catalog ids, fixed when the report is issued (unset: live catalog). */
+    accredited_test_ids?: number[];
     [key: string]: unknown;
   };
   issued_by?: number;

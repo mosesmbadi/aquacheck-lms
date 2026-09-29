@@ -39,6 +39,12 @@ class TestCatalogItem(Base):
     section = Column(String, nullable=True)
     # RemarkRule value, stored as plain text; NULL means RemarkRule.compliance.
     remark_rule = Column(String, nullable=True)
+    # Within the lab's scope of accreditation — marked "*" on reports. Set per parameter
+    # by the Quality Manager, never per sample, so it always matches the scope.
+    is_accredited = Column(Boolean, default=False, nullable=False)
+    # Normally sent to an external lab — pre-ticks "subcontracted" when the test is
+    # assigned to a sample (the sample's own list is what the report uses).
+    default_subcontracted = Column(Boolean, default=False, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(

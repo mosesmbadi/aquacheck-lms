@@ -12,6 +12,11 @@ class Settings(BaseSettings):
     ADMIN_EMAIL: str
     ADMIN_PASSWORD: str
 
+    # Last sample number issued before the LIMS took over numbering (e.g. 165 for
+    # QT/165/2026 in the paper register). The next sample is this + 1, unless the
+    # LIMS already holds a higher number.
+    SAMPLE_CODE_START_AFTER: int = 0
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 

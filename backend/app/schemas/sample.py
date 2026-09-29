@@ -23,6 +23,8 @@ class SampleBase(BaseModel):
     gps_coordinates: Optional[str] = None
     storage_condition: Optional[str] = None
     requested_test_ids: Optional[List[int]] = Field(default_factory=list)
+    subcontracted_test_ids: Optional[List[int]] = Field(default_factory=list)
+    subcontractor_name: Optional[str] = None
 
     @field_validator("contract_id", "sampled_by", mode="before")
     @classmethod
@@ -57,6 +59,8 @@ class SampleUpdate(BaseModel):
     disposal_date: Optional[date] = None
     disposal_method: Optional[str] = None
     requested_test_ids: Optional[List[int]] = None
+    subcontracted_test_ids: Optional[List[int]] = None
+    subcontractor_name: Optional[str] = None
 
     @field_validator("contract_id", "sampled_by", mode="before")
     @classmethod
@@ -81,6 +85,7 @@ class SampleOut(SampleBase):
     disposal_method: Optional[str] = None
     chain_of_custody: Optional[List[Any]] = []
     requested_test_ids: Optional[List[int]] = Field(default_factory=list)
+    subcontracted_test_ids: Optional[List[int]] = Field(default_factory=list)
     notes: Optional[str] = None
     contact_person: Optional[str] = None
     submitted_by: Optional[str] = None

@@ -9,7 +9,14 @@ from app.models.customer import Customer
 from app.models.sample import Sample
 from app.models.test_result import TestResult
 from app.models.user import User, UserRole
-from app.routers.reports import _result_sections, _is_paint, load_report_results, report_options
+from app.routers.reports import (
+    SYSTEM_GENERATED_NOTE,
+    _is_paint,
+    _result_sections,
+    load_report_results,
+    mark_legend,
+    report_options,
+)
 
 router = APIRouter(prefix="/public", tags=["Public"])
 
@@ -55,6 +62,7 @@ def get_public_report(
         parameters = [
             {
                 "parameter": row.get("parameter", "—"),
+                "mark": row.get("mark") or None,
                 "method": row.get("method", "—"),
                 "result": row.get("result", "—"),
                 "specification": row.get("specification", "—"),
@@ -71,6 +79,7 @@ def get_public_report(
         parameters = [
             {
                 "parameter": row.get("parameter", "—"),
+                "mark": row.get("mark") or None,
                 "method": row.get("method", "—"),
                 "section": section.get("title", ""),
             }
@@ -94,7 +103,9 @@ def get_public_report(
         "show_specification": not _is_paint(sample),
         "show_who": show_who,
         "show_remarks": show_remarks,
+        "marks_legend": [{"mark": mark, "label": label} for mark, label in mark_legend(result_sections)],
         "authorized": is_authorized,
         "laboratory": "AquaCheck Laboratories Limited",
         "note": note,
+        "system_generated_note": SYSTEM_GENERATED_NOTE,
     }
