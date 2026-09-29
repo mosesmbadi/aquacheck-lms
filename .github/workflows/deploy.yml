@@ -1,0 +1,61 @@
+name: Deploy
+
+# Pulls the deploy branch on the server and rebuilds the containers — the same steps
+# as deploying by hand over SSH.
+#
+# Repository secrets (Settings → Secrets and variables → Actions):
+#   SSH_PRIVATE_KEY  private key whose public half is in the server's ~/.ssh/authorized_keys
+#   SSH_USER         e.g. ubuntu
+#   SSH_HOST         server IP or hostname
+
+on:
+  push:
+    branches: [sample-entry]
+  workflow_dispatch:
+
+env:
+  DEPLOY_BRANCH: sample-entry
+  APP_DIR: ~/aquacheck/aquacheck-lms
+
+# Never run two deploys against the server at once; a newer push waits its turn.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Set up SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Pull and rebuild on the server
+        env:
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes "$SSH_USER@$SSH_HOST" \
+            "bash -s -- '$DEPLOY_BRANCH' '$APP_DIR'" <<'REMOTE'
+          set -euo pipefail
+          branch="$1"
+          cd "${2/#\~/$HOME}"
+          git fetch origin "$branch"
+          git checkout "$branch"
+          git pull --ff-only origin "$branch"
+          docker compose up --build -d
+          # Each rebuild leaves the previous images behind; clear them so the disk doesn't fill.
+          docker image prune -f
+          docker compose ps
+          REMOTE
+
+      - name: Remove SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
