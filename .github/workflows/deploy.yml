@@ -10,11 +10,11 @@ name: Deploy
 
 on:
   push:
-    branches: [sample-entry]
+    branches: [main]
   workflow_dispatch:
 
 env:
-  DEPLOY_BRANCH: sample-entry
+  DEPLOY_BRANCH: main
   APP_DIR: ~/aquacheck/aquacheck-lms
 
 # Never run two deploys against the server at once; a newer push waits its turn.
