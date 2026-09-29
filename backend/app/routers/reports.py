@@ -6,6 +6,7 @@ import re
 import base64
 import os
 from pathlib import Path
+from xml.sax.saxutils import escape
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import or_
 from sqlalchemy.orm.attributes import flag_modified
@@ -89,6 +90,41 @@ PAINT_COMMENT = "Each parameter's level is shown in the RESULTS table above for 
 _ASTM_LEGEND = ("ASTM", "American Society for Testing and Materials")
 
 
+ACCREDITED_MARK = "*"
+SUBCONTRACTED_MARK = "✓"
+MARK_LEGEND = (
+    (ACCREDITED_MARK, "Accredited parameter"),
+    (SUBCONTRACTED_MARK, "Subcontracted parameter"),
+)
+SYSTEM_GENERATED_NOTE = "This is a system generated document"
+
+
+def parameter_mark(catalog_item, sample, content: dict) -> str:
+    """The mark printed after a parameter's name: "✓" subcontracted, "*" accredited.
+
+    Accreditation comes from the catalog (the lab's scope), frozen onto the report when
+    it is issued so a later scope change can't alter it. A subcontracted result never
+    carries the lab's accreditation mark — that covers only work the lab does itself."""
+    if catalog_item is None:
+        return ""
+    if catalog_item.id in ((getattr(sample, "subcontracted_test_ids", None) if sample else None) or []):
+        return SUBCONTRACTED_MARK
+    frozen = (content or {}).get("accredited_test_ids")
+    accredited = catalog_item.id in frozen if isinstance(frozen, list) else bool(catalog_item.is_accredited)
+    return ACCREDITED_MARK if accredited else ""
+
+
+def mark_legend(result_sections):
+    """(mark, label) for each mark that actually appears on the report."""
+    used = {row.get("mark") for section in result_sections for row in section.get("rows", [])}
+    return [(mark, label) for mark, label in MARK_LEGEND if mark in used]
+
+
+def _mark_markup(mark: str) -> str:
+    # The standard PDF fonts have no "✓"; ZapfDingbats draws it as character "3".
+    return '<font name="ZapfDingbats">3</font>' if mark == SUBCONTRACTED_MARK else escape(mark)
+
+
 def _is_paint(sample) -> bool:
     category = getattr(sample, "sample_category", None) if sample else None
     return getattr(category, "value", category) == "paint"
@@ -137,6 +173,12 @@ def _paint_legend_note(qualifiers, result_sections):
         if q.is_active and q.show_in_legend and re.search(rf"\b{re.escape(q.code)}\b", text, re.IGNORECASE):
             entries.append((q.code, q.label))
     return ", ".join(f"{code}: {label}" for code, label in entries) + "." if entries else ""
+
+
+def _parameter_para(row, style):
+    text = escape(str(row.get("parameter") or "—"))
+    mark = row.get("mark")
+    return Paragraph(f"{text} {_mark_markup(mark)}" if mark else text, style)
 
 
 def _remarks_para(remarks, style):
@@ -275,6 +317,7 @@ def _result_sections(test_results, content: dict, sample=None, catalog_by_id=Non
             {
                 "who_specification": who_specification,
                 "parameter": raw.get("parameter_name") or (catalog_item.name if catalog_item else None) or (result.method.name if result.method else f"Method #{result.method_id}"),
+                "mark": parameter_mark(catalog_item, sample, content),
                 "method": raw.get("method_name") or (
                     result.method.standard_reference
                     if result.method and result.method.standard_reference
@@ -448,6 +491,13 @@ def issue_report(
     show_who, show_remarks = report_options(content, customer, sample)
     content["show_who_limits"] = show_who
     content["hide_remarks"] = not show_remarks
+    # Freeze the accreditation marks too (first issue only — an amendment keeps the
+    # scope the report was originally issued under).
+    if not isinstance(content.get("accredited_test_ids"), list):
+        content["accredited_test_ids"] = [
+            item_id
+            for (item_id,) in db.query(TestCatalogItem.id).filter(TestCatalogItem.is_accredited == True)  # noqa: E712
+        ]
     report.content = content
     flag_modified(report, "content")
 
@@ -488,6 +538,7 @@ class _NumberedCanvas(Canvas):
     def _draw_page_number(self, page_count):
         self.setFont("Helvetica", 7)
         self.setFillColor(colors.HexColor("#666666"))
+        self.drawCentredString(A4[0] / 2, 1.45 * cm, SYSTEM_GENERATED_NOTE)
         self.drawCentredString(A4[0] / 2, 1.1 * cm, f"Page {self._pageNumber} of {page_count}")
 
 
@@ -649,7 +700,7 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
                 ]]
                 for row in section.get("rows", []):
                     result_rows.append([
-                        row.get("parameter", "—"),
+                        _parameter_para(row, cell_style),
                         row.get("method", "—"),
                         Paragraph(str(row.get("result", "—")), cell_style),
                         Paragraph(str(row.get("remarks", "—")), cell_style),
@@ -670,7 +721,7 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
                 result_rows = [header_row]
                 for row in section.get("rows", []):
                     cells = [
-                        row.get("parameter", "—"),
+                        _parameter_para(row, cell_style),
                         row.get("method", "—"),
                         row.get("result", "—"),
                         row.get("specification", "—"),
@@ -708,6 +759,12 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
     story.append(Spacer(1, 0.2 * cm))
     if legend_note:
         story.append(Paragraph(legend_note, small_style))
+    marks = mark_legend(result_sections)
+    if marks:
+        story.append(Paragraph(
+            "&nbsp;&nbsp;&nbsp;".join(f"{_mark_markup(mark)} {label}" for mark, label in marks) + ".",
+            small_style,
+        ))
     story.append(Paragraph("<b>DISCLAIMER</b>", small_style))
     sampling_clause = "" if _sampled_by_lab() else (
         "The laboratory will not be held responsible for any sampling errors, which may include improper collection techniques, "

@@ -1,8 +1,9 @@
 from datetime import datetime, timezone
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import or_
+from sqlalchemy import Integer, cast, func, or_, text
 from sqlalchemy.orm import Session
+from app.config import settings
 from app.deps import get_db, get_current_user
 from app.models.user import User, UserRole
 from app.models.contract import Contract
@@ -23,17 +24,45 @@ def _apply_discharge_schedule(data: dict) -> None:
         data["waste_schedule"] = _DISCHARGE_TO_SCHEDULE.get(dest)
 
 
+# Key for the transaction-level advisory lock that serialises sample numbering.
+_SAMPLE_CODE_LOCK_KEY = 710_001
+
+
 def _next_sample_code(db: Session) -> str:
+    """QT/{seq}/{year}. The sequence runs on across years — QT/165/2026 is followed by
+    QT/166/2027 — and starts after settings.SAMPLE_CODE_START_AFTER, the last number
+    the paper register issued before the LIMS took over.
+
+    Takes a lock held until the caller's transaction ends, so two samples registered
+    at the same moment can't both be given the same number."""
+    db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": _SAMPLE_CODE_LOCK_KEY})
     year = datetime.now(timezone.utc).year
-    max_seq = 0
-    for (code,) in db.query(Sample.sample_code).filter(Sample.sample_code.like("QT/%/%")).all():
-        try:
-            seq = int(code.split("/")[1])
-            if seq > max_seq:
-                max_seq = seq
-        except (IndexError, ValueError):
-            continue
-    return f"QT/{max_seq + 1}/{year}"
+    max_seq = (
+        db.query(func.max(cast(func.split_part(Sample.sample_code, "/", 2), Integer)))
+        .filter(Sample.sample_code.op("~")(r"^QT/[0-9]+/[0-9]+$"))
+        .scalar()
+    ) or 0
+    return f"QT/{max(max_seq, settings.SAMPLE_CODE_START_AFTER) + 1}/{year}"
+
+
+def _clean_subcontracted(data: dict, sample: Sample | None = None) -> None:
+    """Keep subcontracted_test_ids a subset of the requested tests (a sample with no
+    requested tests shows the whole catalog, so any test may be marked)."""
+    if "subcontracted_test_ids" not in data and "requested_test_ids" not in data:
+        return
+    subcontracted = data.get("subcontracted_test_ids")
+    if subcontracted is None:
+        subcontracted = (sample.subcontracted_test_ids if sample else None) or []
+    requested = data.get("requested_test_ids")
+    if requested is None:
+        requested = (sample.requested_test_ids if sample else None) or []
+    if requested:
+        subcontracted = [tid for tid in subcontracted if tid in requested]
+    data["subcontracted_test_ids"] = list(dict.fromkeys(subcontracted))
+    if not data["subcontracted_test_ids"]:
+        data["subcontractor_name"] = None
+    elif isinstance(data.get("subcontractor_name"), str):
+        data["subcontractor_name"] = data["subcontractor_name"].strip() or None
 
 
 @router.get("", response_model=List[SampleOut])
@@ -60,6 +89,7 @@ def create_sample(
 ):
     sample_data = payload.model_dump()
     _apply_discharge_schedule(sample_data)
+    _clean_subcontracted(sample_data)
     if payload.contract_id is not None:
         contract = db.query(Contract).filter(Contract.id == payload.contract_id).first()
         if not contract:
@@ -180,6 +210,7 @@ def update_sample(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sample not found")
     update_data = payload.model_dump(exclude_unset=True)
     _apply_discharge_schedule(update_data)
+    _clean_subcontracted(update_data, sample)
     if "contract_id" in update_data and update_data["contract_id"] is not None:
         contract = db.query(Contract).filter(Contract.id == update_data["contract_id"]).first()
         if not contract:

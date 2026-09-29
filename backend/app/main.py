@@ -491,6 +491,34 @@ def ensure_schema_compatibility():
                 ))
                 print(f"[LIMS] Added customers.{column} column.")
 
+        # test_catalog.is_accredited / default_subcontracted — "*" and "✓" marks on reports
+        for column in ("is_accredited", "default_subcontracted"):
+            column_exists = connection.execute(
+                text(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_name = 'test_catalog' AND column_name = :column"
+                ),
+                {"column": column},
+            ).scalar()
+            if not column_exists:
+                connection.execute(text(
+                    f"ALTER TABLE test_catalog ADD COLUMN {column} BOOLEAN NOT NULL DEFAULT FALSE"
+                ))
+                print(f"[LIMS] Added test_catalog.{column} column.")
+
+        # samples.subcontracted_test_ids / subcontractor_name — tests sent to an external lab
+        for column, column_type in (("subcontracted_test_ids", "JSON"), ("subcontractor_name", "VARCHAR")):
+            column_exists = connection.execute(
+                text(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_name = 'samples' AND column_name = :column"
+                ),
+                {"column": column},
+            ).scalar()
+            if not column_exists:
+                connection.execute(text(f"ALTER TABLE samples ADD COLUMN {column} {column_type}"))
+                print(f"[LIMS] Added samples.{column} column.")
+
 
 def backfill_sample_reports():
     """One-time catch-up: every sample should have a report entry under /reports,

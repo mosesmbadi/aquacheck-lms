@@ -24,6 +24,8 @@ interface PublicReport {
   sampled_by: string;
   parameters: Array<{
     parameter: string;
+    /** "*" accredited, "✓" subcontracted. */
+    mark?: string | null;
     method: string;
     section: string;
     result?: string;
@@ -37,9 +39,12 @@ interface PublicReport {
   show_who?: boolean;
   /** False when the client's reports carry no REMARKS column (drillers). */
   show_remarks?: boolean;
+  /** Legend for the marks that appear on this report. */
+  marks_legend?: Array<{ mark: string; label: string }>;
   authorized: boolean;
   laboratory: string;
   note: string;
+  system_generated_note?: string;
 }
 
 export default function PublicReportPage() {
@@ -151,7 +156,10 @@ export default function PublicReportPage() {
                   <tbody>
                     {(bySection[section] || []).map((p, i) => (
                       <tr key={i} className="border-b border-gray-50">
-                        <td className="py-1.5 text-gray-800">{p.parameter}</td>
+                        <td className="py-1.5 text-gray-800">
+                          {p.parameter}
+                          {p.mark && <span className="ml-1 font-semibold">{p.mark}</span>}
+                        </td>
                         <td className="py-1.5 text-gray-500 text-xs">{p.method}</td>
                         {data.authorized && (
                           <>
@@ -173,6 +181,15 @@ export default function PublicReportPage() {
                 </table>
               </div>
             ))
+          )}
+          {data.marks_legend && data.marks_legend.length > 0 && (
+            <p className="text-xs text-gray-500 mt-2">
+              {data.marks_legend.map(({ mark, label }) => (
+                <span key={mark} className="mr-4">
+                  <span className="font-semibold">{mark}</span> {label}
+                </span>
+              ))}
+            </p>
           )}
         </div>
 
@@ -200,6 +217,9 @@ export default function PublicReportPage() {
         <p className="text-center text-xs text-gray-400">
           {data.laboratory} · ISO/IEC 17025 Accredited Laboratory
         </p>
+        {data.system_generated_note && (
+          <p className="text-center text-xs text-gray-400 italic">{data.system_generated_note}</p>
+        )}
       </div>
     </div>
   );

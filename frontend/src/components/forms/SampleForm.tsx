@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useForm, useController, Control } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -102,6 +102,8 @@ const schema = z
     gps_coordinates: optStr,
     storage_condition: optStr,
     requested_test_ids: z.array(z.number().int().positive()).default([]),
+    subcontracted_test_ids: z.array(z.number().int().positive()).default([]),
+    subcontractor_name: optStr,
   })
   .superRefine((data, ctx) => {
     if (data.sample_category === "waste") {
@@ -144,6 +146,60 @@ function TestPicker({
 }) {
   const { field } = useController({ control, name: "requested_test_ids" });
   const selected: number[] = field.value ?? [];
+  const { field: subField } = useController({ control, name: "subcontracted_test_ids" });
+  const subcontracted: number[] = subField.value ?? [];
+
+  function toggleSubcontracted(id: number) {
+    subField.onChange(
+      subcontracted.includes(id) ? subcontracted.filter((x) => x !== id) : [...subcontracted, id]
+    );
+  }
+
+  // Accreditation (*) comes from the catalog and can't be changed here; subcontracting
+  // (✓) is chosen per sample for each selected test.
+  function renderRow(item: TestCatalogItem) {
+    const isSelected = selected.includes(item.id);
+    const isSub = subcontracted.includes(item.id);
+    return (
+      <div
+        key={item.id}
+        className={`flex items-start gap-2 px-3 py-2 border-b border-gray-50 ${
+          suggestedIds?.includes(item.id)
+            ? "bg-orange-50 hover:bg-orange-100"
+            : "hover:bg-gray-50"
+        }`}
+      >
+        <label className="flex flex-1 items-start gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={() => toggle(item.id)}
+            className="mt-0.5 rounded border-gray-300 flex-shrink-0"
+          />
+          <span className="text-sm text-gray-700 leading-tight">
+            {item.name}
+            {item.is_accredited && !isSub && (
+              <span className="ml-1 text-primary-600 font-semibold" title="Accredited parameter">*</span>
+            )}
+          </span>
+        </label>
+        {isSelected && (
+          <button
+            type="button"
+            onClick={() => toggleSubcontracted(item.id)}
+            className={`flex-shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded border transition-colors ${
+              isSub
+                ? "bg-amber-100 text-amber-800 border-amber-300"
+                : "bg-white text-gray-400 border-gray-200 hover:text-amber-700 hover:border-amber-300"
+            }`}
+            title={isSub ? "Subcontracted to an external lab — click to undo" : "Mark as subcontracted to an external lab"}
+          >
+            {isSub ? "✓ Subcontracted" : "Subcontract"}
+          </button>
+        )}
+      </div>
+    );
+  }
 
   function toggle(id: number) {
     const next = selected.includes(id)
@@ -204,24 +260,7 @@ function TestPicker({
             </label>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-0 max-h-52 overflow-y-auto">
-            {physio.map((item) => (
-              <label
-                key={item.id}
-                className={`flex items-start gap-2 px-3 py-2 cursor-pointer border-b border-gray-50 ${
-                  suggestedIds?.includes(item.id)
-                    ? "bg-orange-50 hover:bg-orange-100"
-                    : "hover:bg-gray-50"
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  checked={selected.includes(item.id)}
-                  onChange={() => toggle(item.id)}
-                  className="mt-0.5 rounded border-gray-300 flex-shrink-0"
-                />
-                <span className="text-sm text-gray-700 leading-tight">{item.name}</span>
-              </label>
-            ))}
+            {physio.map((item) => renderRow(item))}
           </div>
         </div>
       )}
@@ -244,24 +283,7 @@ function TestPicker({
             </label>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-0 max-h-36 overflow-y-auto">
-            {micro.map((item) => (
-              <label
-                key={item.id}
-                className={`flex items-start gap-2 px-3 py-2 cursor-pointer border-b border-gray-50 ${
-                  suggestedIds?.includes(item.id)
-                    ? "bg-orange-50 hover:bg-orange-100"
-                    : "hover:bg-gray-50"
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  checked={selected.includes(item.id)}
-                  onChange={() => toggle(item.id)}
-                  className="mt-0.5 rounded border-gray-300 flex-shrink-0"
-                />
-                <span className="text-sm text-gray-700 leading-tight">{item.name}</span>
-              </label>
-            ))}
+            {micro.map((item) => renderRow(item))}
           </div>
         </div>
       )}
@@ -371,6 +393,7 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
     control,
     watch,
     setValue,
+    getValues,
     setError,
     formState: { errors, isValid },
   } = useForm<FormData>({
@@ -379,6 +402,7 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
     defaultValues: {
       customer_id: customerId,
       requested_test_ids: [],
+      subcontracted_test_ids: [],
       waste_industry_type: null,
       discharge_destination: null,
     },
@@ -448,6 +472,26 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
   }, [wasteParamsReady, suggestedItems, suggestionsApplied, setValue]);  // eslint-disable-line
 
   const catalogItems = sampleCategory === "waste" ? fullWasteCatalog : nonWasteCatalog;
+
+  // However a test gets selected (tick, select all, package, Schedule 4 suggestion),
+  // pre-tick "subcontracted" if the catalog says it usually is; deselected tests drop out.
+  const requestedTestIds = watch("requested_test_ids");
+  const previousRequested = useRef<number[]>([]);
+  useEffect(() => {
+    const current = requestedTestIds ?? [];
+    const added = current.filter((id) => !previousRequested.current.includes(id));
+    previousRequested.current = current;
+    const byId = new Map([...suggestedItems, ...catalogItems].map((c) => [c.id, c]));
+    const existing = getValues("subcontracted_test_ids") ?? [];
+    const next = [
+      ...existing.filter((id) => current.includes(id)),
+      ...added.filter((id) => byId.get(id)?.default_subcontracted && !existing.includes(id)),
+    ];
+    if (next.length !== existing.length || next.some((id, i) => id !== existing[i])) {
+      setValue("subcontracted_test_ids", next);
+    }
+  }, [requestedTestIds]);  // eslint-disable-line react-hooks/exhaustive-deps
+  const subcontractedCount = (watch("subcontracted_test_ids") ?? []).length;
   const testsReady =
     sampleCategory === "waste"
       ? wasteParamsReady
@@ -497,7 +541,7 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
     "waste_industry_type", "discharge_destination", "description", "notes",
     "contact_person", "submitted_by", "sampled_by", "sample_type", "physical_sample_id",
     "collection_date", "collection_location", "gps_coordinates", "storage_condition",
-    "requested_test_ids",
+    "requested_test_ids", "subcontracted_test_ids", "subcontractor_name",
   ]);
 
   async function handleFormSubmit(data: FormData) {
@@ -872,6 +916,15 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
             catalogItems={catalogItems}
             suggestedIds={sampleCategory === "waste" ? suggestedIds : undefined}
           />
+
+          {subcontractedCount > 0 && (
+            <Input
+              label={`Subcontractor (${subcontractedCount} test${subcontractedCount !== 1 ? "s" : ""} marked ✓ on the report)`}
+              error={errors.subcontractor_name?.message}
+              {...register("subcontractor_name")}
+              placeholder="External laboratory performing the subcontracted tests"
+            />
+          )}
         </>
       )}
 

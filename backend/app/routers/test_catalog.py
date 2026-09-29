@@ -153,6 +153,8 @@ class CatalogItemBase(BaseModel):
     sort_order: int = 0
     section: Optional[str] = None
     remark_rule: Optional[RemarkRuleValue] = None
+    is_accredited: bool = False
+    default_subcontracted: bool = False
     is_active: bool = True
 
 
@@ -173,6 +175,8 @@ class CatalogItemUpdate(BaseModel):
     sort_order: Optional[int] = None
     section: Optional[str] = None
     remark_rule: Optional[RemarkRuleValue] = None
+    is_accredited: Optional[bool] = None
+    default_subcontracted: Optional[bool] = None
     is_active: Optional[bool] = None
 
 
@@ -200,6 +204,8 @@ class CatalogItemOut(CatalogItemBase):
             "sort_order": obj.sort_order,
             "section": obj.section,
             "remark_rule": obj.remark_rule,
+            "is_accredited": bool(obj.is_accredited),
+            "default_subcontracted": bool(obj.default_subcontracted),
             "is_active": obj.is_active,
             "created_at": obj.created_at.isoformat() if obj.created_at else "",
             "updated_at": obj.updated_at.isoformat() if obj.updated_at else "",

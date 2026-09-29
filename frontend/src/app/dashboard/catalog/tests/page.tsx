@@ -56,6 +56,8 @@ const schema = z.object({
   // Blank → null, so the test falls back to its category's section.
   section: z.preprocess((v) => (typeof v === "string" && v.trim() === "" ? null : v), z.string().nullable().optional()),
   remark_rule: z.enum(["compliance", "contamination_rating", "manual"]).default("compliance"),
+  is_accredited: z.boolean().default(false),
+  default_subcontracted: z.boolean().default(false),
   is_active: z.boolean().default(true),
 });
 
@@ -187,7 +189,7 @@ export default function CatalogTestsPage() {
   } = useForm<FormData>({ resolver: zodResolver(schema), mode: "onChange" });
 
   function openCreate() {
-    reset({ category: "physicochemical", water_type: "dialysis_potable", sort_order: 0, section: "", remark_rule: "compliance", is_active: true, price: 0 });
+    reset({ category: "physicochemical", water_type: "dialysis_potable", sort_order: 0, section: "", remark_rule: "compliance", is_accredited: false, default_subcontracted: false, is_active: true, price: 0 });
     setEditing(null);
     setShowModal(true);
   }
@@ -206,6 +208,8 @@ export default function CatalogTestsPage() {
       sort_order: item.sort_order,
       section: item.section ?? "",
       remark_rule: item.remark_rule ?? "compliance",
+      is_accredited: !!item.is_accredited,
+      default_subcontracted: !!item.default_subcontracted,
       is_active: item.is_active,
     });
     setEditing(item);
@@ -493,6 +497,23 @@ export default function CatalogTestsPage() {
             />
           </div>
 
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex items-start gap-2">
+              <input type="checkbox" id="is_accredited" {...register("is_accredited")} className="mt-0.5 rounded border-gray-300" />
+              <label htmlFor="is_accredited" className="text-sm text-gray-700">
+                Accredited (*)
+                <span className="block text-xs text-gray-400">In the lab&apos;s scope of accreditation. Marked * on every report.</span>
+              </label>
+            </div>
+            <div className="flex items-start gap-2">
+              <input type="checkbox" id="default_subcontracted" {...register("default_subcontracted")} className="mt-0.5 rounded border-gray-300" />
+              <label htmlFor="default_subcontracted" className="text-sm text-gray-700">
+                Usually subcontracted (✓)
+                <span className="block text-xs text-gray-400">Pre-ticks subcontracted when assigned to a sample; can be changed per sample.</span>
+              </label>
+            </div>
+          </div>
+
           <Textarea label="Description (optional)" {...register("description")} rows={2} placeholder="Additional notes…" />
 
           <div className="flex gap-3 justify-end pt-2">
@@ -603,7 +624,11 @@ function TestTable({
                   </div>
                 </td>
                 <td className="px-5 py-2.5">
-                  <div className="font-medium text-gray-800">{item.name}</div>
+                  <div className="font-medium text-gray-800">
+                    {item.name}
+                    {item.is_accredited && <span className="ml-1 text-primary-600" title="Accredited">*</span>}
+                    {item.default_subcontracted && <span className="ml-1 text-amber-600" title="Usually subcontracted">✓</span>}
+                  </div>
                   <div className="text-[11px] text-gray-400">{waterTypeLabel}</div>
                 </td>
                 <td className="px-5 py-2.5 text-gray-500">{item.unit || "—"}</td>
