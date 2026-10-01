@@ -104,6 +104,7 @@ const schema = z
     requested_test_ids: z.array(z.number().int().positive()).default([]),
     subcontracted_test_ids: z.array(z.number().int().positive()).default([]),
     subcontractor_name: optStr,
+    accredited_test_ids: z.array(z.number().int().positive()).default([]),
   })
   .superRefine((data, ctx) => {
     if (data.sample_category === "waste") {
@@ -149,17 +150,27 @@ function TestPicker({
   const { field: subField } = useController({ control, name: "subcontracted_test_ids" });
   const subcontracted: number[] = subField.value ?? [];
 
+  const { field: accField } = useController({ control, name: "accredited_test_ids" });
+  const accredited: number[] = accField.value ?? [];
+
   function toggleSubcontracted(id: number) {
     subField.onChange(
       subcontracted.includes(id) ? subcontracted.filter((x) => x !== id) : [...subcontracted, id]
     );
   }
 
-  // Accreditation (*) comes from the catalog and can't be changed here; subcontracting
-  // (✓) is chosen per sample for each selected test.
+  function toggleAccredited(id: number) {
+    accField.onChange(
+      accredited.includes(id) ? accredited.filter((x) => x !== id) : [...accredited, id]
+    );
+  }
+
+  // Accreditation (*) and subcontracting (✓) are chosen per sample for each selected
+  // test, both pre-ticked from the catalog. A subcontracted test is never marked "*".
   function renderRow(item: TestCatalogItem) {
     const isSelected = selected.includes(item.id);
     const isSub = subcontracted.includes(item.id);
+    const isAcc = accredited.includes(item.id);
     return (
       <div
         key={item.id}
@@ -178,11 +189,25 @@ function TestPicker({
           />
           <span className="text-sm text-gray-700 leading-tight">
             {item.name}
-            {item.is_accredited && !isSub && (
+            {(isSelected ? isAcc : item.is_accredited) && !isSub && (
               <span className="ml-1 text-primary-600 font-semibold" title="Accredited parameter">*</span>
             )}
           </span>
         </label>
+        {isSelected && !isSub && (
+          <button
+            type="button"
+            onClick={() => toggleAccredited(item.id)}
+            className={`flex-shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded border transition-colors ${
+              isAcc
+                ? "bg-primary-50 text-primary-700 border-primary-300"
+                : "bg-white text-gray-400 border-gray-200 hover:text-primary-700 hover:border-primary-300"
+            }`}
+            title={isAcc ? "Reported as accredited — click to mark not accredited" : "Mark as accredited"}
+          >
+            {isAcc ? "* Accredited" : "Not accredited"}
+          </button>
+        )}
         {isSelected && (
           <button
             type="button"
@@ -403,6 +428,7 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
       customer_id: customerId,
       requested_test_ids: [],
       subcontracted_test_ids: [],
+      accredited_test_ids: [],
       waste_industry_type: null,
       discharge_destination: null,
     },
@@ -474,7 +500,7 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
   const catalogItems = sampleCategory === "waste" ? fullWasteCatalog : nonWasteCatalog;
 
   // However a test gets selected (tick, select all, package, Schedule 4 suggestion),
-  // pre-tick "subcontracted" if the catalog says it usually is; deselected tests drop out.
+  // pre-tick "subcontracted" / "accredited" from the catalog; deselected tests drop out.
   const requestedTestIds = watch("requested_test_ids");
   const previousRequested = useRef<number[]>([]);
   useEffect(() => {
@@ -482,14 +508,21 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
     const added = current.filter((id) => !previousRequested.current.includes(id));
     previousRequested.current = current;
     const byId = new Map([...suggestedItems, ...catalogItems].map((c) => [c.id, c]));
-    const existing = getValues("subcontracted_test_ids") ?? [];
-    const next = [
-      ...existing.filter((id) => current.includes(id)),
-      ...added.filter((id) => byId.get(id)?.default_subcontracted && !existing.includes(id)),
-    ];
-    if (next.length !== existing.length || next.some((id, i) => id !== existing[i])) {
-      setValue("subcontracted_test_ids", next);
-    }
+    const sync = (
+      name: "subcontracted_test_ids" | "accredited_test_ids",
+      byDefault: (item?: TestCatalogItem) => boolean
+    ) => {
+      const existing = getValues(name) ?? [];
+      const next = [
+        ...existing.filter((id) => current.includes(id)),
+        ...added.filter((id) => byDefault(byId.get(id)) && !existing.includes(id)),
+      ];
+      if (next.length !== existing.length || next.some((id, i) => id !== existing[i])) {
+        setValue(name, next);
+      }
+    };
+    sync("subcontracted_test_ids", (item) => !!item?.default_subcontracted);
+    sync("accredited_test_ids", (item) => !!item?.is_accredited);
   }, [requestedTestIds]);  // eslint-disable-line react-hooks/exhaustive-deps
   const subcontractedCount = (watch("subcontracted_test_ids") ?? []).length;
   const testsReady =
@@ -541,12 +574,16 @@ export function SampleForm({ onSubmit, onCancel, loading, customerId }: SampleFo
     "waste_industry_type", "discharge_destination", "description", "notes",
     "contact_person", "submitted_by", "sampled_by", "sample_type", "physical_sample_id",
     "collection_date", "collection_location", "gps_coordinates", "storage_condition",
-    "requested_test_ids", "subcontracted_test_ids", "subcontractor_name",
+    "requested_test_ids", "subcontracted_test_ids", "subcontractor_name", "accredited_test_ids",
   ]);
 
   async function handleFormSubmit(data: FormData) {
     try {
-      await onSubmit(data);
+      // With no tests picked the report lists the whole catalog, so accreditation
+      // follows the catalog too (undefined → stored as null).
+      await onSubmit(
+        data.requested_test_ids.length ? data : { ...data, accredited_test_ids: undefined as unknown as number[] }
+      );
     } catch (err: unknown) {
       type ApiDetail = { loc?: string[]; msg?: string; error?: string };
       const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;

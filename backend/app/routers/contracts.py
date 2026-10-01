@@ -7,6 +7,7 @@ from app.models.user import User, UserRole
 from app.models.contract import Contract, ContractStatus
 from app.models.customer import Customer
 from app.schemas.contract import ContractCreate, ContractUpdate, ContractOut
+from app.services.access import ensure_staff, is_customer
 from app.services.audit import log_action
 
 router = APIRouter(prefix="/contracts", tags=["Contracts"])
@@ -21,7 +22,9 @@ def _next_contract_number(db: Session) -> str:
 @router.get("", response_model=List[ContractOut])
 def list_contracts(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     q = db.query(Contract)
-    if current_user.role == UserRole.customer and current_user.customer_id:
+    if is_customer(current_user):
+        if not current_user.customer_id:
+            return []
         q = q.filter(Contract.customer_id == current_user.customer_id)
     return q.order_by(Contract.created_at.desc()).all()
 
@@ -32,6 +35,7 @@ def create_contract(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    ensure_staff(current_user)
     customer = db.query(Customer).filter(Customer.id == payload.customer_id).first()
     if not customer:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found")
@@ -49,9 +53,9 @@ def create_contract(
 
 
 @router.get("/{contract_id}", response_model=ContractOut)
-def get_contract(contract_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def get_contract(contract_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     contract = db.query(Contract).filter(Contract.id == contract_id).first()
-    if not contract:
+    if not contract or (is_customer(current_user) and contract.customer_id != current_user.customer_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contract not found")
     return contract
 
@@ -63,6 +67,7 @@ def update_contract(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    ensure_staff(current_user)
     contract = db.query(Contract).filter(Contract.id == contract_id).first()
     if not contract:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contract not found")

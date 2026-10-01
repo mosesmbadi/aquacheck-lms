@@ -399,8 +399,12 @@ function ReportEditModal({
 }) {
   const isIssued = report.status === "issued" || report.status === "amended";
   const content = report.content || {};
+  const sample = samples.find((s) => s.id === content.sample_id);
 
   const [fields, setFields] = useState({
+    // Overrides the sample's collection location on the report (e.g. the client
+    // corrects where the sample was taken after registration).
+    sampling_location: String(content.sampling_location ?? sample?.collection_location ?? ""),
     report_title: String(content.report_title ?? "TEST REPORT"),
     overall_status: String(content.overall_status ?? "COMPLETE"),
     classification: String(content.classification ?? ""),
@@ -483,6 +487,7 @@ function ReportEditModal({
           <Input label="Sampled By" value={fields.sampled_by} onChange={set("sampled_by")} />
           <Input label="Sample Lab ID" value={fields.sample_lab_id} onChange={set("sample_lab_id")} />
         </div>
+        <Input label="Sampling Location" value={fields.sampling_location} onChange={set("sampling_location")} />
         <div className="grid grid-cols-2 gap-4">
           <Input label="Analysis Date" type="date" value={fields.analysis_date} onChange={set("analysis_date")} />
           <Input label="Specification Header" value={fields.specification_title} onChange={set("specification_title")} />

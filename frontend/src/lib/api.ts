@@ -120,7 +120,8 @@ export const equipmentApi = {
 
 // ─── Reports ──────────────────────────────────────────────────────────────────
 export const reportsApi = {
-  list: () => api.get<Report[]>("/reports"),
+  /** include_pending (staff): also drafts whose sample results aren't all validated yet. */
+  list: (params?: { include_pending?: boolean }) => api.get<Report[]>("/reports", { params }),
   get: (id: number) => api.get<Report>(`/reports/${id}`),
   create: (data: Partial<Report>) => api.post<Report>("/reports", data),
   update: (id: number, data: { content?: Report["content"]; status?: string; amendment_reason?: string }) =>
@@ -214,7 +215,7 @@ export const inventoryApi = {
   list: (params?: { category?: InventoryCategory; search?: string; active_only?: boolean }) =>
     api.get<InventoryItem[]>("/inventory", { params }),
   get: (id: number) => api.get<InventoryItem>(`/inventory/${id}`),
-  create: (data: Partial<InventoryItem> & { opening_stock?: number }) =>
+  create: (data: Partial<InventoryItem> & { opening_stock?: number; received_date?: string }) =>
     api.post<InventoryItem>("/inventory", data),
   update: (id: number, data: Partial<InventoryItem>) =>
     api.put<InventoryItem>(`/inventory/${id}`, data),

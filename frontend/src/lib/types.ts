@@ -317,6 +317,8 @@ export interface Sample {
   /** Requested tests performed by an external lab — marked "✓" on the report. */
   subcontracted_test_ids?: number[];
   subcontractor_name?: string | null;
+  /** Requested tests reported as accredited — marked "*". null: follow the catalog. */
+  accredited_test_ids?: number[] | null;
   created_at: string;
   updated_at: string;
 }

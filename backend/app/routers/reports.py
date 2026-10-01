@@ -25,7 +25,7 @@ from app.models.user import User, UserRole
 from app.models.report import Report, ReportStatus
 from app.models.contract import Contract
 from app.models.customer import Customer
-from app.models.sample import Sample
+from app.models.sample import Sample, SampleStatus
 from app.models.test_result import TestResult
 from app.models.test_catalog import TestCatalogItem, TestCategory
 from app.models.result_qualifier import ResultQualifier
@@ -102,15 +102,22 @@ SYSTEM_GENERATED_NOTE = "This is a system generated document"
 def parameter_mark(catalog_item, sample, content: dict) -> str:
     """The mark printed after a parameter's name: "✓" subcontracted, "*" accredited.
 
-    Accreditation comes from the catalog (the lab's scope), frozen onto the report when
-    it is issued so a later scope change can't alter it. A subcontracted result never
+    Accreditation is chosen per sample (sample.accredited_test_ids). Older samples without
+    that list fall back to the catalog (the lab's scope), frozen onto the report when it
+    is issued so a later scope change can't alter it. A subcontracted result never
     carries the lab's accreditation mark — that covers only work the lab does itself."""
     if catalog_item is None:
         return ""
     if catalog_item.id in ((getattr(sample, "subcontracted_test_ids", None) if sample else None) or []):
         return SUBCONTRACTED_MARK
+    per_sample = getattr(sample, "accredited_test_ids", None) if sample else None
     frozen = (content or {}).get("accredited_test_ids")
-    accredited = catalog_item.id in frozen if isinstance(frozen, list) else bool(catalog_item.is_accredited)
+    if isinstance(per_sample, list):
+        accredited = catalog_item.id in per_sample
+    elif isinstance(frozen, list):
+        accredited = catalog_item.id in frozen
+    else:
+        accredited = bool(catalog_item.is_accredited)
     return ACCREDITED_MARK if accredited else ""
 
 
@@ -339,18 +346,68 @@ def _result_sections(test_results, content: dict, sample=None, catalog_by_id=Non
     ]
 
 
+# A sample's results are final once every test is validated (sample → completed);
+# archiving and disposal only happen after that.
+_RESULTS_FINAL_STATUSES = (SampleStatus.completed, SampleStatus.archived, SampleStatus.disposed)
+_ISSUED_STATUSES = (ReportStatus.issued, ReportStatus.amended)
+
+
+def _results_final(sample) -> bool:
+    return sample is not None and sample.status in _RESULTS_FINAL_STATUSES
+
+
+def _ensure_customer_can_view(report: Report, current_user: User, db: Session) -> None:
+    """Customers see only issued reports addressed to their own account."""
+    if current_user.role != UserRole.customer:
+        return
+    contract = db.query(Contract).filter(Contract.id == report.contract_id).first() if report.contract_id else None
+    contract_customer_id = contract.customer_id if contract else None
+    owns = current_user.customer_id and current_user.customer_id in (report.customer_id, contract_customer_id)
+    if not owns or report.status not in _ISSUED_STATUSES:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
+
+
 @router.get("", response_model=List[ReportOut])
-def list_reports(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def list_reports(
+    include_pending: bool = False,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """include_pending (staff only) also returns drafts whose results aren't final yet —
+    the sample-page preview needs the sample's draft report whatever its state."""
     q = db.query(Report)
-    if current_user.role == UserRole.customer and current_user.customer_id:
+    if current_user.role == UserRole.customer:
+        # Customers only ever see issued reports for their own account.
+        if not current_user.customer_id:
+            return []
         q = (
             q.outerjoin(Contract, Report.contract_id == Contract.id)
              .filter(or_(
                  Report.customer_id == current_user.customer_id,
                  Contract.customer_id == current_user.customer_id,
              ))
+             .filter(Report.status.in_(_ISSUED_STATUSES))
         )
-    return q.order_by(Report.created_at.desc()).all()
+        return q.order_by(Report.created_at.desc()).all()
+
+    # Staff: a sample's report is listed for issuance only once all its results are
+    # validated (sample completed). Issued reports and contract-level reports (no
+    # sample) are always listed.
+    reports = q.order_by(Report.created_at.desc()).all()
+    if include_pending:
+        return reports
+    sample_ids ={r.content.get("sample_id") for r in reports if r.content and r.content.get("sample_id")}
+    final_ids = {
+        sid for (sid,) in db.query(Sample.id).filter(
+            Sample.id.in_(sample_ids), Sample.status.in_(_RESULTS_FINAL_STATUSES)
+        )
+    } if sample_ids else set()
+    return [
+        r for r in reports
+        if r.status in _ISSUED_STATUSES
+        or not (r.content or {}).get("sample_id")
+        or r.content["sample_id"] in final_ids
+    ]
 
 
 @router.post("", response_model=ReportOut, status_code=status.HTTP_201_CREATED)
@@ -404,12 +461,7 @@ def get_report(report_id: int, db: Session = Depends(get_db), current_user: User
     report = db.query(Report).filter(Report.id == report_id).first()
     if not report:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
-    # Customers may only view reports belonging to their own customer account
-    if current_user.role == UserRole.customer and current_user.customer_id:
-        contract = db.query(Contract).filter(Contract.id == report.contract_id).first() if report.contract_id else None
-        contract_customer_id = contract.customer_id if contract else None
-        if report.customer_id != current_user.customer_id and contract_customer_id != current_user.customer_id:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
+    _ensure_customer_can_view(report, current_user, db)
     return report
 
 
@@ -481,6 +533,11 @@ def issue_report(
     # defaults can't alter what was issued.
     content = dict(report.content or {})
     sample = db.query(Sample).filter(Sample.id == content.get("sample_id")).first() if content.get("sample_id") else None
+    if content.get("sample_id") and not _results_final(sample):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This report can't be issued yet — all of the sample's test results must be validated first.",
+        )
     contract = db.query(Contract).filter(Contract.id == report.contract_id).first() if report.contract_id else None
     customer_id = (
         report.customer_id
@@ -547,6 +604,7 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
     report = db.query(Report).filter(Report.id == report_id).first()
     if not report:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
+    _ensure_customer_can_view(report, current_user, db)
 
     contract = db.query(Contract).filter(Contract.id == report.contract_id).first() if report.contract_id else None
     content = report.content or {}

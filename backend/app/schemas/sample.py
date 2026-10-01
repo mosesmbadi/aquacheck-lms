@@ -25,6 +25,7 @@ class SampleBase(BaseModel):
     requested_test_ids: Optional[List[int]] = Field(default_factory=list)
     subcontracted_test_ids: Optional[List[int]] = Field(default_factory=list)
     subcontractor_name: Optional[str] = None
+    accredited_test_ids: Optional[List[int]] = None
 
     @field_validator("contract_id", "sampled_by", mode="before")
     @classmethod
@@ -61,6 +62,7 @@ class SampleUpdate(BaseModel):
     requested_test_ids: Optional[List[int]] = None
     subcontracted_test_ids: Optional[List[int]] = None
     subcontractor_name: Optional[str] = None
+    accredited_test_ids: Optional[List[int]] = None
 
     @field_validator("contract_id", "sampled_by", mode="before")
     @classmethod

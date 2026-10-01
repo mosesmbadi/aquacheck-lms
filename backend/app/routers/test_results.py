@@ -9,6 +9,7 @@ from app.models.sample import Sample, SampleStatus
 from app.models.test_result import TestResult, TestStatus
 from app.models.test_catalog import TestCatalogItem
 from app.schemas.test_result import TestResultCreate, TestResultUpdate, TestResultOut, UncertaintyResult, BulkResultCreate
+from app.services.access import customer_can_see_results, ensure_staff, is_customer
 from app.services.audit import log_action
 from app.services.uncertainty import calculate_uncertainty
 from app.routers.inventory import deduct_reagents_for_test_result
@@ -66,8 +67,14 @@ def _maybe_complete_sample(sample: Sample, db: Session) -> None:
 def list_test_results(
     sample_id: Optional[int] = None,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
+    if is_customer(current_user):
+        # Customers see one sample's results at a time, and only once released on an
+        # issued report — never work in progress.
+        sample = db.query(Sample).filter(Sample.id == sample_id).first() if sample_id is not None else None
+        if not sample or not customer_can_see_results(current_user, sample, db):
+            return []
     q = db.query(TestResult)
     if sample_id is not None:
         q = q.filter(TestResult.sample_id == sample_id)
@@ -80,6 +87,7 @@ def create_test_result(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    ensure_staff(current_user)
     sample = db.query(Sample).filter(Sample.id == payload.sample_id).first()
     if not sample:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sample not found")
@@ -109,10 +117,14 @@ def create_test_result(
 
 
 @router.get("/{result_id}", response_model=TestResultOut)
-def get_test_result(result_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def get_test_result(result_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     tr = db.query(TestResult).filter(TestResult.id == result_id).first()
     if not tr:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Test result not found")
+    if is_customer(current_user):
+        sample = db.query(Sample).filter(Sample.id == tr.sample_id).first()
+        if not sample or not customer_can_see_results(current_user, sample, db):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Test result not found")
     return tr
 
 
@@ -123,6 +135,7 @@ def update_test_result(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    ensure_staff(current_user)
     tr = db.query(TestResult).filter(TestResult.id == result_id).first()
     if not tr:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Test result not found")
@@ -180,6 +193,7 @@ def calc_uncertainty(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    ensure_staff(current_user)
     tr = db.query(TestResult).filter(TestResult.id == result_id).first()
     if not tr:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Test result not found")
@@ -198,7 +212,8 @@ def bulk_upsert_results(
     current_user: User = Depends(get_current_user),
 ):
     """Create or update test results for a sample in bulk (one row per catalog item)."""
-    sample = db.query(Sample).filter(Sample.id == payload.sample_id).with_for_update().first()
+    ensure_staff(current_user)
+    sample =db.query(Sample).filter(Sample.id == payload.sample_id).with_for_update().first()
     if not sample:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sample not found")
 

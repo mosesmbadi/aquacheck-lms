@@ -47,6 +47,7 @@ const itemSchema = z.object({
   storage_conditions: z.string().optional(),
   unit_cost: z.coerce.number().optional(),
   expiry_date: z.string().optional(),
+  received_date: z.string().optional(),
   description: z.string().optional(),
 });
 type ItemForm = z.infer<typeof itemSchema>;
@@ -117,7 +118,13 @@ export default function InventoryPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: ItemForm) => inventoryApi.create(data as Partial<InventoryItem> & { opening_stock?: number }),
+    // Blank date inputs come through as "", which the API can't parse as a date.
+    mutationFn: (data: ItemForm) =>
+      inventoryApi.create({
+        ...data,
+        expiry_date: data.expiry_date || undefined,
+        received_date: data.received_date || undefined,
+      } as Parameters<typeof inventoryApi.create>[0]),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["inventory"] });
       qc.invalidateQueries({ queryKey: ["inventory-stats"] });
@@ -171,7 +178,7 @@ export default function InventoryPage() {
   const itemForm = useForm<ItemForm>({
     resolver: zodResolver(itemSchema),
     mode: "onChange",
-    defaultValues: { category: "reagent", minimum_stock: 0, unit: "mL" },
+    defaultValues: { category: "reagent", minimum_stock: 0, unit: "mL", received_date: format(new Date(), "yyyy-MM-dd") },
   });
 
   const editForm = useForm<ItemForm>({
@@ -592,11 +599,13 @@ export default function InventoryPage() {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <Input
-              label="Expiry Date"
+              label="Purchase / Receiving Date"
               type="date"
-              {...itemForm.register("expiry_date")}
+              {...itemForm.register("received_date")}
             />
-            <div />
+            <p className="text-xs text-gray-400 self-end pb-2">
+              Date the opening stock was bought or received. Recorded on its stock entry.
+            </p>
           </div>
           <Textarea
             label="Description / Notes"

@@ -13,8 +13,9 @@ import { samplesApi, testResultsApi, testCatalogApi, usersApi, resultQualifiersA
 import type { TestResult, TestCatalogItem, User, Sample, ResultQualifier } from "@/lib/types";
 import { evaluateItemRemark, storedRemark, type Remark } from "@/lib/compliance";
 import { reportSections } from "@/lib/reportSections";
-import { parameterMark, SUBCONTRACTED_MARK } from "@/lib/parameterMarks";
+import { isAccredited, parameterMark, ACCREDITED_MARK, SUBCONTRACTED_MARK } from "@/lib/parameterMarks";
 import TestReportPrint from "@/components/TestReportPrint";
+import { getCurrentUser } from "@/lib/auth";
 
 type ResultDraft = {
   result_value: string;
@@ -30,6 +31,9 @@ export default function SampleDetailPage() {
   const sampleId = Number(id);
   const router = useRouter();
   const qc = useQueryClient();
+  // Customers get a read-only view: no result entry, validation or signatories. The API
+  // returns their results only once released on an issued report.
+  const isCustomer = getCurrentUser()?.role === "customer";
 
   // Local draft state: keyed by catalog_item_id
   const [drafts, setDrafts] = useState<Record<number, ResultDraft>>({});
@@ -64,6 +68,7 @@ export default function SampleDetailPage() {
   const { data: staffUsers = [] } = useQuery({
     queryKey: ["users"],
     queryFn: () => usersApi.list().then((r) => r.data.filter((u) => u.role !== "customer" && u.is_active)),
+    enabled: !isCustomer,
   });
 
   // Build a map of catalog_item_id -> existing test result
@@ -135,6 +140,24 @@ export default function SampleDetailPage() {
         ? current.filter((id) => id !== catalogId)
         : [...current, catalogId];
       return samplesApi.update(sampleId, { subcontracted_test_ids: next } as Partial<Sample>);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["sample", sampleId] });
+      qc.invalidateQueries({ queryKey: ["samples"] });
+    },
+  });
+
+  // Accreditation is chosen per sample too. A sample registered before that existed
+  // follows the catalog until its first change, which starts its own list from there.
+  const toggleAccreditedMutation = useMutation({
+    mutationFn: (catalogId: number) => {
+      const current = Array.isArray(sample?.accredited_test_ids)
+        ? sample.accredited_test_ids
+        : catalogItems.filter((item) => isAccredited(item, sample)).map((item) => item.id);
+      const next = current.includes(catalogId)
+        ? current.filter((id) => id !== catalogId)
+        : [...current, catalogId];
+      return samplesApi.update(sampleId, { accredited_test_ids: next } as Partial<Sample>);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["sample", sampleId] });
@@ -251,7 +274,11 @@ export default function SampleDetailPage() {
                 {sample.contract_id && (
                   <span className="text-xs text-gray-500">Contract #{sample.contract_id}</span>
                 )}
-                {editingPhysicalId ? (
+                {isCustomer ? (
+                  sample.physical_sample_id && (
+                    <span className="text-xs text-gray-500 font-mono">Physical ID: {sample.physical_sample_id}</span>
+                  )
+                ) : editingPhysicalId ? (
                   <span className="inline-flex items-center gap-1">
                     <input
                       autoFocus
@@ -294,10 +321,12 @@ export default function SampleDetailPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="secondary" onClick={() => setPrintOpen(true)}>
-              <Printer className="w-4 h-4" /> Print Report
-            </Button>
-            {validatableCount > 0 && (
+            {(!isCustomer || testResults.length > 0) && (
+              <Button variant="secondary" onClick={() => setPrintOpen(true)}>
+                <Printer className="w-4 h-4" /> {isCustomer ? "View Report" : "Print Report"}
+              </Button>
+            )}
+            {!isCustomer && validatableCount > 0 && (
               <Button
                 variant="secondary"
                 onClick={() => validateAllMutation.mutate(validatableResults.map((r) => r.id))}
@@ -306,9 +335,11 @@ export default function SampleDetailPage() {
                 <ShieldCheck className="w-4 h-4" /> Validate All ({validatableCount})
               </Button>
             )}
-            <Button onClick={handleSaveAll} loading={bulkSaveMutation.isPending} disabled={!dirty}>
-              <Save className="w-4 h-4" /> Save Results {filledCount > 0 && `(${filledCount})`}
-            </Button>
+            {!isCustomer && (
+              <Button onClick={handleSaveAll} loading={bulkSaveMutation.isPending} disabled={!dirty}>
+                <Save className="w-4 h-4" /> Save Results {filledCount > 0 && `(${filledCount})`}
+              </Button>
+            )}
           </div>
         </div>
 
@@ -414,7 +445,21 @@ export default function SampleDetailPage() {
           </Card>
         )}
 
+        {isCustomer && (
+          <Card>
+            <CardHeader title="Test Results" />
+            <CardBody>
+              <p className="text-sm text-gray-600">
+                {testResults.length > 0
+                  ? "The test report for this sample has been issued. Use View Report above, or find it under Reports."
+                  : "Results will be available here once testing is complete and the test report has been issued."}
+              </p>
+            </CardBody>
+          </Card>
+        )}
+
         {/* ── Results Entry Table ─────────────────────────────────────────── */}
+        {!isCustomer && (
         <Card>
           <CardHeader
             title="Test Results"
@@ -477,6 +522,8 @@ export default function SampleDetailPage() {
                             mark={parameterMark(item, sample)}
                             onToggleSubcontracted={() => toggleSubcontractedMutation.mutate(item.id)}
                             togglingSubcontracted={toggleSubcontractedMutation.isPending}
+                            onToggleAccredited={() => toggleAccreditedMutation.mutate(item.id)}
+                            togglingAccredited={toggleAccreditedMutation.isPending}
                           />
                         ))}
                       </tbody>
@@ -487,9 +534,11 @@ export default function SampleDetailPage() {
             )}
           </CardBody>
         </Card>
+        )}
       </div>
 
       {/* ── Signatories ──────────────────────────────────────────────── */}
+      {!isCustomer && (
         <Card>
           <CardHeader
             title="Signed by"
@@ -549,6 +598,7 @@ export default function SampleDetailPage() {
             )}
           </CardBody>
         </Card>
+      )}
 
       {printOpen && (
         <TestReportPrint sampleId={sampleId} onClose={() => setPrintOpen(false)} signatories={signatories} />
@@ -569,6 +619,8 @@ function ResultEntryRow({
   mark,
   onToggleSubcontracted,
   togglingSubcontracted,
+  onToggleAccredited,
+  togglingAccredited,
 }: {
   item: TestCatalogItem;
   draft: ResultDraft;
@@ -580,6 +632,8 @@ function ResultEntryRow({
   mark: string;
   onToggleSubcontracted: () => void;
   togglingSubcontracted: boolean;
+  onToggleAccredited: () => void;
+  togglingAccredited: boolean;
 }) {
   const value = draft.result_value;
   const remark = getRemark(item, draft);
@@ -603,6 +657,22 @@ function ResultEntryRow({
             )}
           </span>
           {!isValidated && (
+            <div className="flex flex-shrink-0 gap-1">
+            {mark !== SUBCONTRACTED_MARK && (
+              <button
+                type="button"
+                onClick={onToggleAccredited}
+                disabled={togglingAccredited}
+                className={`flex-shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded border transition-colors disabled:opacity-50 ${
+                  mark === ACCREDITED_MARK
+                    ? "bg-primary-50 text-primary-700 border-primary-300"
+                    : "bg-white text-gray-400 border-gray-200 hover:text-primary-700 hover:border-primary-300"
+                }`}
+                title={mark === ACCREDITED_MARK ? "Reported as accredited — click to mark not accredited" : "Mark as accredited"}
+              >
+                {mark === ACCREDITED_MARK ? "Accredited" : "Not accredited"}
+              </button>
+            )}
             <button
               type="button"
               onClick={onToggleSubcontracted}
@@ -616,6 +686,7 @@ function ResultEntryRow({
             >
               {mark === SUBCONTRACTED_MARK ? "Subcontracted" : "Subcontract"}
             </button>
+            </div>
           )}
         </div>
       </td>
