@@ -14,18 +14,29 @@ export const MARK_LEGEND = [
 export const SYSTEM_GENERATED_NOTE = "This is a system generated document";
 
 /**
- * "✓" subcontracted, "*" accredited, "" neither. Accreditation comes from the catalog,
- * or from the list frozen onto the report when it was issued. A subcontracted result
- * never carries the lab's accreditation mark — that covers only work the lab does itself.
+ * Whether a test is reported as accredited on this sample: the sample's own choice, or —
+ * for samples registered before that existed — the list frozen onto the report when it
+ * was issued, else the catalog.
+ */
+export function isAccredited(
+  item: TestCatalogItem,
+  sample?: Pick<Sample, "accredited_test_ids"> | null,
+  frozenAccreditedIds?: unknown
+): boolean {
+  if (Array.isArray(sample?.accredited_test_ids)) return sample.accredited_test_ids.includes(item.id);
+  if (Array.isArray(frozenAccreditedIds)) return frozenAccreditedIds.includes(item.id);
+  return !!item.is_accredited;
+}
+
+/**
+ * "✓" subcontracted, "*" accredited, "" neither. A subcontracted result never carries
+ * the lab's accreditation mark — that covers only work the lab does itself.
  */
 export function parameterMark(
   item: TestCatalogItem,
-  sample?: Pick<Sample, "subcontracted_test_ids"> | null,
+  sample?: Pick<Sample, "subcontracted_test_ids" | "accredited_test_ids"> | null,
   frozenAccreditedIds?: unknown
 ): string {
   if (sample?.subcontracted_test_ids?.includes(item.id)) return SUBCONTRACTED_MARK;
-  const accredited = Array.isArray(frozenAccreditedIds)
-    ? frozenAccreditedIds.includes(item.id)
-    : !!item.is_accredited;
-  return accredited ? ACCREDITED_MARK : "";
+  return isAccredited(item, sample, frozenAccreditedIds) ? ACCREDITED_MARK : "";
 }

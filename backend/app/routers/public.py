@@ -95,7 +95,7 @@ def get_public_report(
         "issued_at": report.issued_at.isoformat() if report.issued_at else None,
         "client_name": customer.name if customer else content.get("submitted_by", "—"),
         "sample_description": (sample.description if sample else None) or content.get("sample_description", "—"),
-        "sampling_location": content.get("sampling_location", sample.collection_location if sample else "—"),
+        "sampling_location": content.get("sampling_location") or (sample.collection_location if sample else None) or "—",
         "sampling_date": content.get("sampling_date", str(sample.collection_date) if sample and sample.collection_date else "—"),
         "sampled_by": content.get("sampled_by") or (sample.sampler.full_name if sample and sample.sampler else None) or "AQUACHECK LABORATORIES LTD",
         "parameters": parameters,

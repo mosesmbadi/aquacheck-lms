@@ -507,7 +507,12 @@ def ensure_schema_compatibility():
                 print(f"[LIMS] Added test_catalog.{column} column.")
 
         # samples.subcontracted_test_ids / subcontractor_name — tests sent to an external lab
-        for column, column_type in (("subcontracted_test_ids", "JSON"), ("subcontractor_name", "VARCHAR")):
+        # samples.accredited_test_ids — per-sample "*" choice (NULL: follow the catalog)
+        for column, column_type in (
+            ("subcontracted_test_ids", "JSON"),
+            ("subcontractor_name", "VARCHAR"),
+            ("accredited_test_ids", "JSON"),
+        ):
             column_exists = connection.execute(
                 text(
                     "SELECT column_name FROM information_schema.columns "

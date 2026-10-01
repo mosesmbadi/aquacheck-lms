@@ -5,13 +5,19 @@ from app.deps import get_db, get_current_user
 from app.models.user import User
 from app.models.customer import Customer
 from app.schemas.customer import CustomerCreate, CustomerUpdate, CustomerOut
+from app.services.access import ensure_staff, is_customer
 from app.services.audit import log_action
 
 router = APIRouter(prefix="/customers", tags=["Customers"])
 
 
 @router.get("", response_model=List[CustomerOut])
-def list_customers(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def list_customers(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    # A customer sees only their own company — never the lab's client list.
+    if is_customer(current_user):
+        if not current_user.customer_id:
+            return []
+        return db.query(Customer).filter(Customer.id == current_user.customer_id).all()
     return db.query(Customer).all()
 
 
@@ -21,6 +27,7 @@ def create_customer(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    ensure_staff(current_user)
     customer = Customer(**payload.model_dump())
     db.add(customer)
     db.commit()
@@ -30,9 +37,9 @@ def create_customer(
 
 
 @router.get("/{customer_id}", response_model=CustomerOut)
-def get_customer(customer_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def get_customer(customer_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     customer = db.query(Customer).filter(Customer.id == customer_id).first()
-    if not customer:
+    if not customer or (is_customer(current_user) and customer.id != current_user.customer_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found")
     return customer
 
@@ -44,6 +51,7 @@ def update_customer(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    ensure_staff(current_user)
     customer = db.query(Customer).filter(Customer.id == customer_id).first()
     if not customer:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found")
@@ -61,6 +69,7 @@ def delete_customer(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    ensure_staff(current_user)
     customer = db.query(Customer).filter(Customer.id == customer_id).first()
     if not customer:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found")

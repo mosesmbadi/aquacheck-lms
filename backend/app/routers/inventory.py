@@ -139,7 +139,7 @@ def create_item(
     if db.query(InventoryItem).filter(InventoryItem.item_code == payload.item_code).first():
         raise HTTPException(status_code=409, detail="Item code already exists")
 
-    data = payload.model_dump(exclude={"opening_stock"})
+    data = payload.model_dump(exclude={"opening_stock", "received_date"})
     item = InventoryItem(**data, current_stock=0.0)
     db.add(item)
     db.flush()
@@ -150,7 +150,9 @@ def create_item(
             transaction_type=TransactionType.receive,
             quantity=payload.opening_stock,
             balance_after=payload.opening_stock,
-            transaction_date=date.today(),
+            transaction_date=payload.received_date or date.today(),
+            expiry_date=payload.expiry_date,
+            supplier=payload.supplier,
             performed_by=current_user.id,
             notes="Opening stock",
         )

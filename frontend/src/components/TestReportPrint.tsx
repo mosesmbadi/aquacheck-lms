@@ -9,6 +9,7 @@ import type { Sample, TestResult, TestCatalogItem, Contract, Customer, Report, U
 import { evaluateItemRemark, legendEntries, storedRemark } from "@/lib/compliance";
 import { reportSections } from "@/lib/reportSections";
 import { MARK_LEGEND, SYSTEM_GENERATED_NOTE, parameterMark } from "@/lib/parameterMarks";
+import { getCurrentUser } from "@/lib/auth";
 
 const PAINT_COMMENT = "Each parameter's level is shown in the RESULTS table above for the sample submitted to the lab.";
 const NO_REMARKS_COMMENT = "The level of each parameter is shown in the RESULTS table above for the water submitted to the lab.";
@@ -61,9 +62,13 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
     enabled: !!customerId,
   });
 
+  // Customers can't create reports, and only ever see issued ones.
+  const isCustomer = getCurrentUser()?.role === "customer";
+  // The sample's report may still be a draft that the Reports page hides until its
+  // results are validated — fetch it anyway, or the preview would create a duplicate.
   const { data: allReports = [] } = useQuery<Report[]>({
-    queryKey: ["reports"],
-    queryFn: () => reportsApi.list().then((r) => r.data),
+    queryKey: ["reports", "include-pending"],
+    queryFn: () => reportsApi.list({ include_pending: !isCustomer }).then((r) => r.data),
   });
 
   const report = reportId
@@ -82,7 +87,7 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
   });
 
   useEffect(() => {
-    if (!reportId && sample && !report && !createReport.isPending) {
+    if (!isCustomer && !reportId && sample && !report && !createReport.isPending) {
       createReport.mutate();
     }
   }, [reportId, sample?.id, report?.id]);
@@ -288,6 +293,7 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
   const submittedBy: string =
     rc.submitted_by || customer?.name || sample.submitted_by || contactPerson;
   const sampleLabId: string = rc.sample_lab_id || sample.physical_sample_id || sample.sample_code;
+  const samplingLocation: string = rc.sampling_location || sample.collection_location || "";
   const authorizerName: string = rc.authorizer_name || "Victor Mutai";
   const authorizerTitle: string = rc.authorizer_title || "Water Chemist";
   const analystName: string = rc.analyst_name || "";
@@ -391,7 +397,7 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
                 </tr>
                 <tr>
                   <td style={{ padding: "2px 4px" }}><strong>SAMPLING LOCATION:</strong></td>
-                  <td style={{ padding: "2px 4px", textTransform: "uppercase" }} colSpan={2}>{sample.collection_location || "—"}</td>
+                  <td style={{ padding: "2px 4px", textTransform: "uppercase" }} colSpan={2}>{samplingLocation || "—"}</td>
                   <td style={{ padding: "2px 4px", textAlign: "right" }}><strong>SAMPLE LAB ID:</strong></td>
                   <td style={{ padding: "2px 4px", textAlign: "right" }}>{sampleLabId}</td>
                 </tr>

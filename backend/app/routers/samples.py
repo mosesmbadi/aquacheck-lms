@@ -10,6 +10,7 @@ from app.models.contract import Contract
 from app.models.customer import Customer
 from app.models.sample import Sample
 from app.schemas.sample import SampleCreate, SampleUpdate, SampleOut, CustodyEntry
+from app.services.access import ensure_can_view_sample, ensure_staff, is_customer
 from app.services.audit import log_action
 from app.services.barcode import generate_barcode
 
@@ -65,10 +66,32 @@ def _clean_subcontracted(data: dict, sample: Sample | None = None) -> None:
         data["subcontractor_name"] = data["subcontractor_name"].strip() or None
 
 
+def _clean_accredited(data: dict, sample: Sample | None = None) -> None:
+    """Keep accredited_test_ids a subset of the requested tests. None means "follow the
+    catalog" and is left alone, unless the requested tests change on a sample that
+    already has its own list."""
+    if "accredited_test_ids" not in data and "requested_test_ids" not in data:
+        return
+    accredited = data.get("accredited_test_ids")
+    if accredited is None:
+        accredited = sample.accredited_test_ids if sample else None
+    if accredited is None:
+        data.pop("accredited_test_ids", None)
+        return
+    requested = data.get("requested_test_ids")
+    if requested is None:
+        requested = (sample.requested_test_ids if sample else None) or []
+    if requested:
+        accredited = [tid for tid in accredited if tid in requested]
+    data["accredited_test_ids"] = list(dict.fromkeys(accredited))
+
+
 @router.get("", response_model=List[SampleOut])
 def list_samples(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    if current_user.role == UserRole.customer and current_user.customer_id:
+    if is_customer(current_user):
         cid = current_user.customer_id
+        if not cid:
+            return []
         contract_alias = db.query(Contract.id).filter(Contract.customer_id == cid).subquery()
         q = db.query(Sample).filter(
             or_(
@@ -90,9 +113,20 @@ def create_sample(
     sample_data = payload.model_dump()
     _apply_discharge_schedule(sample_data)
     _clean_subcontracted(sample_data)
+    _clean_accredited(sample_data)
+    if is_customer(current_user):
+        # A customer registers samples only for their own company.
+        if not current_user.customer_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is not linked to a customer.")
+        sample_data["customer_id"] = current_user.customer_id
+        # Accreditation and subcontracting are the lab's calls: the catalog decides
+        # until staff change them.
+        sample_data.pop("accredited_test_ids", None)
+        sample_data["subcontracted_test_ids"] = []
+        sample_data["subcontractor_name"] = None
     if payload.contract_id is not None:
         contract = db.query(Contract).filter(Contract.id == payload.contract_id).first()
-        if not contract:
+        if not contract or (is_customer(current_user) and contract.customer_id != current_user.customer_id):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contract not found")
 
     sample_code = _next_sample_code(db)
@@ -191,10 +225,11 @@ def create_sample(
 
 
 @router.get("/{sample_id}", response_model=SampleOut)
-def get_sample(sample_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def get_sample(sample_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     sample = db.query(Sample).filter(Sample.id == sample_id).first()
     if not sample:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sample not found")
+    ensure_can_view_sample(current_user, sample, db)
     return sample
 
 
@@ -205,12 +240,14 @@ def update_sample(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    ensure_staff(current_user)
     sample = db.query(Sample).filter(Sample.id == sample_id).first()
     if not sample:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sample not found")
     update_data = payload.model_dump(exclude_unset=True)
     _apply_discharge_schedule(update_data)
     _clean_subcontracted(update_data, sample)
+    _clean_accredited(update_data, sample)
     if "contract_id" in update_data and update_data["contract_id"] is not None:
         contract = db.query(Contract).filter(Contract.id == update_data["contract_id"]).first()
         if not contract:
@@ -224,10 +261,11 @@ def update_sample(
 
 
 @router.get("/{sample_id}/barcode")
-def get_barcode(sample_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def get_barcode(sample_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     sample = db.query(Sample).filter(Sample.id == sample_id).first()
     if not sample:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sample not found")
+    ensure_can_view_sample(current_user, sample, db)
     if not sample.barcode_data:
         barcode = generate_barcode(sample.sample_code)
         sample.barcode_data = barcode
@@ -242,10 +280,11 @@ def add_custody(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    ensure_staff(current_user)
     sample = db.query(Sample).filter(Sample.id == sample_id).first()
     if not sample:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sample not found")
-    custody = list(sample.chain_of_custody or [])
+    custody =list(sample.chain_of_custody or [])
     custody.append(
         {
             "user_id": current_user.id,

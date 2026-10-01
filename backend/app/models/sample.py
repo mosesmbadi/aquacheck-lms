@@ -62,6 +62,10 @@ class Sample(Base):
     # (ISO/IEC 17025 §7.8.2.1). A subset of requested_test_ids.
     subcontracted_test_ids = Column(JSON, default=list)
     subcontractor_name = Column(String, nullable=True)
+    # Requested tests reported as accredited — marked "*". Pre-filled from the catalog's
+    # is_accredited when the sample is registered, then chosen per sample. NULL (samples
+    # registered before this existed) falls back to the catalog.
+    accredited_test_ids = Column(JSON, nullable=True)
     notes = Column(Text, nullable=True)
     contact_person = Column(String, nullable=True)
     submitted_by = Column(String, nullable=True)

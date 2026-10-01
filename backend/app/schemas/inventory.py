@@ -25,6 +25,7 @@ class InventoryItemBase(BaseModel):
 
 class InventoryItemCreate(InventoryItemBase):
     opening_stock: float = 0.0  # optional initial stock; creates a seed transaction
+    received_date: Optional[date] = None  # purchase / receiving date of the opening stock (default today)
 
 
 class InventoryItemUpdate(BaseModel):
