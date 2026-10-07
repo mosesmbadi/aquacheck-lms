@@ -230,8 +230,22 @@ export interface User {
   is_contact_person?: boolean;
   job_title?: string;
   signature_b64?: string;
+  report_signatory?: "authorizer" | "analyst" | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ReportSignatories {
+  authorizer?: User | null;
+  analyst?: User | null;
+}
+
+/** A signatory as frozen onto a report when it is issued. */
+export interface FrozenSignatory {
+  user_id: number;
+  name: string;
+  title: string;
+  signature_b64?: string | null;
 }
 
 export interface Customer {
@@ -413,6 +427,7 @@ export interface Report {
     authorizer_title?: string;
     analyst_name?: string;
     analyst_title?: string;
+    signatories?: { authorizer?: FrozenSignatory | null; analyst?: FrozenSignatory | null };
     result_sections?: Array<{
       title: string;
       specification_header?: string;
@@ -575,6 +590,7 @@ export interface InventoryItem {
   unit_cost?: number;
   pricing_type?: "individual" | "package";
   expiry_date?: string;
+  last_received_date?: string;
   is_active: number;
   is_low_stock: boolean;
   notes?: string;

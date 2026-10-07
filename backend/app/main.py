@@ -29,6 +29,7 @@ from app.routers import (
     invoices,
 )
 from app.routers import calibration_records, test_packages, result_qualifiers
+from app.routers import admin
 
 app = FastAPI(
     title="AquaCheck LIMS API",
@@ -50,6 +51,8 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # Lets the browser read the server's file name on downloads (e.g. DB backups).
+    expose_headers=["Content-Disposition"],
 )
 
 API_PREFIX = "/api/v1"
@@ -58,7 +61,7 @@ for router_module in [
     auth, users, customers, contracts, samples,
     test_results, equipment, calibration_records, reports, complaints, nonconformities, quality,
     test_catalog, test_packages, documents, inventory, quotations, public, invoices,
-    result_qualifiers,
+    result_qualifiers, admin,
 ]:
     app.include_router(router_module.router, prefix=API_PREFIX)
 
@@ -67,23 +70,27 @@ def seed_admin(db):
     from app.models.user import User, UserRole
     from app.services.auth import get_password_hash
 
-    admin_email = settings.ADMIN_EMAIL
-    admin_password = settings.ADMIN_PASSWORD
-
-    existing = db.query(User).filter(User.email == admin_email).first()
-    if not existing:
-        admin = User(
-            email=admin_email,
-            full_name="System Administrator",
-            hashed_password=get_password_hash(admin_password),
-            role=UserRole.admin,
-            is_active=True,
-        )
-        db.add(admin)
-        db.commit()
-        print(f"[LIMS] Default admin user created: {admin_email}")
-    else:
-        print(f"[LIMS] Admin user already exists: {admin_email}")
+    admins = [
+        (settings.ADMIN_EMAIL, settings.ADMIN_PASSWORD),
+        (settings.ADMIN2_EMAIL, settings.ADMIN2_PASSWORD),
+        (settings.ADMIN3_EMAIL, settings.ADMIN3_PASSWORD),
+    ]
+    for n, (admin_email, admin_password) in enumerate(admins, start=1):
+        if not admin_email or not admin_password:
+            continue
+        existing = db.query(User).filter(User.email == admin_email).first()
+        if not existing:
+            db.add(User(
+                email=admin_email,
+                full_name="System Administrator" if n == 1 else f"System Administrator {n}",
+                hashed_password=get_password_hash(admin_password),
+                role=UserRole.admin,
+                is_active=True,
+            ))
+            db.commit()
+            print(f"[LIMS] Admin user created: {admin_email}")
+        else:
+            print(f"[LIMS] Admin user already exists: {admin_email}")
 
 
 def ensure_schema_compatibility():
@@ -384,6 +391,22 @@ def ensure_schema_compatibility():
             ))
             print("[LIMS] Added users.signature_b64 column.")
 
+        # users.report_signatory — which signature block ("authorizer"/"analyst") the
+        # user fills on test reports
+        signatory_exists = connection.execute(
+            text(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'users' AND column_name = 'report_signatory'
+                """
+            )
+        ).scalar()
+        if not signatory_exists:
+            connection.execute(text(
+                "ALTER TABLE users ADD COLUMN report_signatory VARCHAR"
+            ))
+            print("[LIMS] Added users.report_signatory column.")
+
         # reports.contract_id — allow reports for standalone (non-contract) samples
         report_contract_nullable = connection.execute(
             text(
@@ -599,6 +622,8 @@ def on_startup():
     db = SessionLocal()
     try:
         seed_admin(db)
+        from app.services.signatories import seed_signatories
+        seed_signatories(db)
         from app.routers.test_catalog import seed_catalog
         added = seed_catalog(db)
         if added:

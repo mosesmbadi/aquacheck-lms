@@ -4,8 +4,8 @@ import { Fragment, useRef, useState, useEffect, type CSSProperties } from "react
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Printer, X, Clock } from "lucide-react";
-import { samplesApi, testResultsApi, testCatalogApi, contractsApi, customersApi, reportsApi, resultQualifiersApi } from "@/lib/api";
-import type { Sample, TestResult, TestCatalogItem, Contract, Customer, Report, User, ResultQualifier } from "@/lib/types";
+import { samplesApi, testResultsApi, testCatalogApi, contractsApi, customersApi, reportsApi, resultQualifiersApi, usersApi } from "@/lib/api";
+import type { Sample, TestResult, TestCatalogItem, Contract, Customer, Report, User, ResultQualifier, ReportSignatories, FrozenSignatory } from "@/lib/types";
 import { evaluateItemRemark, legendEntries, storedRemark } from "@/lib/compliance";
 import { reportSections } from "@/lib/reportSections";
 import { MARK_LEGEND, SYSTEM_GENERATED_NOTE, parameterMark } from "@/lib/parameterMarks";
@@ -69,6 +69,14 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
   const { data: allReports = [] } = useQuery<Report[]>({
     queryKey: ["reports", "include-pending"],
     queryFn: () => reportsApi.list({ include_pending: !isCustomer }).then((r) => r.data),
+  });
+
+  // The lab's default signatories (set in Admin). An issued report uses the ones
+  // frozen onto it instead, so customers — who only see issued reports — don't need this.
+  const { data: configuredSignatories } = useQuery<ReportSignatories>({
+    queryKey: ["report-signatories"],
+    queryFn: () => usersApi.reportSignatories().then((r) => r.data),
+    enabled: !isCustomer,
   });
 
   const report = reportId
@@ -166,7 +174,7 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
                 color: #666;
               }
             }
-            * { margin: 0; padding: 0; box-sizing: border-box; }
+            * { margin: 0; padding: 0; box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             body { font-family: 'Times New Roman', Times, serif; font-size: 11px; color: #000; }
             table { page-break-inside: auto; }
             thead { display: table-header-group; }
@@ -253,6 +261,13 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
     6: "discharge of treated effluent into the environment based on the legal notice No.120 of EMCA, 2006",
   };
 
+  // The natural/treated choice isn't stored on the sample; the requested tests come
+  // from that sub-type's catalog set, so they tell us which one was picked.
+  const isNaturalPotable =
+    sample.sample_category === "potable" &&
+    ((requestedIds.size > 0 && requestedItems.some((c) => c.water_type === "potable_natural")) ||
+      /natural/i.test(sample.sample_type ?? ""));
+
   let specHeader: string;
   let scheduleContext: string;
   if (isWaste && sample.waste_schedule) {
@@ -262,12 +277,6 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
     specHeader = "KS EAS 12:2018\nPackaged Drinking Water Limit";
     scheduleContext = "KS EAS 12:2018 specifications for packaged drinking water";
   } else {
-    // The natural/treated choice isn't stored on the sample; the requested tests come
-    // from that sub-type's catalog set, so they tell us which one was picked.
-    const isNaturalPotable =
-      sample.sample_category === "potable" &&
-      ((requestedIds.size > 0 && requestedItems.some((c) => c.water_type === "potable_natural")) ||
-        /natural/i.test(sample.sample_type ?? ""));
     const potableLabel = isNaturalPotable ? "Natural Potable Water" : "Treated Potable Water";
     specHeader = rc.specification_title || `KS EAS 12:2018\n${potableLabel} Limit`;
     scheduleContext = `KS EAS 12:2018 specifications for ${potableLabel.toLowerCase()}`;
@@ -294,10 +303,27 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
     rc.submitted_by || customer?.name || sample.submitted_by || contactPerson;
   const sampleLabId: string = rc.sample_lab_id || sample.physical_sample_id || sample.sample_code;
   const samplingLocation: string = rc.sampling_location || sample.collection_location || "";
-  const authorizerName: string = rc.authorizer_name || "Victor Mutai";
-  const authorizerTitle: string = rc.authorizer_title || "Water Chemist";
-  const analystName: string = rc.analyst_name || "";
-  const analystTitle: string = rc.analyst_title || "Lab Analyst";
+  // Who signs, per slot: the signatories frozen at issue, else the configured ones.
+  // A name typed on the report overrides the slot; the stored signature image is only
+  // kept when it is the same person. Mirrors resolve_signatories() on the backend.
+  const signatorySlot = (slot: "authorizer" | "analyst", nameOverride?: string, titleOverride?: string) => {
+    const frozen: FrozenSignatory | null | undefined = rc.signatories?.[slot];
+    const configured = configuredSignatories?.[slot];
+    const base = rc.signatories
+      ? frozen
+      : configured && { name: configured.full_name, title: configured.job_title ?? "", signature_b64: configured.signature_b64 };
+    const overrideName = (nameOverride ?? "").trim();
+    const samePerson = !overrideName || overrideName.toLowerCase() === (base?.name ?? "").toLowerCase();
+    return {
+      name: overrideName || base?.name || "",
+      title: (titleOverride ?? "").trim() || (samePerson ? base?.title : "") || "",
+      signature: samePerson ? base?.signature_b64 ?? null : null,
+    };
+  };
+  const reportSigners = [
+    signatorySlot("authorizer", rc.authorizer_name, rc.authorizer_title),
+    signatorySlot("analyst", rc.analyst_name, rc.analyst_title),
+  ];
   const reportTitle: string = rc.report_title || "TEST REPORT";
   const finalComment: string = rc.final_comment || "";
   const disclaimer: string = rc.disclaimer || "";
@@ -414,7 +440,11 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
             <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "8px", fontSize: "10px" }}>
               <thead>
                 <tr style={{ background: "#e0e0e0" }}>
-                  <th style={{ border: "1px solid #000", padding: "3px 5px", textAlign: "left" }}>TEST</th>
+                  {/* The first section's title heads the TEST column instead of taking
+                      a row of its own; later sections still get a divider row. */}
+                  <th style={{ border: "1px solid #000", padding: "3px 5px", textAlign: "left", textTransform: "uppercase" }}>
+                    {!isWaste && sections.length > 0 ? sections[0].title : "TEST"}
+                  </th>
                   <th style={{ border: "1px solid #000", padding: "3px 5px", textAlign: "left" }}>METHOD</th>
                   <th style={{ border: "1px solid #000", padding: "3px 5px", textAlign: "center" }}>RESULTS</th>
                   {!isPaint && (
@@ -437,22 +467,22 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
                 </tr>
               </thead>
               <tbody>
-                {sections.map((section) => (
+                {sections.map((section, sectionIndex) => (
                   <Fragment key={section.title}>
-                    {!isWaste && (
+                    {!isWaste && sectionIndex > 0 && (
                       <tr style={{ pageBreakAfter: "avoid", breakAfter: "avoid" }}>
                         <td colSpan={columnCount} style={{ background: "#333", color: "#fff", border: "1px solid #000", padding: "4px 5px", fontWeight: "bold", textTransform: "uppercase" }}>
                           {section.title}
                         </td>
                       </tr>
                     )}
-                    {section.items.map((item) => {
+                    {section.items.map((item, itemIndex) => {
                       // Always present: `rows` is built from the same requestedItems list.
                       const row = rowsByItemId.get(item.id)!;
                       const remark = row.remark;
                       const isFail = remark.kind === "non_compliant";
                       return (
-                        <tr key={item.id}>
+                        <tr key={item.id} style={{ background: itemIndex % 2 === 0 ? "#d9d9d9" : "#fff" }}>
                           <td style={{ border: "1px solid #000", padding: "2px 5px" }}>
                             {item.name}
                             {markByItemId.get(item.id) && <strong> {markByItemId.get(item.id)}</strong>}
@@ -523,7 +553,7 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
                   : hasNonCompliant
                     ? isWaste
                       ? <p>The parameters; {nonCompliantItems.map((i) => i.name).join(", ")} do not meet the set specifications for {scheduleContext}. Treatment is therefore recommended.</p>
-                      : <p>The sample does not comply with {scheduleContext}. The {nonCompliantItems.map((i) => i.name).join(", ")} exceeded the set limit. Further treatment is therefore recommended.</p>
+                      : <p>The sample does not comply with {scheduleContext}. The {nonCompliantItems.map((i) => i.name).join(", ")} exceeded the set limit. {isNaturalPotable ? "Treatment" : "Further treatment"} is therefore recommended.</p>
                     : evaluatedCount > 0
                       ? <p>All tested parameters comply with {scheduleContext}.</p>
                       : null
@@ -548,7 +578,7 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
                     <img
                       src={`data:image/png;base64,${sig.signature_b64}`}
                       alt="signature"
-                      style={{ width: "100px", height: "60px", objectFit: "contain", display: "block", margin: "0 auto 4px" }}
+                      style={{ width: "170px", height: "70px", objectFit: "contain", display: "block", margin: "0 auto 4px" }}
                     />
                   )}
                   <div style={{ borderTop: "1px solid #000", width: "180px", paddingTop: "4px" }}>
@@ -556,20 +586,22 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
                     <div style={{ fontStyle: "italic" }}>{sig.job_title || sig.role.replace("_", " ")}</div>
                   </div>
                 </div>
-              )) : [
-                <div key="authorizer" style={{ textAlign: "center" }}>
+              )) : reportSigners.map((sig, i) => (
+                <div key={i} style={{ textAlign: "center" }}>
+                  {sig.signature && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={`data:image/png;base64,${sig.signature}`}
+                      alt="signature"
+                      style={{ width: "170px", height: "70px", objectFit: "contain", display: "block", margin: "0 auto 4px" }}
+                    />
+                  )}
                   <div style={{ borderTop: "1px solid #000", width: "180px", paddingTop: "4px" }}>
-                    <div style={{ fontWeight: "bold", textTransform: "uppercase" }}>{authorizerName || "___________________"}</div>
-                    <div style={{ fontStyle: "italic" }}>{authorizerTitle || "Authorised Signatory"}</div>
+                    <div style={{ fontWeight: "bold", textTransform: "uppercase" }}>{sig.name || "___________________"}</div>
+                    <div style={{ fontStyle: "italic" }}>{sig.name ? sig.title : "Authorised Signatory"}</div>
                   </div>
-                </div>,
-                <div key="analyst" style={{ textAlign: "center" }}>
-                  <div style={{ borderTop: "1px solid #000", width: "180px", paddingTop: "4px" }}>
-                    <div style={{ fontWeight: "bold", textTransform: "uppercase" }}>{analystName || "___________________"}</div>
-                    <div style={{ fontStyle: "italic" }}>{analystName ? analystTitle : "Authorised Signatory"}</div>
-                  </div>
-                </div>,
-              ];
+                </div>
+              ));
               const half = Math.ceil(signatureBlocks.length / 2);
               const column: CSSProperties ={ display: "flex", flexDirection: "column", gap: "12px", alignItems: "center" };
               return (

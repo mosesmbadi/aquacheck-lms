@@ -11,6 +11,15 @@ class Settings(BaseSettings):
     # Admin seed credentials — must be set in .env; no hardcoded fallbacks
     ADMIN_EMAIL: str
     ADMIN_PASSWORD: str
+    # Optional additional admins, seeded the same way when both values are set.
+    ADMIN2_EMAIL: str = ""
+    ADMIN2_PASSWORD: str = ""
+    ADMIN3_EMAIL: str = ""
+    ADMIN3_PASSWORD: str = ""
+
+    # Initial password for the seeded report signatories (Water Chemist, Lab Analyst).
+    # If unset, a random one is generated and printed once in the startup log.
+    STAFF_DEFAULT_PASSWORD: str = ""
 
     # Last sample number issued before the LIMS took over numbering (e.g. 165 for
     # QT/165/2026 in the paper register). The next sample is this + 1, unless the

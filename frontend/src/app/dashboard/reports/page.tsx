@@ -144,10 +144,11 @@ export default function ReportsPage() {
       analysis_date: "",
       specification_title: "",
       disclaimer: "",
-      authorizer_name: "Victor Mutai",
-      authorizer_title: "Water Chemist",
+      // Blank = the signatories set in Admin.
+      authorizer_name: "",
+      authorizer_title: "",
       analyst_name: "",
-      analyst_title: "Lab analyst",
+      analyst_title: "",
       final_comment: "",
       show_who_limits: "",
       hide_remarks: "",
@@ -361,12 +362,12 @@ export default function ReportsPage() {
           </div>
           <Input label="Classification / Verdict" error={errors.classification?.message} {...register("classification")} placeholder="e.g. NPOTABLE" />
           <div className="grid grid-cols-2 gap-4">
-            <Input label="Authorizer Name" error={errors.authorizer_name?.message} {...register("authorizer_name")} placeholder="Victor Mutai" />
-            <Input label="Authorizer Title" error={errors.authorizer_title?.message} {...register("authorizer_title")} placeholder="Water Chemist" />
+            <Input label="Authorizer Name" error={errors.authorizer_name?.message} {...register("authorizer_name")} placeholder="Blank = default signatory (Admin)" />
+            <Input label="Authorizer Title" error={errors.authorizer_title?.message} {...register("authorizer_title")} placeholder="Blank = default signatory's title" />
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Input label="Analyst Name" error={errors.analyst_name?.message} {...register("analyst_name")} placeholder="Kipkemoi Josphat" />
-            <Input label="Analyst Title" error={errors.analyst_title?.message} {...register("analyst_title")} placeholder="Lab analyst" />
+            <Input label="Analyst Name" error={errors.analyst_name?.message} {...register("analyst_name")} placeholder="Blank = default signatory (Admin)" />
+            <Input label="Analyst Title" error={errors.analyst_title?.message} {...register("analyst_title")} placeholder="Blank = default signatory's title" />
           </div>
           <LayoutOptionSelects showWho={register("show_who_limits")} hideRemarks={register("hide_remarks")} />
           <Textarea label="Conclusion / Remarks" error={errors.final_comment?.message} {...register("final_comment")} rows={4} placeholder="Summary of the final result and any remarks to appear on the report." />
@@ -414,10 +415,10 @@ function ReportEditModal({
     sample_lab_id: String(content.sample_lab_id ?? ""),
     analysis_date: String(content.analysis_date ?? ""),
     specification_title: String(content.specification_title ?? ""),
-    authorizer_name: String(content.authorizer_name ?? "Victor Mutai"),
-    authorizer_title: String(content.authorizer_title ?? "Water Chemist"),
+    authorizer_name: String(content.authorizer_name ?? ""),
+    authorizer_title: String(content.authorizer_title ?? ""),
     analyst_name: String(content.analyst_name ?? ""),
-    analyst_title: String(content.analyst_title ?? "Lab analyst"),
+    analyst_title: String(content.analyst_title ?? ""),
     final_comment: String(content.final_comment ?? ""),
     disclaimer: String(content.disclaimer ?? ""),
   });
@@ -493,12 +494,12 @@ function ReportEditModal({
           <Input label="Specification Header" value={fields.specification_title} onChange={set("specification_title")} />
         </div>
         <div className="grid grid-cols-2 gap-4">
-          <Input label="Authorizer Name" value={fields.authorizer_name} onChange={set("authorizer_name")} />
-          <Input label="Authorizer Title" value={fields.authorizer_title} onChange={set("authorizer_title")} />
+          <Input label="Authorizer Name" value={fields.authorizer_name} onChange={set("authorizer_name")} placeholder="Blank = signatory on the report" />
+          <Input label="Authorizer Title" value={fields.authorizer_title} onChange={set("authorizer_title")} placeholder="Blank = signatory's title" />
         </div>
         <div className="grid grid-cols-2 gap-4">
-          <Input label="Analyst Name" value={fields.analyst_name} onChange={set("analyst_name")} />
-          <Input label="Analyst Title" value={fields.analyst_title} onChange={set("analyst_title")} />
+          <Input label="Analyst Name" value={fields.analyst_name} onChange={set("analyst_name")} placeholder="Blank = signatory on the report" />
+          <Input label="Analyst Title" value={fields.analyst_title} onChange={set("analyst_title")} placeholder="Blank = signatory's title" />
         </div>
         <LayoutOptionSelects
           showWho={{

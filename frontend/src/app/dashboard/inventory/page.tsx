@@ -277,19 +277,14 @@ export default function InventoryPage() {
         },
       },
       {
-        key: "expiry_date",
-        header: "Expiry",
-        render: (r: InventoryItem) => {
-          if (!r.expiry_date) return <span className="text-xs text-gray-400">—</span>;
-          const d = new Date(r.expiry_date);
-          const isExpired = d < new Date();
-          return (
-            <span className={`text-xs font-mono ${isExpired ? "text-red-600 font-semibold" : "text-gray-700"}`}>
-              {format(d, "dd MMM yyyy")}
-              {isExpired && " (expired)"}
-            </span>
-          );
-        },
+        key: "last_received_date",
+        header: "Purchased / Received",
+        render: (r: InventoryItem) =>
+          r.last_received_date ? (
+            <span className="text-xs text-gray-700">{format(new Date(r.last_received_date), "MMM d, yyyy")}</span>
+          ) : (
+            <span className="text-xs text-gray-400">—</span>
+          ),
       },
       {
         key: "storage_location",
@@ -738,7 +733,7 @@ export default function InventoryPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <Input
-                label="Date"
+                label={txForm.watch("transaction_type") === "receive" ? "Purchase / Receiving Date" : "Date"}
                 type="date"
                 {...txForm.register("transaction_date")}
               />

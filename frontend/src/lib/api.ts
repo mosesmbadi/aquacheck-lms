@@ -1,7 +1,7 @@
 import axios, { AxiosInstance } from "axios";
 import { getToken, logout } from "./auth";
 import type {
-  User, UserRole, Customer, Contract, Sample, TestResult,
+  User, UserRole, ReportSignatories, Customer, Contract, Sample, TestResult,
   Equipment, CalibrationRecord, Report, Complaint, Nonconformity, AuditLog,
   PaginatedResponse, LoginResponse, QualityDashboard, TestCatalogItem, TestCategory,
   Method, Document, DocumentCategory, Quotation, QuotationItem,
@@ -55,6 +55,26 @@ export const usersApi = {
   update: (id: number, data: Partial<User & { password: string }>) =>
     api.put<User>(`/users/${id}`, data),
   delete: (id: number) => api.delete(`/users/${id}`),
+  reportSignatories: () => api.get<ReportSignatories>("/users/report-signatories"),
+  setReportSignatories: (data: { authorizer_id: number | null; analyst_id: number | null }) =>
+    api.put<ReportSignatories>("/users/report-signatories", data),
+};
+
+// ─── Admin ────────────────────────────────────────────────────────────────────
+export const adminApi = {
+  /** Creates a fresh database dump on the server and downloads it. */
+  downloadBackup: async () => {
+    const res = await api.post("/admin/backup", null, { responseType: "blob", timeout: 0 });
+    const disposition: string = res.headers["content-disposition"] ?? "";
+    const match = disposition.match(/filename="?([^";]+)"?/);
+    const filename = match?.[1] ?? `aquacheck_backup_${new Date().toISOString().slice(0, 10)}.sql.gz`;
+    const url = window.URL.createObjectURL(new Blob([res.data], { type: "application/gzip" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  },
 };
 
 // ─── Customers ────────────────────────────────────────────────────────────────
