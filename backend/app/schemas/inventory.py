@@ -55,6 +55,7 @@ class InventoryItemOut(InventoryItemBase):
     created_at: datetime
     updated_at: datetime
     is_low_stock: bool = False
+    last_received_date: Optional[date] = None  # latest "receive" transaction date
 
     model_config = {"from_attributes": True}
 

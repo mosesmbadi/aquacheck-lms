@@ -26,6 +26,9 @@ class User(Base):
     is_contact_person = Column(Boolean, default=False, nullable=False)
     job_title = Column(String, nullable=True)
     signature_b64 = Column(Text, nullable=True)
+    # Which signature block this user fills on test reports: "authorizer" (left) or
+    # "analyst" (right). At most one user holds each slot; set from the Admin page.
+    report_signatory = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(
         DateTime(timezone=True),

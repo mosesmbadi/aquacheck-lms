@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, ToggleLeft, ToggleRight, Pencil, Upload, X } from "lucide-react";
+import { Plus, ToggleLeft, ToggleRight, Pencil, Upload, X, Download } from "lucide-react";
 import { format } from "date-fns";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/Button";
@@ -10,7 +10,7 @@ import { Table } from "@/components/ui/Table";
 import { Modal } from "@/components/ui/Modal";
 import { Badge } from "@/components/ui/Badge";
 import { Input, Select } from "@/components/ui/Input";
-import { usersApi, authApi, customersApi } from "@/lib/api";
+import { usersApi, authApi, customersApi, adminApi } from "@/lib/api";
 import type { User, UserRole, Customer } from "@/lib/types";
 import { getCurrentUser } from "@/lib/auth";
 import { useForm, useWatch } from "react-hook-form";
@@ -41,6 +41,8 @@ type CreateFormData = z.infer<typeof createSchema>;
 const editSchema = z.object({
   full_name: z.string().min(2, "Full name required"),
   job_title: z.string().optional(),
+  // Blank keeps the current password.
+  password: z.union([z.literal(""), z.string().min(6, "Password must be at least 6 characters")]).optional(),
   role: z.enum(["admin", "manager", "technician", "quality_manager", "customer", "auditor"] as const),
   is_active: z.boolean(),
 });
@@ -49,27 +51,164 @@ type EditFormData = z.infer<typeof editSchema>;
 
 // ─── Signature resize helper ──────────────────────────────────────────────────
 
-async function imageFileToBase64(file: File, size = 512): Promise<string> {
+// Trims the blank margin around the signature and keeps its own aspect ratio, so the
+// ink fills the box it's printed in (padding to a square made wide signatures tiny).
+async function imageFileToBase64(file: File, maxSize = 600): Promise<string> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = size;
-      canvas.height = size;
-      const ctx = canvas.getContext("2d")!;
+      const src = document.createElement("canvas");
+      src.width = img.width;
+      src.height = img.height;
+      const sctx = src.getContext("2d")!;
+      sctx.fillStyle = "#ffffff";
+      sctx.fillRect(0, 0, src.width, src.height);
+      sctx.drawImage(img, 0, 0);
+
+      // Bounding box of the "ink": pixels noticeably darker than white.
+      const { data } = sctx.getImageData(0, 0, src.width, src.height);
+      let top = src.height, left = src.width, bottom = -1, right = -1;
+      for (let y = 0; y < src.height; y++) {
+        for (let x = 0; x < src.width; x++) {
+          const i = (y * src.width + x) * 4;
+          if (data[i] + data[i + 1] + data[i + 2] < 660) {
+            if (x < left) left = x;
+            if (x > right) right = x;
+            if (y < top) top = y;
+            if (y > bottom) bottom = y;
+          }
+        }
+      }
+      if (right < 0) { left = 0; top = 0; right = src.width - 1; bottom = src.height - 1; }
+      const pad = 4;
+      left = Math.max(0, left - pad);
+      top = Math.max(0, top - pad);
+      const w = Math.min(src.width, right + pad + 1) - left;
+      const h = Math.min(src.height, bottom + pad + 1) - top;
+
+      const scale = Math.min(1, maxSize / Math.max(w, h));
+      const out = document.createElement("canvas");
+      out.width = Math.round(w * scale);
+      out.height = Math.round(h * scale);
+      const ctx = out.getContext("2d")!;
       ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, size, size);
-      const scale = Math.min(size / img.width, size / img.height);
-      const x = (size - img.width * scale) / 2;
-      const y = (size - img.height * scale) / 2;
-      ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
-      resolve(canvas.toDataURL("image/png").split(",")[1]);
+      ctx.fillRect(0, 0, out.width, out.height);
+      ctx.drawImage(src, left, top, w, h, 0, 0, out.width, out.height);
+      resolve(out.toDataURL("image/png").split(",")[1]);
       URL.revokeObjectURL(url);
     };
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Image load failed")); };
     img.src = url;
   });
+}
+
+// ─── Report signatories ───────────────────────────────────────────────────────
+
+function ReportSignatoriesCard({ users }: { users: User[] }) {
+  const qc = useQueryClient();
+  const staff = users.filter((u) => u.role !== "customer" && u.is_active);
+  const current = {
+    authorizer: users.find((u) => u.report_signatory === "authorizer")?.id ?? null,
+    analyst: users.find((u) => u.report_signatory === "analyst")?.id ?? null,
+  };
+  const [draft, setDraft] = useState<{ authorizer: number | null; analyst: number | null } | null>(null);
+  const values = draft ?? current;
+  const dirty = draft !== null && (draft.authorizer !== current.authorizer || draft.analyst !== current.analyst);
+
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      usersApi.setReportSignatories({ authorizer_id: values.authorizer, analyst_id: values.analyst }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["users"] });
+      qc.invalidateQueries({ queryKey: ["report-signatories"] });
+      setDraft(null);
+    },
+  });
+
+  const pick = (slot: "authorizer" | "analyst") => (e: React.ChangeEvent<HTMLSelectElement>) =>
+    setDraft({ ...values, [slot]: e.target.value ? Number(e.target.value) : null });
+
+  const missingSignature = staff.filter(
+    (u) => (u.id === values.authorizer || u.id === values.analyst) && !u.signature_b64
+  );
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
+      <div>
+        <h3 className="font-semibold text-gray-800">Report Signatories</h3>
+        <p className="text-xs text-gray-500">
+          The two people who sign every test report. Issued reports keep the signatories they were issued with.
+        </p>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Select label="Authorised by (left)" value={values.authorizer ?? ""} onChange={pick("authorizer")}>
+          <option value="">— None —</option>
+          {staff.map((u) => <option key={u.id} value={u.id}>{u.full_name}{u.job_title ? ` — ${u.job_title}` : ""}</option>)}
+        </Select>
+        <Select label="Analysed by (right)" value={values.analyst ?? ""} onChange={pick("analyst")}>
+          <option value="">— None —</option>
+          {staff.map((u) => <option key={u.id} value={u.id}>{u.full_name}{u.job_title ? ` — ${u.job_title}` : ""}</option>)}
+        </Select>
+      </div>
+      {values.authorizer !== null && values.authorizer === values.analyst && (
+        <p className="text-xs text-red-500">The two signatories must be different people.</p>
+      )}
+      {missingSignature.length > 0 && (
+        <p className="text-xs text-amber-600">
+          No signature image uploaded for {missingSignature.map((u) => u.full_name).join(" and ")} — edit the user below to add one.
+        </p>
+      )}
+      {saveMutation.isError && <p className="text-xs text-red-500">Failed to save signatories.</p>}
+      <div className="flex justify-end">
+        <Button
+          size="sm"
+          onClick={() => saveMutation.mutate()}
+          loading={saveMutation.isPending}
+          disabled={!dirty || (values.authorizer !== null && values.authorizer === values.analyst)}
+        >
+          Save Signatories
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Database backup ──────────────────────────────────────────────────────────
+
+function DatabaseBackupCard() {
+  const [error, setError] = useState<string | null>(null);
+  const backupMutation = useMutation({
+    mutationFn: () => adminApi.downloadBackup(),
+    onMutate: () => setError(null),
+    onError: async (err: unknown) => {
+      // The request expects a file, so an error body arrives as a Blob.
+      const data = (err as { response?: { data?: unknown } }).response?.data;
+      let message = "Backup failed. Please try again.";
+      if (data instanceof Blob) {
+        try {
+          message = JSON.parse(await data.text()).detail ?? message;
+        } catch { /* keep the generic message */ }
+      }
+      setError(message);
+    },
+  });
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+      <div>
+        <h3 className="font-semibold text-gray-800">Database Backup</h3>
+        <p className="text-xs text-gray-500">
+          Creates a full backup of the database now and downloads it (.sql.gz). Store it somewhere safe — it contains all lab and client data.
+        </p>
+        {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
+      </div>
+      <Button onClick={() => backupMutation.mutate()} loading={backupMutation.isPending} className="flex-shrink-0">
+        <Download className="w-4 h-4" />
+        {backupMutation.isPending ? "Creating backup…" : "Download Backup"}
+      </Button>
+    </div>
+  );
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -141,6 +280,7 @@ export default function AdminPage() {
     resetEdit({
       full_name: user.full_name,
       job_title: user.job_title ?? "",
+      password: "",
       role: user.role,
       is_active: user.is_active,
     });
@@ -218,6 +358,8 @@ export default function AdminPage() {
   return (
     <DashboardLayout title="User Administration">
       <div className="space-y-4">
+        <DatabaseBackupCard />
+        <ReportSignatoriesCard users={users} />
         <div className="flex justify-end">
           <Button onClick={() => setShowCreate(true)}><Plus className="w-4 h-4" />Add User</Button>
         </div>
@@ -275,12 +417,13 @@ export default function AdminPage() {
         {editingUser && (
           <form
             onSubmit={hsEdit(async (data) => {
-              const payload: Partial<User> = {
+              const payload: Partial<User & { password: string }> = {
                 full_name: data.full_name,
                 job_title: data.job_title || undefined,
                 role: data.role,
                 is_active: data.is_active,
               };
+              if (data.password) payload.password = data.password;
               if (pendingSignature !== null) {
                 payload.signature_b64 = pendingSignature;
               }
@@ -294,6 +437,14 @@ export default function AdminPage() {
               error={errEdit.job_title?.message}
               {...regEdit("job_title")}
               placeholder="e.g. Water Chemist, Lab Analyst"
+            />
+            <Input
+              label="New Password"
+              type="password"
+              autoComplete="new-password"
+              error={errEdit.password?.message}
+              {...regEdit("password")}
+              placeholder="Leave blank to keep the current password"
             />
             <Select label="Role" error={errEdit.role?.message} {...regEdit("role")}>
               <option value="technician">Technician</option>
@@ -353,7 +504,7 @@ export default function AdminPage() {
                   )}
                   {signatureError && <p className="text-xs text-red-500">{signatureError}</p>}
                   <p className="text-xs text-gray-400">
-                    PNG, JPG or GIF. Resized to 512×512 px. Used on printed reports.
+                    PNG, JPG or GIF on a white background. Blank margins are trimmed automatically. Used on printed reports.
                   </p>
                 </div>
               </div>

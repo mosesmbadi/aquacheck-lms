@@ -542,7 +542,7 @@ export default function SampleDetailPage() {
         <Card>
           <CardHeader
             title="Signed by"
-            subtitle="Select the staff members whose names and signatures will appear on the printed report"
+            subtitle="Leave empty to use the report signatories set in Admin, or pick staff to sign this printout instead"
           />
           <CardBody>
             {staffUsers.length === 0 ? (

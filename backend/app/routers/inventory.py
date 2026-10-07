@@ -41,10 +41,27 @@ def _signed_delta(tx_type: TransactionType, quantity: float) -> float:
     return quantity
 
 
-def _serialize_item(item: InventoryItem) -> InventoryItemOut:
-    data = InventoryItemOut.model_validate(item)
-    data.is_low_stock = item.current_stock <= item.minimum_stock
-    return data
+def _serialize_items(db: Session, items: List[InventoryItem]) -> List[InventoryItemOut]:
+    # Latest purchase / receiving date per item, from its "receive" ledger entries.
+    ids = [i.id for i in items]
+    last_received = dict(
+        db.query(InventoryTransaction.item_id, func.max(InventoryTransaction.transaction_date))
+        .filter(InventoryTransaction.item_id.in_(ids))
+        .filter(InventoryTransaction.transaction_type == TransactionType.receive)
+        .group_by(InventoryTransaction.item_id)
+        .all()
+    ) if ids else {}
+    out = []
+    for item in items:
+        data = InventoryItemOut.model_validate(item)
+        data.is_low_stock = item.current_stock <= item.minimum_stock
+        data.last_received_date = last_received.get(item.id)
+        out.append(data)
+    return out
+
+
+def _serialize_item(db: Session, item: InventoryItem) -> InventoryItemOut:
+    return _serialize_items(db, [item])[0]
 
 
 def _serialize_tx(tx: InventoryTransaction) -> InventoryTransactionOut:
@@ -101,7 +118,7 @@ def low_stock(db: Session = Depends(get_db), _: User = Depends(get_current_user)
         .order_by(InventoryItem.name.asc())
         .all()
     )
-    return [_serialize_item(i) for i in items]
+    return _serialize_items(db, items)
 
 
 # ── items ─────────────────────────────────────────────────────────────────────
@@ -127,7 +144,7 @@ def list_items(
             | (InventoryItem.catalog_number.ilike(like))
         )
     items = q.order_by(InventoryItem.name.asc()).all()
-    return [_serialize_item(i) for i in items]
+    return _serialize_items(db, items)
 
 
 @router.post("", response_model=InventoryItemOut, status_code=status.HTTP_201_CREATED)
@@ -162,7 +179,7 @@ def create_item(
     db.commit()
     db.refresh(item)
     log_action(db, current_user.id, "CREATE_INVENTORY_ITEM", "inventory_item", str(item.id))
-    return _serialize_item(item)
+    return _serialize_item(db, item)
 
 
 @router.get("/{item_id}", response_model=InventoryItemOut)
@@ -170,7 +187,7 @@ def get_item(item_id: int, db: Session = Depends(get_db), _: User = Depends(get_
     item = db.query(InventoryItem).filter(InventoryItem.id == item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
-    return _serialize_item(item)
+    return _serialize_item(db, item)
 
 
 @router.put("/{item_id}", response_model=InventoryItemOut)
@@ -188,7 +205,7 @@ def update_item(
     db.commit()
     db.refresh(item)
     log_action(db, current_user.id, "UPDATE_INVENTORY_ITEM", "inventory_item", str(item_id))
-    return _serialize_item(item)
+    return _serialize_item(db, item)
 
 
 @router.delete("/{item_id}", status_code=204)

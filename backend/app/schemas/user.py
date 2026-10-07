@@ -33,10 +33,21 @@ class UserOut(UserBase):
     id: int
     job_title: Optional[str] = None
     signature_b64: Optional[str] = None
+    report_signatory: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class ReportSignatoriesUpdate(BaseModel):
+    authorizer_id: Optional[int] = None
+    analyst_id: Optional[int] = None
+
+
+class ReportSignatoriesOut(BaseModel):
+    authorizer: Optional[UserOut] = None
+    analyst: Optional[UserOut] = None
 
 
 class Token(BaseModel):

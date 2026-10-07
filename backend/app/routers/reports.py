@@ -33,6 +33,7 @@ from app.schemas.report import ReportCreate, ReportUpdate, ReportOut
 from app.services.audit import log_action
 from app.services.barcode import generate_barcode
 from app.services.compliance import evaluate_item_remark, legend_entries
+from app.services.signatories import frozen_signatories, resolve_signatories
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
 
@@ -555,6 +556,10 @@ def issue_report(
             item_id
             for (item_id,) in db.query(TestCatalogItem.id).filter(TestCatalogItem.is_accredited == True)  # noqa: E712
         ]
+    # And the signatories (first issue only), so reassigning them in Admin doesn't
+    # change who signed an already-issued report.
+    if not isinstance(content.get("signatories"), dict):
+        content["signatories"] = frozen_signatories(db)
     report.content = content
     flag_modified(report, "content")
 
@@ -619,7 +624,6 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
         or (sample.customer_id if sample else None)
     )
     customer = db.query(Customer).filter(Customer.id == customer_id).first() if customer_id else None
-    issuer = db.query(User).filter(User.id == report.issued_by).first() if report.issued_by else None
     test_results, catalog_by_id, qualifiers = load_report_results(db, sample)
 
     waste_schedule = getattr(sample, "waste_schedule", None) if sample else None
@@ -867,16 +871,31 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
                 story.append(Paragraph(f"• {ts}: {reason}", amendment_style))
 
     story.append(Spacer(1, 0.8 * cm))
+    signers = resolve_signatories(db, content)
+
+    def _signature_image(sig: dict):
+        if not sig["signature_b64"]:
+            return ""
+        try:
+            # Fit within the box, keeping the signature's own aspect ratio.
+            return RLImage(io.BytesIO(base64.b64decode(sig["signature_b64"])), width=4.5 * cm, height=1.9 * cm, kind="proportional")
+        except Exception:
+            return ""
+
+    def _signer_label(sig: dict) -> Paragraph:
+        name = escape(sig["name"]) or "___________________"
+        title = escape(sig["title"]) if sig["name"] else "Authorised Signatory"
+        return Paragraph(f"<b>{name}</b><br/>{title}", styles["Normal"])
+
     signatory_table = Table([
-        [
-            Paragraph(f"<b>{_content_value(content, 'authorizer_name', 'Victor Mutai')}</b><br/>{_content_value(content, 'authorizer_title', 'Water Chemist')}", styles["Normal"]),
-            Paragraph(f"<b>{_content_value(content, 'analyst_name', issuer.full_name if issuer else 'Lab Analyst')}</b><br/>{_content_value(content, 'analyst_title', 'Lab analyst')}", styles["Normal"]),
-        ]
+        [_signature_image(signers["authorizer"]), _signature_image(signers["analyst"])],
+        [_signer_label(signers["authorizer"]), _signer_label(signers["analyst"])],
     ], colWidths=[8.5 * cm, 8.5 * cm])
     signatory_table.setStyle(TableStyle([
-        ("LINEABOVE", (0, 0), (0, 0), 1, colors.black),
-        ("LINEABOVE", (1, 0), (1, 0), 1, colors.black),
-        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("ALIGN", (0, 0), (-1, 0), "LEFT"),
+        ("LINEABOVE", (0, 1), (0, 1), 1, colors.black),
+        ("LINEABOVE", (1, 1), (1, 1), 1, colors.black),
+        ("TOPPADDING", (0, 1), (-1, 1), 8),
     ]))
     story.append(signatory_table)
 
