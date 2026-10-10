@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { apiErrorMessage } from "@/lib/utils";
-import { Send, CheckCircle, Plus, Pencil } from "lucide-react";
+import { Send, CheckCircle, Plus, Pencil, Download } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -94,31 +94,40 @@ export default function InvoicesPage() {
         <span className="text-xs text-gray-500">{r.due_date ? format(new Date(r.due_date), "dd MMM yyyy") : "—"}</span>
       ),
     },
-    ...(!isCustomer ? [{
+    {
       key: "actions",
       header: "",
       render: (r: Invoice) => (
         <div className="flex gap-1 justify-end" onClick={(e) => e.stopPropagation()}>
           <button
-            title="Edit"
-            onClick={() => setEditInvoice(r)}
+            title="Download PDF"
+            onClick={() => invoicesApi.downloadPdf(r.id, r.invoice_number)}
             className="p-1.5 text-gray-400 hover:text-gray-700 rounded"
           >
-            <Pencil className="w-3.5 h-3.5" />
+            <Download className="w-3.5 h-3.5" />
           </button>
-          {r.status === "draft" && (
+          {!isCustomer && (
+            <button
+              title="Edit"
+              onClick={() => setEditInvoice(r)}
+              className="p-1.5 text-gray-400 hover:text-gray-700 rounded"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {!isCustomer && r.status === "draft" && (
             <Button size="sm" onClick={() => issueMut.mutate(r.id)} loading={issueMut.isPending}>
               <Send className="w-3.5 h-3.5" /> Issue
             </Button>
           )}
-          {r.status === "issued" && (
+          {!isCustomer && r.status === "issued" && (
             <Button size="sm" variant="secondary" onClick={() => paidMut.mutate(r.id)} loading={paidMut.isPending}>
               <CheckCircle className="w-3.5 h-3.5" /> Mark Paid
             </Button>
           )}
         </div>
       ),
-    }] : []),
+    },
   ];
 
   return (
@@ -165,6 +174,7 @@ function InvoiceEditModal({
   const [items, setItems] = useState<InvoiceItem[]>(invoice.items || []);
   const [vatRate, setVatRate] = useState(Number(invoice.vat_rate));
   const [dueDate, setDueDate] = useState(invoice.due_date ?? "");
+  const [poNumber, setPoNumber] = useState(invoice.po_number ?? "");
   const [notes, setNotes] = useState(invoice.notes ?? "");
   const [error, setError] = useState("");
 
@@ -193,6 +203,7 @@ function InvoiceEditModal({
         items,
         vat_rate: vatRate,
         due_date: dueDate || undefined,
+        po_number: poNumber || undefined,
         notes: notes || undefined,
       } as Partial<Invoice>),
     onSuccess: onSaved,
@@ -323,10 +334,11 @@ function InvoiceEditModal({
           })()}
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           <Input label="VAT Rate (%)" type="number" step="0.01" value={vatRate}
             onChange={(e) => setVatRate(Number(e.target.value))} />
           <Input label="Due Date" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+          <Input label="P.O. No." value={poNumber} onChange={(e) => setPoNumber(e.target.value)} />
         </div>
         <Textarea label="Notes" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
 
@@ -340,6 +352,9 @@ function InvoiceEditModal({
 
         <div className="flex gap-2 justify-end pt-2 border-t">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button variant="secondary" onClick={() => invoicesApi.downloadPdf(invoice.id, invoice.invoice_number)}>
+            <Download className="w-3.5 h-3.5" /> Download PDF
+          </Button>
           <Button variant="secondary" onClick={() => updateMut.mutate()} loading={updateMut.isPending}>Save Draft</Button>
           {invoice.status === "draft" && (
             <Button onClick={() => issueMut.mutate()} loading={issueMut.isPending}>

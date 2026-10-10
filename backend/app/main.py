@@ -547,6 +547,19 @@ def ensure_schema_compatibility():
                 connection.execute(text(f"ALTER TABLE samples ADD COLUMN {column} {column_type}"))
                 print(f"[LIMS] Added samples.{column} column.")
 
+        # invoices.po_number — client's purchase order number, printed on the invoice
+        po_exists = connection.execute(
+            text(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'invoices' AND column_name = 'po_number'
+                """
+            )
+        ).scalar()
+        if not po_exists:
+            connection.execute(text("ALTER TABLE invoices ADD COLUMN po_number VARCHAR"))
+            print("[LIMS] Added invoices.po_number column.")
+
 
 def backfill_sample_reports():
     """One-time catch-up: every sample should have a report entry under /reports,

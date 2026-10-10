@@ -382,6 +382,15 @@ export const invoicesApi = {
   update: (id: number, data: Partial<Invoice>) => api.put<Invoice>(`/invoices/${id}`, data),
   issue: (id: number) => api.post<Invoice>(`/invoices/${id}/issue`),
   markPaid: (id: number) => api.post<Invoice>(`/invoices/${id}/mark-paid`),
+  downloadPdf: async (id: number, invoiceNumber: string) => {
+    const res = await api.get(`/invoices/${id}/pdf`, { responseType: "blob" });
+    const url = window.URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${invoiceNumber.replace(/\//g, "_")}.pdf`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  },
 };
 
 // ─── Calibration Records ──────────────────────────────────────────────────────

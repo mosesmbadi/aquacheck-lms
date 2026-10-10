@@ -674,6 +674,7 @@ export interface Invoice {
   currency: string;
   status: InvoiceStatus;
   due_date?: string;
+  po_number?: string;
   notes?: string;
   created_by?: number;
   created_at: string;
