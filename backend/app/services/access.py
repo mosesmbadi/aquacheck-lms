@@ -17,6 +17,20 @@ def ensure_staff(user: User) -> None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not permitted for customer accounts.")
 
 
+def can_manage_inventory(user: User) -> bool:
+    if is_customer(user):
+        return False
+    return user.role == UserRole.admin or bool(user.can_manage_inventory)
+
+
+def ensure_inventory_manager(user: User) -> None:
+    if not can_manage_inventory(user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to update inventory. Ask an administrator to grant it.",
+        )
+
+
 def customer_owns_sample(user: User, sample: Sample, db: Session) -> bool:
     if not user.customer_id:
         return False

@@ -27,6 +27,7 @@ class UserUpdate(BaseModel):
     is_contact_person: Optional[bool] = None
     job_title: Optional[str] = None
     signature_b64: Optional[str] = None
+    can_manage_inventory: Optional[bool] = None
 
 
 class UserOut(UserBase):
@@ -34,6 +35,7 @@ class UserOut(UserBase):
     job_title: Optional[str] = None
     signature_b64: Optional[str] = None
     report_signatory: Optional[str] = None
+    can_manage_inventory: bool = False
     created_at: datetime
     updated_at: datetime
 

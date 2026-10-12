@@ -44,6 +44,13 @@ def _maybe_complete_sample(sample: Sample, db: Session) -> None:
     }
 
     requested_ids: list[int] = sample.requested_test_ids or []
+    if requested_ids:
+        # A requested test whose catalog entry was since deleted can never get a result,
+        # so it must not hold the sample in testing forever.
+        existing_ids = {
+            cid for (cid,) in db.query(TestCatalogItem.id).filter(TestCatalogItem.id.in_(requested_ids))
+        }
+        requested_ids = [rid for rid in requested_ids if rid in existing_ids]
 
     if requested_ids:
         # Standard path: all pre-selected tests must be validated
@@ -183,6 +190,29 @@ def validate_test_result(
     db.refresh(tr)
     log_action(db, current_user.id, "VALIDATE_TEST_RESULT", "test_result", str(result_id))
     return tr
+
+
+@router.post("/samples/{sample_id}/check-completion", response_model=dict)
+def check_sample_completion(
+    sample_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(
+        UserRole.admin, UserRole.quality_manager, UserRole.manager, UserRole.technician
+    )),
+):
+    """Re-run the completion check. Completion is otherwise only evaluated when a result
+    is saved or validated, so a sample whose blocker was removed some other way (e.g. a
+    requested test deleted from the catalog) has nothing left to trigger it."""
+    sample = db.query(Sample).filter(Sample.id == sample_id).with_for_update().first()
+    if not sample:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sample not found")
+    before = sample.status
+    if before == SampleStatus.in_testing:
+        _maybe_complete_sample(sample, db)
+    db.commit()
+    if sample.status != before:
+        log_action(db, current_user.id, "COMPLETE_SAMPLE", "sample", str(sample_id))
+    return {"status": sample.status.value}
 
 
 @router.post("/{result_id}/calculate-uncertainty", response_model=UncertaintyResult)

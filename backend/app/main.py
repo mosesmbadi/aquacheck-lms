@@ -407,6 +407,21 @@ def ensure_schema_compatibility():
             ))
             print("[LIMS] Added users.report_signatory column.")
 
+        # users.can_manage_inventory — grants a non-admin user inventory write access
+        inventory_perm_exists = connection.execute(
+            text(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'users' AND column_name = 'can_manage_inventory'
+                """
+            )
+        ).scalar()
+        if not inventory_perm_exists:
+            connection.execute(text(
+                "ALTER TABLE users ADD COLUMN can_manage_inventory BOOLEAN NOT NULL DEFAULT FALSE"
+            ))
+            print("[LIMS] Added users.can_manage_inventory column.")
+
         # reports.contract_id — allow reports for standalone (non-contract) samples
         report_contract_nullable = connection.execute(
             text(

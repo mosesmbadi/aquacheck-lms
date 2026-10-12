@@ -45,6 +45,7 @@ const editSchema = z.object({
   password: z.union([z.literal(""), z.string().min(6, "Password must be at least 6 characters")]).optional(),
   role: z.enum(["admin", "manager", "technician", "quality_manager", "customer", "auditor"] as const),
   is_active: z.boolean(),
+  can_manage_inventory: z.boolean(),
 });
 
 type EditFormData = z.infer<typeof editSchema>;
@@ -283,6 +284,7 @@ export default function AdminPage() {
       password: "",
       role: user.role,
       is_active: user.is_active,
+      can_manage_inventory: !!user.can_manage_inventory,
     });
   }
 
@@ -323,7 +325,14 @@ export default function AdminPage() {
       </div>
     )},
     { key: "email", header: "Email", render: (r: User) => <span className="text-gray-600 text-sm">{r.email}</span> },
-    { key: "role", header: "Role", render: (r: User) => <Badge variant="info" className="capitalize">{r.role.replace("_", " ")}</Badge> },
+    { key: "role", header: "Role", render: (r: User) => (
+      <div className="flex flex-wrap items-center gap-1">
+        <Badge variant="info" className="capitalize">{r.role.replace("_", " ")}</Badge>
+        {r.can_manage_inventory && r.role !== "admin" && r.role !== "customer" && (
+          <span className="text-[10px] text-primary-600">+ Inventory</span>
+        )}
+      </div>
+    )},
     {
       key: "customer", header: "Customer",
       render: (r: User) => r.customer_id
@@ -422,6 +431,7 @@ export default function AdminPage() {
                 job_title: data.job_title || undefined,
                 role: data.role,
                 is_active: data.is_active,
+                can_manage_inventory: data.can_manage_inventory,
               };
               if (data.password) payload.password = data.password;
               if (pendingSignature !== null) {
@@ -457,6 +467,15 @@ export default function AdminPage() {
             <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
               <input type="checkbox" className="rounded border-gray-300" {...regEdit("is_active")} />
               Account is active
+            </label>
+            <label className="flex items-start gap-2 text-sm text-gray-700 cursor-pointer">
+              <input type="checkbox" className="rounded border-gray-300 mt-0.5" {...regEdit("can_manage_inventory")} />
+              <span>
+                Can update inventory
+                <span className="block text-xs text-gray-400">
+                  Add and edit items, record stock movements, import CSVs and map test reagents. Admins always can; customers never can.
+                </span>
+              </span>
             </label>
 
             {/* Signature upload */}
