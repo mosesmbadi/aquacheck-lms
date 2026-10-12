@@ -1,6 +1,8 @@
+import io
 from datetime import datetime, timezone
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from app.deps import get_db, get_current_user
 from app.models.user import User, UserRole
@@ -9,6 +11,7 @@ from app.models.customer import Customer
 from app.models.sample import Sample
 from app.schemas.invoice import InvoiceCreate, InvoiceUpdate, InvoiceOut
 from app.services.audit import log_action
+from app.services.invoice_pdf import build_invoice_pdf
 
 router = APIRouter(prefix="/invoices", tags=["Invoices"])
 
@@ -70,6 +73,7 @@ def create_invoice(
         total=total,
         currency=payload.currency,
         due_date=payload.due_date,
+        po_number=payload.po_number,
         notes=payload.notes,
         created_by=current_user.id,
     )
@@ -88,6 +92,22 @@ def get_invoice(invoice_id: int, db: Session = Depends(get_db), current_user: Us
     if current_user.role == UserRole.customer and current_user.customer_id != inv.customer_id:
         raise HTTPException(status_code=403, detail="Access denied")
     return _serialize(inv, db)
+
+
+@router.get("/{invoice_id}/pdf")
+def invoice_pdf(invoice_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    inv = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    if current_user.role == UserRole.customer and current_user.customer_id != inv.customer_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    customer = db.query(Customer).filter(Customer.id == inv.customer_id).first() if inv.customer_id else None
+    pdf_bytes = build_invoice_pdf(inv, customer)
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={inv.invoice_number.replace('/', '_')}.pdf"},
+    )
 
 
 @router.put("/{invoice_id}", response_model=InvoiceOut)

@@ -116,6 +116,8 @@ export const testResultsApi = {
   validate: (id: number) => api.post<TestResult>(`/test-results/${id}/validate`),
   bulkSave: (data: { sample_id: number; rows: { catalog_item_id: number; result_value?: string; notes?: string; remarks?: string }[] }) =>
     api.post<TestResult[]>("/test-results/bulk", data),
+  checkSampleCompletion: (sampleId: number) =>
+    api.post<{ status: string }>(`/test-results/samples/${sampleId}/check-completion`),
   calculateUncertainty: (id: number, values: number[], coverage_factor = 2.0) =>
     api.post(`/test-results/${id}/calculate-uncertainty`, { values, coverage_factor }),
 };
@@ -382,6 +384,15 @@ export const invoicesApi = {
   update: (id: number, data: Partial<Invoice>) => api.put<Invoice>(`/invoices/${id}`, data),
   issue: (id: number) => api.post<Invoice>(`/invoices/${id}/issue`),
   markPaid: (id: number) => api.post<Invoice>(`/invoices/${id}/mark-paid`),
+  downloadPdf: async (id: number, invoiceNumber: string) => {
+    const res = await api.get(`/invoices/${id}/pdf`, { responseType: "blob" });
+    const url = window.URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${invoiceNumber.replace(/\//g, "_")}.pdf`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  },
 };
 
 // ─── Calibration Records ──────────────────────────────────────────────────────

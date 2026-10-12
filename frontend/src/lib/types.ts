@@ -231,6 +231,7 @@ export interface User {
   job_title?: string;
   signature_b64?: string;
   report_signatory?: "authorizer" | "analyst" | null;
+  can_manage_inventory?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -674,6 +675,7 @@ export interface Invoice {
   currency: string;
   status: InvoiceStatus;
   due_date?: string;
+  po_number?: string;
   notes?: string;
   created_by?: number;
   created_at: string;

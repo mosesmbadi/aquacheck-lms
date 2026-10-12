@@ -12,6 +12,7 @@ import { TestStatusBadge } from "@/components/ui/Badge";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 import { testResultsApi, samplesApi, methodsApi } from "@/lib/api";
 import type { TestResult } from "@/lib/types";
+import { invalidateInventory } from "@/lib/inventory";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -39,7 +40,11 @@ export default function TestsPage() {
 
   const createMutation = useMutation({
     mutationFn: (data: Partial<TestResult>) => testResultsApi.create(data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["test-results"] }); setShowCreate(false); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["test-results"] });
+      invalidateInventory(qc); // reagents are auto-deducted when a result is entered
+      setShowCreate(false);
+    },
   });
 
   const validateMutation = useMutation({

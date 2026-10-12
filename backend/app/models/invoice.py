@@ -32,6 +32,7 @@ class Invoice(Base):
 
     status = Column(SAEnum(InvoiceStatus), nullable=False, default=InvoiceStatus.draft)
     due_date = Column(Date, nullable=True)
+    po_number = Column(String, nullable=True)
     notes = Column(Text, nullable=True)
 
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)

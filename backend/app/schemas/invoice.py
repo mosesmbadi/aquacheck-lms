@@ -19,6 +19,7 @@ class InvoiceCreate(BaseModel):
     vat_rate: float = 16
     currency: str = "KES"
     due_date: Optional[date] = None
+    po_number: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -27,6 +28,7 @@ class InvoiceUpdate(BaseModel):
     vat_rate: Optional[float] = None
     currency: Optional[str] = None
     due_date: Optional[date] = None
+    po_number: Optional[str] = None
     notes: Optional[str] = None
     status: Optional[InvoiceStatus] = None
 
@@ -45,6 +47,7 @@ class InvoiceOut(BaseModel):
     currency: str
     status: InvoiceStatus
     due_date: Optional[date] = None
+    po_number: Optional[str] = None
     notes: Optional[str] = None
     created_by: Optional[int] = None
     created_at: datetime

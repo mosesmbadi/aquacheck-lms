@@ -19,9 +19,22 @@ from app.schemas.inventory import (
     InventoryTransactionCreate, InventoryTransactionOut, InventoryStats,
     TestReagentUsageCreate, TestReagentUsageOut, CsvImportResult,
 )
+from app.services.access import ensure_inventory_manager, ensure_staff
 from app.services.audit import log_action
 
-router = APIRouter(prefix="/inventory", tags=["Inventory"])
+
+def _require_staff(current_user: User = Depends(get_current_user)) -> User:
+    ensure_staff(current_user)
+    return current_user
+
+
+def _require_inventory_manager(current_user: User = Depends(get_current_user)) -> User:
+    ensure_inventory_manager(current_user)
+    return current_user
+
+
+# Any staff member can view stock; changing it needs admin or the inventory grant.
+router = APIRouter(prefix="/inventory", tags=["Inventory"], dependencies=[Depends(_require_staff)])
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -151,7 +164,7 @@ def list_items(
 def create_item(
     payload: InventoryItemCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(_require_inventory_manager),
 ):
     if db.query(InventoryItem).filter(InventoryItem.item_code == payload.item_code).first():
         raise HTTPException(status_code=409, detail="Item code already exists")
@@ -182,6 +195,86 @@ def create_item(
     return _serialize_item(db, item)
 
 
+# ── test-reagent usage mapping ────────────────────────────────────────────────
+
+def _serialize_mapping(m: TestReagentUsage, db: Session) -> TestReagentUsageOut:
+    out = TestReagentUsageOut.model_validate(m)
+    if m.inventory_item:
+        out.inventory_item_name = m.inventory_item.name
+        out.inventory_item_code = m.inventory_item.item_code
+        out.inventory_unit = m.inventory_item.unit
+        out.current_stock = m.inventory_item.current_stock
+    catalog = db.query(TestCatalogItem).filter(TestCatalogItem.id == m.catalog_item_id).first()
+    if catalog:
+        out.catalog_item_name = catalog.name
+    return out
+
+
+@router.get("/test-usage", response_model=List[TestReagentUsageOut])
+def list_test_reagent_usage(
+    catalog_item_id: Optional[int] = None,
+    inventory_item_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    q = db.query(TestReagentUsage)
+    if catalog_item_id is not None:
+        q = q.filter(TestReagentUsage.catalog_item_id == catalog_item_id)
+    if inventory_item_id is not None:
+        q = q.filter(TestReagentUsage.inventory_item_id == inventory_item_id)
+    return [_serialize_mapping(m, db) for m in q.order_by(TestReagentUsage.id.desc()).all()]
+
+
+@router.post("/test-usage", response_model=TestReagentUsageOut, status_code=201)
+def create_test_reagent_usage(
+    payload: TestReagentUsageCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(_require_inventory_manager),
+):
+    if not db.query(TestCatalogItem).filter(TestCatalogItem.id == payload.catalog_item_id).first():
+        raise HTTPException(status_code=404, detail="Catalog item not found")
+    if not db.query(InventoryItem).filter(InventoryItem.id == payload.inventory_item_id).first():
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+
+    existing = (
+        db.query(TestReagentUsage)
+        .filter(
+            TestReagentUsage.catalog_item_id == payload.catalog_item_id,
+            TestReagentUsage.inventory_item_id == payload.inventory_item_id,
+        )
+        .first()
+    )
+    if existing:
+        existing.quantity_per_test = payload.quantity_per_test
+        existing.notes = payload.notes
+        db.commit()
+        db.refresh(existing)
+        log_action(db, current_user.id, "UPDATE_TEST_REAGENT_USAGE", "test_reagent_usage", str(existing.id))
+        return _serialize_mapping(existing, db)
+
+    m = TestReagentUsage(**payload.model_dump())
+    db.add(m)
+    db.commit()
+    db.refresh(m)
+    log_action(db, current_user.id, "CREATE_TEST_REAGENT_USAGE", "test_reagent_usage", str(m.id))
+    return _serialize_mapping(m, db)
+
+
+@router.delete("/test-usage/{mapping_id}", status_code=204)
+def delete_test_reagent_usage(
+    mapping_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(_require_inventory_manager),
+):
+    m = db.query(TestReagentUsage).filter(TestReagentUsage.id == mapping_id).first()
+    if not m:
+        raise HTTPException(status_code=404, detail="Mapping not found")
+    db.delete(m)
+    db.commit()
+    log_action(db, current_user.id, "DELETE_TEST_REAGENT_USAGE", "test_reagent_usage", str(mapping_id))
+    return
+
+
 @router.get("/{item_id}", response_model=InventoryItemOut)
 def get_item(item_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
     item = db.query(InventoryItem).filter(InventoryItem.id == item_id).first()
@@ -195,7 +288,7 @@ def update_item(
     item_id: int,
     payload: InventoryItemUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(_require_inventory_manager),
 ):
     item = db.query(InventoryItem).filter(InventoryItem.id == item_id).first()
     if not item:
@@ -212,7 +305,7 @@ def update_item(
 def delete_item(
     item_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(_require_inventory_manager),
 ):
     item = db.query(InventoryItem).filter(InventoryItem.id == item_id).first()
     if not item:
@@ -265,11 +358,20 @@ def recent_transactions(
 def create_transaction(
     payload: InventoryTransactionCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(_require_inventory_manager),
 ):
-    item = db.query(InventoryItem).filter(InventoryItem.id == payload.item_id).first()
+    # Lock the item row so concurrent movements (or a test-result auto-deduction)
+    # serialize instead of both computing a balance from the same stale stock.
+    item = (
+        db.query(InventoryItem)
+        .filter(InventoryItem.id == payload.item_id)
+        .with_for_update()
+        .first()
+    )
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
+    if not item.is_active:
+        raise HTTPException(status_code=400, detail="Item is deactivated")
 
     delta = _signed_delta(payload.transaction_type, payload.quantity)
     new_balance = item.current_stock + delta
@@ -308,86 +410,6 @@ def create_transaction(
         "inventory_transaction", str(tx.id),
     )
     return _serialize_tx(tx)
-
-
-# ── test-reagent usage mapping ────────────────────────────────────────────────
-
-def _serialize_mapping(m: TestReagentUsage, db: Session) -> TestReagentUsageOut:
-    out = TestReagentUsageOut.model_validate(m)
-    if m.inventory_item:
-        out.inventory_item_name = m.inventory_item.name
-        out.inventory_item_code = m.inventory_item.item_code
-        out.inventory_unit = m.inventory_item.unit
-        out.current_stock = m.inventory_item.current_stock
-    catalog = db.query(TestCatalogItem).filter(TestCatalogItem.id == m.catalog_item_id).first()
-    if catalog:
-        out.catalog_item_name = catalog.name
-    return out
-
-
-@router.get("/test-usage", response_model=List[TestReagentUsageOut])
-def list_test_reagent_usage(
-    catalog_item_id: Optional[int] = None,
-    inventory_item_id: Optional[int] = None,
-    db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
-):
-    q = db.query(TestReagentUsage)
-    if catalog_item_id is not None:
-        q = q.filter(TestReagentUsage.catalog_item_id == catalog_item_id)
-    if inventory_item_id is not None:
-        q = q.filter(TestReagentUsage.inventory_item_id == inventory_item_id)
-    return [_serialize_mapping(m, db) for m in q.order_by(TestReagentUsage.id.desc()).all()]
-
-
-@router.post("/test-usage", response_model=TestReagentUsageOut, status_code=201)
-def create_test_reagent_usage(
-    payload: TestReagentUsageCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    if not db.query(TestCatalogItem).filter(TestCatalogItem.id == payload.catalog_item_id).first():
-        raise HTTPException(status_code=404, detail="Catalog item not found")
-    if not db.query(InventoryItem).filter(InventoryItem.id == payload.inventory_item_id).first():
-        raise HTTPException(status_code=404, detail="Inventory item not found")
-
-    existing = (
-        db.query(TestReagentUsage)
-        .filter(
-            TestReagentUsage.catalog_item_id == payload.catalog_item_id,
-            TestReagentUsage.inventory_item_id == payload.inventory_item_id,
-        )
-        .first()
-    )
-    if existing:
-        existing.quantity_per_test = payload.quantity_per_test
-        existing.notes = payload.notes
-        db.commit()
-        db.refresh(existing)
-        log_action(db, current_user.id, "UPDATE_TEST_REAGENT_USAGE", "test_reagent_usage", str(existing.id))
-        return _serialize_mapping(existing, db)
-
-    m = TestReagentUsage(**payload.model_dump())
-    db.add(m)
-    db.commit()
-    db.refresh(m)
-    log_action(db, current_user.id, "CREATE_TEST_REAGENT_USAGE", "test_reagent_usage", str(m.id))
-    return _serialize_mapping(m, db)
-
-
-@router.delete("/test-usage/{mapping_id}", status_code=204)
-def delete_test_reagent_usage(
-    mapping_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    m = db.query(TestReagentUsage).filter(TestReagentUsage.id == mapping_id).first()
-    if not m:
-        raise HTTPException(status_code=404, detail="Mapping not found")
-    db.delete(m)
-    db.commit()
-    log_action(db, current_user.id, "DELETE_TEST_REAGENT_USAGE", "test_reagent_usage", str(mapping_id))
-    return
 
 
 # ── CSV export ────────────────────────────────────────────────────────────────
@@ -512,7 +534,7 @@ def _parse_date(value: str) -> Optional[date]:
 async def import_items_csv(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(_require_inventory_manager),
 ):
     """Bulk-import items from a CSV. Matches on item_code: existing → update,
     new → create. For new items, opening_stock seeds a receive transaction.
@@ -647,7 +669,12 @@ def deduct_reagents_for_test_result(
     skipped: list[dict] = []
 
     for m in mappings:
-        item = db.query(InventoryItem).filter(InventoryItem.id == m.inventory_item_id).first()
+        item = (
+            db.query(InventoryItem)
+            .filter(InventoryItem.id == m.inventory_item_id)
+            .with_for_update()
+            .first()
+        )
         if not item or not item.is_active:
             skipped.append({"item_id": m.inventory_item_id, "reason": "inactive/missing"})
             continue

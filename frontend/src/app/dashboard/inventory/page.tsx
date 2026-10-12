@@ -15,7 +15,9 @@ import { Modal } from "@/components/ui/Modal";
 import { Badge } from "@/components/ui/Badge";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 import { Card } from "@/components/ui/Card";
-import { inventoryApi, testCatalogApi } from "@/lib/api";
+import { authApi, inventoryApi, testCatalogApi } from "@/lib/api";
+import { canManageInventory, invalidateInventory } from "@/lib/inventory";
+import { apiErrorMessage } from "@/lib/utils";
 import type {
   InventoryItem, InventoryTransaction, InventoryCategory, TransactionType,
   TestReagentUsage, CsvImportResult, TestCatalogItem,
@@ -96,6 +98,19 @@ export default function InventoryPage() {
   const [search, setSearch] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Fetched fresh rather than read from the login snapshot, so a newly granted (or
+  // revoked) inventory permission applies without signing out and back in.
+  const { data: me } = useQuery({
+    queryKey: ["me"],
+    queryFn: () => authApi.me().then((r) => r.data),
+  });
+  const canManage = canManageInventory(me);
+
+  // Modals re-read the item so they show the stock after each movement, not the
+  // row as it was when the modal opened.
+  const liveTxItem = useLiveItem(txItem);
+  const liveLedgerItem = useLiveItem(ledgerItem);
+
   const { data: items = [], isLoading } = useQuery({
     queryKey: ["inventory", categoryFilter, search],
     queryFn: () =>
@@ -126,9 +141,7 @@ export default function InventoryPage() {
         received_date: data.received_date || undefined,
       } as Parameters<typeof inventoryApi.create>[0]),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["inventory"] });
-      qc.invalidateQueries({ queryKey: ["inventory-stats"] });
-      qc.invalidateQueries({ queryKey: ["inventory-low"] });
+      invalidateInventory(qc);
       setShowCreate(false);
       itemForm.reset();
     },
@@ -138,9 +151,7 @@ export default function InventoryPage() {
     mutationFn: (file: File) => inventoryApi.importItems(file).then((r) => r.data),
     onSuccess: (result) => {
       setImportResult(result);
-      qc.invalidateQueries({ queryKey: ["inventory"] });
-      qc.invalidateQueries({ queryKey: ["inventory-stats"] });
-      qc.invalidateQueries({ queryKey: ["inventory-low"] });
+      invalidateInventory(qc);
     },
   });
 
@@ -154,10 +165,7 @@ export default function InventoryPage() {
     mutationFn: (data: TxForm & { item_id: number }) =>
       inventoryApi.addTransaction(data as Partial<InventoryTransaction>),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["inventory"] });
-      qc.invalidateQueries({ queryKey: ["inventory-stats"] });
-      qc.invalidateQueries({ queryKey: ["inventory-low"] });
-      qc.invalidateQueries({ queryKey: ["inventory-tx"] });
+      invalidateInventory(qc);
       setTxItem(null);
       txForm.reset();
     },
@@ -167,9 +175,7 @@ export default function InventoryPage() {
     mutationFn: ({ id, data }: { id: number; data: Partial<InventoryItem> }) =>
       inventoryApi.update(id, data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["inventory"] });
-      qc.invalidateQueries({ queryKey: ["inventory-stats"] });
-      qc.invalidateQueries({ queryKey: ["inventory-low"] });
+      invalidateInventory(qc);
       setEditItem(null);
       editForm.reset();
     },
@@ -198,7 +204,9 @@ export default function InventoryPage() {
       {
         key: "item_code",
         header: "Code",
-        render: (r: InventoryItem) => (
+        render: (r: InventoryItem) => !canManage ? (
+          <span className="font-mono font-medium text-gray-800">{r.item_code}</span>
+        ) : (
           <button
             onClick={() => {
               editForm.reset({
@@ -323,26 +331,30 @@ export default function InventoryPage() {
         header: "",
         render: (r: InventoryItem) => (
           <div className="flex gap-1 justify-end">
-            <button
-              onClick={() => {
-                txForm.reset({ transaction_type: "receive" });
-                setTxItem(r);
-              }}
-              className="p-1.5 rounded hover:bg-green-50 text-green-600"
-              title="Receive"
-            >
-              <ArrowDownCircle className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => {
-                txForm.reset({ transaction_type: "use" });
-                setTxItem(r);
-              }}
-              className="p-1.5 rounded hover:bg-blue-50 text-blue-600"
-              title="Use / Issue"
-            >
-              <ArrowUpCircle className="w-4 h-4" />
-            </button>
+            {canManage && (
+              <>
+                <button
+                  onClick={() => {
+                    txForm.reset({ transaction_type: "receive" });
+                    setTxItem(r);
+                  }}
+                  className="p-1.5 rounded hover:bg-green-50 text-green-600"
+                  title="Receive"
+                >
+                  <ArrowDownCircle className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => {
+                    txForm.reset({ transaction_type: "use" });
+                    setTxItem(r);
+                  }}
+                  className="p-1.5 rounded hover:bg-blue-50 text-blue-600"
+                  title="Use / Issue"
+                >
+                  <ArrowUpCircle className="w-4 h-4" />
+                </button>
+              </>
+            )}
             <button
               onClick={() => setLedgerItem(r)}
               className="p-1.5 rounded hover:bg-gray-100 text-gray-600"
@@ -355,7 +367,7 @@ export default function InventoryPage() {
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    [canManage]
   );
 
   return (
@@ -438,27 +450,31 @@ export default function InventoryPage() {
               onChange={handleFilePick}
               className="hidden"
             />
-            <Button
-              variant="secondary"
-              onClick={() =>
-                inventoryApi.downloadCsv(
-                  "/inventory/export/template.csv",
-                  "inventory_import_template.csv"
-                )
-              }
-              title="Download blank CSV template"
-            >
-              <FileDown className="w-4 h-4" />
-              Template
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => fileRef.current?.click()}
-              loading={importMutation.isPending}
-            >
-              <Upload className="w-4 h-4" />
-              Import
-            </Button>
+            {canManage && (
+              <>
+                <Button
+                  variant="secondary"
+                  onClick={() =>
+                    inventoryApi.downloadCsv(
+                      "/inventory/export/template.csv",
+                      "inventory_import_template.csv"
+                    )
+                  }
+                  title="Download blank CSV template"
+                >
+                  <FileDown className="w-4 h-4" />
+                  Template
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => fileRef.current?.click()}
+                  loading={importMutation.isPending}
+                >
+                  <Upload className="w-4 h-4" />
+                  Import
+                </Button>
+              </>
+            )}
             <Button
               variant="secondary"
               onClick={() =>
@@ -487,10 +503,12 @@ export default function InventoryPage() {
               <FlaskConical className="w-4 h-4" />
               Test Reagents
             </Button>
-            <Button onClick={() => setShowCreate(true)}>
-              <Plus className="w-4 h-4" />
-              Add Item
-            </Button>
+            {canManage && (
+              <Button onClick={() => setShowCreate(true)}>
+                <Plus className="w-4 h-4" />
+                Add Item
+              </Button>
+            )}
           </div>
         </div>
 
@@ -498,7 +516,7 @@ export default function InventoryPage() {
           columns={columns}
           data={items}
           loading={isLoading}
-          emptyMessage="No inventory items yet. Click 'Add Item' to begin."
+          emptyMessage={canManage ? "No inventory items yet. Click 'Add Item' to begin." : "No inventory items yet."}
           keyExtractor={(r) => r.id}
         />
       </div>
@@ -682,6 +700,7 @@ export default function InventoryPage() {
         onClose={() => {
           setTxItem(null);
           txForm.reset();
+          txMutation.reset();
         }}
         title={txItem ? `Stock Movement — ${txItem.name}` : ""}
         size="md"
@@ -698,13 +717,13 @@ export default function InventoryPage() {
                 <div>
                   <p className="text-xs text-gray-500">Current stock</p>
                   <p className="font-mono font-semibold text-gray-800">
-                    {txItem.current_stock} {txItem.unit}
+                    {liveTxItem?.current_stock} {txItem.unit}
                   </p>
                 </div>
                 <div className="text-right">
                   <p className="text-xs text-gray-500">Minimum</p>
                   <p className="font-mono text-gray-700">
-                    {txItem.minimum_stock} {txItem.unit}
+                    {liveTxItem?.minimum_stock} {txItem.unit}
                   </p>
                 </div>
               </div>
@@ -762,6 +781,12 @@ export default function InventoryPage() {
             />
             <Textarea label="Notes" rows={2} {...txForm.register("notes")} />
 
+            {txMutation.isError && (
+              <p className="text-sm text-red-600">
+                {apiErrorMessage(txMutation.error, "Could not record the movement.")}
+              </p>
+            )}
+
             <div className="flex gap-3 justify-end pt-2">
               <Button
                 type="button"
@@ -769,6 +794,7 @@ export default function InventoryPage() {
                 onClick={() => {
                   setTxItem(null);
                   txForm.reset();
+                  txMutation.reset();
                 }}
               >
                 Cancel
@@ -788,7 +814,7 @@ export default function InventoryPage() {
         title={ledgerItem ? `Ledger — ${ledgerItem.name}` : ""}
         size="lg"
       >
-        {ledgerItem && <LedgerView item={ledgerItem} />}
+        {liveLedgerItem && <LedgerView item={liveLedgerItem} />}
       </Modal>
 
       {/* ── Test reagent mapping modal ─────────────────────────────────────── */}
@@ -798,7 +824,7 @@ export default function InventoryPage() {
         title="Test → Reagent Usage Mapping"
         size="lg"
       >
-        <ReagentMappingManager items={items} />
+        <ReagentMappingManager items={items} canManage={canManage} />
       </Modal>
 
       {/* ── Import result modal ────────────────────────────────────────────── */}
@@ -846,6 +872,18 @@ export default function InventoryPage() {
 
 // ── sub-components ───────────────────────────────────────────────────────────
 
+/** The latest server copy of `item`, falling back to the row it was opened from.
+ *  Keyed under "inventory" so invalidateInventory() refreshes it. */
+function useLiveItem(item: InventoryItem | null): InventoryItem | null {
+  const { data } = useQuery({
+    queryKey: ["inventory", "item", item?.id],
+    queryFn: () => inventoryApi.get(item!.id).then((r) => r.data),
+    enabled: !!item,
+  });
+  if (!item) return null;
+  return data && data.id === item.id ? data : item;
+}
+
 function StatCard({
   icon,
   label,
@@ -874,7 +912,7 @@ function StatCard({
   );
 }
 
-function ReagentMappingManager({ items }: { items: InventoryItem[] }) {
+function ReagentMappingManager({ items, canManage }: { items: InventoryItem[]; canManage: boolean }) {
   const qc = useQueryClient();
   const [catalogId, setCatalogId] = useState<number | "">("");
   const [inventoryId, setInventoryId] = useState<number | "">("");
@@ -924,68 +962,70 @@ function ReagentMappingManager({ items }: { items: InventoryItem[] }) {
           technician enters a result for a mapped test, stock is automatically
           deducted from the ledger.
         </p>
-        <div className="grid grid-cols-12 gap-2 items-end">
-          <div className="col-span-4">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Test</label>
-            <select
-              value={catalogId}
-              onChange={(e) => setCatalogId(e.target.value ? Number(e.target.value) : "")}
-              className="w-full px-2 py-2 text-sm border border-gray-300 rounded-lg"
-            >
-              <option value="">Select test…</option>
-              {catalog.map((c: TestCatalogItem) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+        {canManage && (
+          <div className="grid grid-cols-12 gap-2 items-end">
+            <div className="col-span-4">
+              <label className="block text-xs font-medium text-gray-700 mb-1">Test</label>
+              <select
+                value={catalogId}
+                onChange={(e) => setCatalogId(e.target.value ? Number(e.target.value) : "")}
+                className="w-full px-2 py-2 text-sm border border-gray-300 rounded-lg"
+              >
+                <option value="">Select test…</option>
+                {catalog.map((c: TestCatalogItem) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="col-span-4">
+              <label className="block text-xs font-medium text-gray-700 mb-1">Reagent</label>
+              <select
+                value={inventoryId}
+                onChange={(e) => setInventoryId(e.target.value ? Number(e.target.value) : "")}
+                className="w-full px-2 py-2 text-sm border border-gray-300 rounded-lg"
+              >
+                <option value="">Select reagent…</option>
+                {activeItems.map((i) => (
+                  <option key={i.id} value={i.id}>
+                    {i.item_code} — {i.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="col-span-2">
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Qty{selectedInventory ? ` (${selectedInventory.unit})` : ""}
+              </label>
+              <input
+                type="number"
+                step="any"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+                className="w-full px-2 py-2 text-sm border border-gray-300 rounded-lg"
+                placeholder="0.5"
+              />
+            </div>
+            <div className="col-span-2">
+              <Button
+                className="w-full"
+                disabled={!canSubmit}
+                loading={createMutation.isPending}
+                onClick={() =>
+                  createMutation.mutate({
+                    catalog_item_id: Number(catalogId),
+                    inventory_item_id: Number(inventoryId),
+                    quantity_per_test: parseFloat(quantity),
+                  })
+                }
+              >
+                <Plus className="w-4 h-4" />
+                Add
+              </Button>
+            </div>
           </div>
-          <div className="col-span-4">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Reagent</label>
-            <select
-              value={inventoryId}
-              onChange={(e) => setInventoryId(e.target.value ? Number(e.target.value) : "")}
-              className="w-full px-2 py-2 text-sm border border-gray-300 rounded-lg"
-            >
-              <option value="">Select reagent…</option>
-              {activeItems.map((i) => (
-                <option key={i.id} value={i.id}>
-                  {i.item_code} — {i.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="col-span-2">
-            <label className="block text-xs font-medium text-gray-700 mb-1">
-              Qty{selectedInventory ? ` (${selectedInventory.unit})` : ""}
-            </label>
-            <input
-              type="number"
-              step="any"
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              className="w-full px-2 py-2 text-sm border border-gray-300 rounded-lg"
-              placeholder="0.5"
-            />
-          </div>
-          <div className="col-span-2">
-            <Button
-              className="w-full"
-              disabled={!canSubmit}
-              loading={createMutation.isPending}
-              onClick={() =>
-                createMutation.mutate({
-                  catalog_item_id: Number(catalogId),
-                  inventory_item_id: Number(inventoryId),
-                  quantity_per_test: parseFloat(quantity),
-                })
-              }
-            >
-              <Plus className="w-4 h-4" />
-              Add
-            </Button>
-          </div>
-        </div>
+        )}
       </Card>
 
       <div className="max-h-[360px] overflow-y-auto border rounded-lg">
@@ -993,7 +1033,7 @@ function ReagentMappingManager({ items }: { items: InventoryItem[] }) {
           <p className="p-6 text-center text-sm text-gray-500">Loading…</p>
         ) : mappings.length === 0 ? (
           <p className="p-6 text-center text-sm text-gray-500">
-            No mappings yet. Add one above to enable auto-deduction.
+            {canManage ? "No mappings yet. Add one above to enable auto-deduction." : "No mappings yet."}
           </p>
         ) : (
           <table className="w-full text-xs">
@@ -1023,15 +1063,17 @@ function ReagentMappingManager({ items }: { items: InventoryItem[] }) {
                     {m.current_stock ?? "—"} {m.inventory_unit}
                   </td>
                   <td className="px-3 py-2 text-right">
-                    <button
-                      onClick={() => {
-                        if (confirm("Delete this mapping?")) deleteMutation.mutate(m.id);
-                      }}
-                      className="p-1 rounded hover:bg-red-50 text-red-600"
-                      title="Remove"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    {canManage && (
+                      <button
+                        onClick={() => {
+                          if (confirm("Delete this mapping?")) deleteMutation.mutate(m.id);
+                        }}
+                        className="p-1 rounded hover:bg-red-50 text-red-600"
+                        title="Remove"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

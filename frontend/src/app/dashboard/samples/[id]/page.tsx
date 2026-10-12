@@ -13,9 +13,11 @@ import { samplesApi, testResultsApi, testCatalogApi, usersApi, resultQualifiersA
 import type { TestResult, TestCatalogItem, User, Sample, ResultQualifier } from "@/lib/types";
 import { evaluateItemRemark, storedRemark, type Remark } from "@/lib/compliance";
 import { reportSections } from "@/lib/reportSections";
+import { invalidateInventory } from "@/lib/inventory";
 import { isAccredited, parameterMark, ACCREDITED_MARK, SUBCONTRACTED_MARK } from "@/lib/parameterMarks";
 import TestReportPrint from "@/components/TestReportPrint";
 import { getCurrentUser } from "@/lib/auth";
+import { apiErrorMessage } from "@/lib/utils";
 
 type ResultDraft = {
   result_value: string;
@@ -55,9 +57,11 @@ export default function SampleDetailPage() {
     enabled: !!sampleId,
   });
 
+  // Inactive tests too: a test requested for this sample must stay on screen after it is
+  // retired from the catalog, or it can never be validated and the sample never completes.
   const { data: catalogItems = [] } = useQuery({
-    queryKey: ["test-catalog"],
-    queryFn: () => testCatalogApi.list({ active_only: true }).then((r) => r.data),
+    queryKey: ["test-catalog", "all"],
+    queryFn: () => testCatalogApi.list({ active_only: false }).then((r) => r.data),
   });
 
   const { data: qualifiers = [] } = useQuery<ResultQualifier[]>({
@@ -118,6 +122,7 @@ export default function SampleDetailPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["test-results", { sample_id: sampleId }] });
       qc.invalidateQueries({ queryKey: ["sample", sampleId] });
+      invalidateInventory(qc); // reagents are auto-deducted for newly completed tests
       setDirty(false);
     },
   });
@@ -171,6 +176,7 @@ export default function SampleDetailPage() {
       qc.invalidateQueries({ queryKey: ["test-results", { sample_id: sampleId }] });
       qc.invalidateQueries({ queryKey: ["sample", sampleId] });
       qc.invalidateQueries({ queryKey: ["samples"] });
+      qc.invalidateQueries({ queryKey: ["reports"] }); // a completed sample's report becomes listable
     },
   });
 
@@ -189,6 +195,16 @@ export default function SampleDetailPage() {
       qc.invalidateQueries({ queryKey: ["test-results", { sample_id: sampleId }] });
       qc.invalidateQueries({ queryKey: ["sample", sampleId] });
       qc.invalidateQueries({ queryKey: ["samples"] });
+      qc.invalidateQueries({ queryKey: ["reports"] });
+    },
+  });
+
+  const checkCompletionMutation = useMutation({
+    mutationFn: () => testResultsApi.checkSampleCompletion(sampleId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["sample", sampleId] });
+      qc.invalidateQueries({ queryKey: ["samples"] });
+      qc.invalidateQueries({ queryKey: ["reports"] });
     },
   });
 
@@ -219,7 +235,9 @@ export default function SampleDetailPage() {
   // Only show tests that were requested for this sample
   const requestedIds = new Set(sample?.requested_test_ids ?? []);
   const requestedItems =
-    requestedIds.size > 0 ? catalogItems.filter((c) => requestedIds.has(c.id)) : catalogItems;
+    requestedIds.size > 0
+      ? catalogItems.filter((c) => requestedIds.has(c.id))
+      : catalogItems.filter((c) => c.is_active);
 
   // Grouped the way the printed report groups them (category, or the test's own section).
   const sections = reportSections(requestedItems, sample?.sample_category);
@@ -251,12 +269,37 @@ export default function SampleDetailPage() {
   }
 
   const filledCount = requestedItems.filter((item) => drafts[item.id]?.result_value.trim()).length;
+  // The sample completes (and its report becomes issuable) only once every test is validated.
+  const validatedCount = requestedItems.filter(
+    (item) => resultByCatalog[item.id]?.status === "validated"
+  ).length;
 
   // Results that exist and are in a validatable state (completed or in_progress, not yet validated)
   const validatableResults = testResults.filter(
     (r) => r.status === "completed" || r.status === "in_progress"
   );
   const validatableCount = validatableResults.length;
+
+  // Mirrors _maybe_complete_sample on the server, so the page can say exactly which
+  // tests are holding the sample in testing.
+  const validatedCatalogIds = new Set(
+    testResults.filter((r) => r.status === "validated" && r.catalog_item_id).map((r) => r.catalog_item_id as number)
+  );
+  const catalogById = new Map(catalogItems.map((c) => [c.id, c]));
+  const blockingTests: string[] = requestedIds.size > 0
+    ? Array.from(requestedIds)
+        .filter((id) => catalogById.has(id) && !validatedCatalogIds.has(id))
+        .map((id) => {
+          const item = catalogById.get(id)!;
+          const result = testResults.find((r) => r.catalog_item_id === id);
+          const state = !result || !result.result_value ? "no result" : "not validated";
+          return `${item.name}${item.is_active ? "" : " (inactive in catalog)"} — ${state}`;
+        })
+    : testResults
+        .filter((r) => r.catalog_item_id && r.status !== "validated")
+        .map((r) => `${catalogById.get(r.catalog_item_id as number)?.name ?? `Test #${r.catalog_item_id}`} — not validated`);
+  const resultsFinal = ["completed", "archived", "disposed"].includes(sample.status);
+  const showCompletionNotice = !isCustomer && !resultsFinal && testResults.length > 0;
 
   return (
     <DashboardLayout title={`Sample ${sample.sample_code}`}>
@@ -458,12 +501,49 @@ export default function SampleDetailPage() {
           </Card>
         )}
 
+        {/* ── Why the sample is still in testing ──────────────────────────── */}
+        {showCompletionNotice && (
+          <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm">
+            <div className="flex-1">
+              {blockingTests.length > 0 ? (
+                <>
+                  <p className="font-medium text-amber-800">
+                    The sample completes and its report is released once every requested test is validated. Still outstanding:
+                  </p>
+                  <ul className="mt-1 text-xs text-amber-700 list-disc pl-4 space-y-0.5">
+                    {blockingTests.map((t) => <li key={t}>{t}</li>)}
+                  </ul>
+                </>
+              ) : (
+                <p className="font-medium text-amber-800">
+                  Every requested test is validated, but the sample hasn&apos;t been marked completed yet.
+                </p>
+              )}
+              {checkCompletionMutation.isError && (
+                <p className="mt-1 text-xs text-red-600">
+                  {apiErrorMessage(checkCompletionMutation.error, "Could not re-check the sample status.")}
+                </p>
+              )}
+            </div>
+            {blockingTests.length === 0 && (
+              <Button size="sm" onClick={() => checkCompletionMutation.mutate()} loading={checkCompletionMutation.isPending}>
+                Re-check status
+              </Button>
+            )}
+          </div>
+        )}
+
         {/* ── Results Entry Table ─────────────────────────────────────────── */}
         {!isCustomer && (
         <Card>
           <CardHeader
             title="Test Results"
-            subtitle={`${filledCount} of ${requestedItems.length} tests completed`}
+            subtitle={
+              `${filledCount} of ${requestedItems.length} entered · ${validatedCount} validated` +
+              (filledCount === requestedItems.length && validatedCount < requestedItems.length
+                ? " — validate all results to complete the sample and release its report"
+                : "")
+            }
             action={
               <div className="flex items-center gap-2">
                 {dirty && (
