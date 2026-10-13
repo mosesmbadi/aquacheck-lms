@@ -3,7 +3,7 @@
 import { Fragment, useState, useCallback, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Save, CheckCircle, Clock, FlaskConical, MapPin, Calendar, Printer, ShieldCheck, Pencil, Check, X } from "lucide-react";
+import { ArrowLeft, Save, CheckCircle, Clock, FlaskConical, MapPin, Calendar, Printer, ShieldCheck, Pencil, Check, X, ChevronUp, ChevronDown, List } from "lucide-react";
 import { format } from "date-fns";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/Button";
@@ -16,6 +16,7 @@ import { reportSections } from "@/lib/reportSections";
 import { invalidateInventory } from "@/lib/inventory";
 import { isAccredited, parameterMark, ACCREDITED_MARK, SUBCONTRACTED_MARK } from "@/lib/parameterMarks";
 import TestReportPrint from "@/components/TestReportPrint";
+import { EditSampleModal } from "@/components/forms/EditSampleModal";
 import { getCurrentUser } from "@/lib/auth";
 import { apiErrorMessage } from "@/lib/utils";
 
@@ -41,6 +42,7 @@ export default function SampleDetailPage() {
   const [drafts, setDrafts] = useState<Record<number, ResultDraft>>({});
   const [dirty, setDirty] = useState(false);
   const [printOpen, setPrintOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [signatories, setSignatories] = useState<User[]>([]);
   const [editingPhysicalId, setEditingPhysicalId] = useState(false);
   const [physicalIdDraft, setPhysicalIdDraft] = useState("");
@@ -376,6 +378,11 @@ export default function SampleDetailPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {!isCustomer && (
+              <Button variant="secondary" onClick={() => setEditOpen(true)}>
+                <Pencil className="w-4 h-4" /> Edit Sample
+              </Button>
+            )}
             {(!isCustomer || testResults.length > 0) && (
               <Button variant="secondary" onClick={() => setPrintOpen(true)}>
                 <Printer className="w-4 h-4" /> {isCustomer ? "View Report" : "Print Report"}
@@ -603,7 +610,7 @@ export default function SampleDetailPage() {
                   {sections.map((section, index) => (
                     <Fragment key={section.title}>
                       <thead>
-                        <tr className="bg-gray-700 text-white">
+                        <tr id={sectionAnchorId(index)} className="bg-gray-700 text-white scroll-mt-4">
                           <th className="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide" colSpan={6}>
                             {section.title}
                           </th>
@@ -642,6 +649,14 @@ export default function SampleDetailPage() {
             )}
           </CardBody>
         </Card>
+        )}
+        {!isCustomer && !resultsLoading && sections.length > 0 && (
+          <SectionScroller
+            titles={sections.map((s) => s.title)}
+            onSave={handleSaveAll}
+            saving={bulkSaveMutation.isPending}
+            dirty={dirty}
+          />
         )}
       </div>
 
@@ -711,7 +726,111 @@ export default function SampleDetailPage() {
       {printOpen && (
         <TestReportPrint sampleId={sampleId} onClose={() => setPrintOpen(false)} signatories={signatories} />
       )}
+
+      {editOpen && (
+        <EditSampleModal
+          sample={sample}
+          catalogItems={catalogItems}
+          testResults={testResults}
+          staffUsers={staffUsers}
+          onClose={() => setEditOpen(false)}
+        />
+      )}
     </DashboardLayout>
+  );
+}
+
+/* ── Section scroll buttons ──────────────────────────────────────────────────── */
+
+const sectionAnchorId = (index: number) => `results-section-${index}`;
+
+/**
+ * Floating controls for long result tables: jump to the previous/next section or a named
+ * one, and save without scrolling back up. Fixed rather than sticky, because the layout's
+ * <main> is an overflow container that never scrolls itself.
+ */
+function SectionScroller({
+  titles,
+  onSave,
+  saving,
+  dirty,
+}: {
+  titles: string[];
+  onSave: () => void;
+  saving: boolean;
+  dirty: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const sectionTops = () =>
+    titles.map((_, i) => document.getElementById(sectionAnchorId(i))?.getBoundingClientRect().top ?? 0);
+
+  const scrollToSection = (index: number) => {
+    document.getElementById(sectionAnchorId(index))?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setOpen(false);
+  };
+
+  // A few pixels of slack so a section just scrolled to counts as the current one.
+  const goNext = () => {
+    const next = sectionTops().findIndex((top) => top > 24);
+    if (next >= 0) scrollToSection(next);
+    else window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" });
+  };
+
+  const goPrevious = () => {
+    const tops = sectionTops();
+    let previous = -1;
+    tops.forEach((top, i) => { if (top < -8) previous = i; });
+    if (previous >= 0) scrollToSection(previous);
+    else window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const buttonClass =
+    "flex items-center justify-center w-9 h-9 rounded-lg text-gray-600 hover:bg-primary-50 hover:text-primary-700 transition-colors";
+
+  return (
+    <div className="fixed bottom-6 right-6 z-30 flex flex-col items-end gap-2">
+      {open && (
+        <div className="bg-white border border-gray-200 rounded-lg shadow-lg py-1 max-h-72 overflow-y-auto">
+          {titles.map((title, i) => (
+            <button
+              key={title}
+              type="button"
+              onClick={() => scrollToSection(i)}
+              className="block w-full text-left px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-primary-50 hover:text-primary-700 whitespace-nowrap"
+            >
+              {title}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="flex flex-col items-center gap-0.5 bg-white border border-gray-200 rounded-xl shadow-lg p-1">
+        <button type="button" onClick={goPrevious} className={buttonClass} title="Previous section">
+          <ChevronUp className="w-5 h-5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className={`${buttonClass} ${open ? "bg-primary-50 text-primary-700" : ""}`}
+          title="Jump to a section"
+        >
+          <List className="w-4 h-4" />
+        </button>
+        <button type="button" onClick={goNext} className={buttonClass} title="Next section">
+          <ChevronDown className="w-5 h-5" />
+        </button>
+        <div className="w-6 border-t border-gray-200 my-0.5" />
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={!dirty || saving}
+          className={`${buttonClass} disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-gray-600 ${dirty ? "text-amber-600" : ""}`}
+          title={dirty ? "Save results" : "No unsaved changes"}
+        >
+          <Save className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
   );
 }
 

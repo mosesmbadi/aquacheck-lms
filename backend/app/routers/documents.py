@@ -237,6 +237,55 @@ def get_document_pdf(
     )
 
 
+def _remove_uploaded_file(doc: Document) -> None:
+    if doc.uploaded_file and os.path.exists(doc.uploaded_file):
+        try:
+            os.unlink(doc.uploaded_file)
+        except OSError:
+            pass
+    doc.uploaded_file = None
+
+
+@router.delete("/{document_id}/upload", response_model=DocumentOut)
+def remove_document_file(
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Detach a wrongly uploaded PDF; the document falls back to its written content."""
+    doc = db.query(Document).filter(Document.id == document_id).first()
+    if not doc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+    _remove_uploaded_file(doc)
+    db.commit()
+    db.refresh(doc)
+    log_action(db, current_user.id, "REMOVE_DOCUMENT_FILE", "document", str(document_id))
+    return doc
+
+
+@router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_document(
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    doc = db.query(Document).filter(Document.id == document_id).first()
+    if not doc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+    # The seeded SOPs and master lists are re-created on every startup, so deleting one
+    # would not stick. Their uploaded file can still be removed or replaced.
+    if any(entry["code"] == doc.code for entry in _SEED_DATA):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This controlled document can't be deleted. Remove or replace its uploaded file instead.",
+        )
+    _remove_uploaded_file(doc)
+    db.delete(doc)
+    db.commit()
+    log_action(db, current_user.id, "DELETE_DOCUMENT", "document", str(document_id))
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.put("/{document_id}", response_model=DocumentOut)
 def update_document(
     document_id: int,
