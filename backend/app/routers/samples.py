@@ -9,6 +9,7 @@ from app.models.user import User, UserRole
 from app.models.contract import Contract
 from app.models.customer import Customer
 from app.models.sample import Sample
+from app.models.test_catalog import TestCatalogItem
 from app.schemas.sample import SampleCreate, SampleUpdate, SampleOut, CustodyEntry
 from app.services.access import ensure_can_view_sample, ensure_staff, is_customer
 from app.services.audit import log_action
@@ -245,6 +246,13 @@ def update_sample(
     if not sample:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sample not found")
     update_data = payload.model_dump(exclude_unset=True)
+    old_tests = list(sample.requested_test_ids or [])
+    tests_changed = (
+        update_data.get("requested_test_ids") is not None
+        and set(update_data["requested_test_ids"]) != set(old_tests)
+    )
+    if tests_changed:
+        _check_test_change(sample, old_tests, update_data["requested_test_ids"], db)
     _apply_discharge_schedule(update_data)
     _clean_subcontracted(update_data, sample)
     _clean_accredited(update_data, sample)
@@ -254,10 +262,92 @@ def update_sample(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contract not found")
     for k, v in update_data.items():
         setattr(sample, k, v)
+    if tests_changed:
+        _record_test_change(sample, old_tests, current_user, db)
     db.commit()
     db.refresh(sample)
-    log_action(db, current_user.id, "UPDATE_SAMPLE", "sample", str(sample_id))
+    log_action(
+        db, current_user.id, "UPDATE_SAMPLE", "sample", str(sample_id),
+        old_value={"requested_test_ids": old_tests} if tests_changed else None,
+        new_value={"requested_test_ids": sample.requested_test_ids} if tests_changed else None,
+    )
     return sample
+
+
+def _check_test_change(sample: Sample, old_ids: list, new_ids: list, db: Session) -> None:
+    """Tests can be added or removed after registration, but not in ways that would
+    rewrite what has already been released or signed off."""
+    from app.models.report import Report
+    from app.models.test_result import TestResult, TestStatus
+    from app.routers.reports import _ISSUED_STATUSES
+
+    if old_ids and not new_ids:
+        # An empty list means "the whole catalog" on the results screen and the report.
+        raise HTTPException(status_code=400, detail="A sample needs at least one test.")
+
+    issued = (
+        db.query(Report.id)
+        .filter(Report.status.in_(_ISSUED_STATUSES), Report.content["sample_id"].as_integer() == sample.id)
+        .first()
+    )
+    if issued:
+        raise HTTPException(
+            status_code=400,
+            detail="This sample's report has been issued, so its tests can no longer be changed. Amend the report instead.",
+        )
+
+    removed = set(old_ids) - set(new_ids)
+    if removed:
+        validated = (
+            db.query(TestCatalogItem.name)
+            .join(TestResult, TestResult.catalog_item_id == TestCatalogItem.id)
+            .filter(
+                TestResult.sample_id == sample.id,
+                TestResult.catalog_item_id.in_(removed),
+                TestResult.status == TestStatus.validated,
+            )
+            .all()
+        )
+        if validated:
+            names = ", ".join(name for (name,) in validated)
+            raise HTTPException(
+                status_code=400,
+                detail=f"{names} already has a validated result and can't be removed.",
+            )
+
+
+def _record_test_change(sample: Sample, old_ids: list, current_user: User, db: Session) -> None:
+    """Note the change on the chain of custody, and re-check completion: an added test
+    reopens a completed sample, a removed one may have been all that held it open."""
+    from app.routers.test_results import _maybe_complete_sample
+    from app.models.sample import SampleStatus
+
+    new_ids = list(sample.requested_test_ids or [])
+    added = [i for i in new_ids if i not in old_ids]
+    removed = [i for i in old_ids if i not in new_ids]
+    names = {
+        cid: name
+        for cid, name in db.query(TestCatalogItem.id, TestCatalogItem.name).filter(
+            TestCatalogItem.id.in_(added + removed)
+        )
+    }
+    parts = []
+    if added:
+        parts.append("added " + ", ".join(names.get(i, f"#{i}") for i in added))
+    if removed:
+        parts.append("removed " + ", ".join(names.get(i, f"#{i}") for i in removed))
+    custody = list(sample.chain_of_custody or [])
+    custody.append({
+        "user_id": current_user.id,
+        "action": "Tests changed: " + "; ".join(parts),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+    sample.chain_of_custody = custody
+
+    if sample.status == SampleStatus.completed and added:
+        sample.status = SampleStatus.in_testing
+    elif sample.status == SampleStatus.in_testing:
+        _maybe_complete_sample(sample, db)
 
 
 @router.get("/{sample_id}/barcode")

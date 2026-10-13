@@ -55,6 +55,25 @@ def match_qualifier(
     return None
 
 
+# Where a limit's sample basis begins: "Not Detectable/25g", "Absent in 100 mL", "Nil (per 100ml)".
+_LIMIT_BASIS_RE = re.compile(r"\s*(?:/|\(|\bin\b|\bper\b)", re.IGNORECASE)
+
+
+def _match_limit_qualifier(
+    limit: str, qualifiers: List[ResultQualifier]
+) -> Optional[ResultQualifier]:
+    """The qualifier a standard limit is written as — either exactly, or followed by the
+    sample basis it applies to, which must not turn "Not Detectable in 25g" into a
+    numeric limit of 25."""
+    exact = match_qualifier(limit, qualifiers)
+    if exact is not None:
+        return exact
+    basis = _LIMIT_BASIS_RE.search(limit)
+    if basis and basis.start() > 0:
+        return match_qualifier(limit[: basis.start()], qualifiers)
+    return None
+
+
 class RemarkKind(str, Enum):
     """
     Why the REMARKS column reads the way it does.
@@ -140,7 +159,7 @@ def evaluate_remark(
             return _REMARKS[RemarkKind.out_of_range]
         return _REMARKS[RemarkKind.no_standard]
 
-    limit_q = match_qualifier(limit, qualifiers)
+    limit_q = _match_limit_qualifier(limit, qualifiers)
 
     # Qualitative limit demanding absence ("Not Detectable", "Nil", "Absent").
     if limit_q is not None and not limit_q.is_detected:
@@ -161,10 +180,13 @@ def evaluate_remark(
         number = result_q.numeric_equivalent
     else:
         number = _to_float(value)
+    range_match = _RANGE_RE.match(limit)
     if number is None:
+        # "Detected" carries no count, but any presence exceeds a limit of zero.
+        if result_q is not None and result_q.is_detected and not range_match and _to_float(limit) == 0:
+            return _REMARKS[RemarkKind.non_compliant]
         return _REMARKS[RemarkKind.indeterminate]
 
-    range_match = _RANGE_RE.match(limit)
     if range_match:
         low, high = float(range_match.group(1)), float(range_match.group(2))
         ok = low <= number <= high

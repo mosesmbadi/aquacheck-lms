@@ -41,6 +41,10 @@ const STATIC_MASTERLISTS: Document[] = [
   { id: 0, code: "AQCMSTR04", title: "Master List of SOPs",               category: "masterlist", version: "1.0", status: "active", content: [], created_at: "", updated_at: "" },
 ];
 
+// Seeded controlled documents are re-created on startup, so they can't be deleted —
+// only their uploaded file can be removed or replaced.
+const SEEDED_CODES = new Set([...STATIC_SOPS, ...STATIC_MASTERLISTS].map((d) => d.code));
+
 function mergeWithApi(staticList: Document[], apiList: Document[]): Document[] {
   if (!apiList.length) return staticList;
   const byCode = Object.fromEntries(apiList.map((d) => [d.code, d]));
@@ -534,6 +538,36 @@ function DocumentCard({ doc, isAdmin }: { doc: Document; isAdmin: boolean }) {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["documents"] }); setMode("view"); setReplaceFile(null); },
   });
 
+  const [actionError, setActionError] = useState<string | null>(null);
+  const errorDetail = (err: unknown, fallback: string) =>
+    (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? fallback;
+
+  const deleteMutation = useMutation({
+    mutationFn: () => documentsApi.delete(doc.id),
+    onMutate: () => setActionError(null),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["documents"] }),
+    onError: (err) => setActionError(errorDetail(err, "Could not delete the document.")),
+  });
+
+  const removeFileMutation = useMutation({
+    mutationFn: () => documentsApi.removeFile(doc.id),
+    onMutate: () => setActionError(null),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["documents"] }),
+    onError: (err) => setActionError(errorDetail(err, "Could not remove the uploaded file.")),
+  });
+
+  const canDelete = isAdmin && doc.id !== 0 && !SEEDED_CODES.has(doc.code);
+
+  function handleDelete() {
+    if (window.confirm(`Delete ${doc.code} — ${doc.title}? This cannot be undone.`)) deleteMutation.mutate();
+  }
+
+  function handleRemoveFile() {
+    if (window.confirm(`Remove the uploaded file from ${doc.code}? The document will show its written content instead.`)) {
+      removeFileMutation.mutate();
+    }
+  }
+
   function handleDownload() {
     if (doc.id === 0) return;
     setDownloading(true);
@@ -637,9 +671,21 @@ function DocumentCard({ doc, isAdmin }: { doc: Document; isAdmin: boolean }) {
                 >
                   Replace file
                 </button>
+                <button
+                  type="button"
+                  onClick={handleRemoveFile}
+                  disabled={removeFileMutation.isPending}
+                  className="text-xs font-medium text-red-600 hover:text-red-800 underline flex-shrink-0 disabled:opacity-50"
+                >
+                  Remove file
+                </button>
               </div>
             )}
           </div>
+        )}
+
+        {actionError && (
+          <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{actionError}</p>
         )}
 
         {/* Content sections */}
@@ -701,8 +747,19 @@ function DocumentCard({ doc, isAdmin }: { doc: Document; isAdmin: boolean }) {
                 <Pencil className="w-3.5 h-3.5" />
               </button>
             )}
+
+            {canDelete && (
+              <button onClick={handleDelete} disabled={deleteMutation.isPending} title="Delete document"
+                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-30">
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         </div>
+
+        {actionError && (
+          <p className="mt-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{actionError}</p>
+        )}
 
         <div className="flex items-center gap-4 mt-3 pt-3 border-t border-gray-100 flex-wrap text-xs text-gray-500">
           <span><span className="font-medium">Version:</span> {doc.version}</span>
@@ -804,10 +861,11 @@ const guideContent = [
     title: "4. Overall Workflow",
     content: "",
     steps: [
-      { label: "Step 1", desc: "Create a Contract (Dashboard → Contracts)." },
-      { label: "Step 2", desc: "Register samples against the contract (Dashboard → Samples)." },
-      { label: "Step 3", desc: "Record and validate test results (Dashboard → Tests)." },
-      { label: "Step 4", desc: "Generate reports from validated results (Dashboard → Reports)." },
+      { label: "Quote the customer", desc: "Add the customer if new, then prepare and send a quotation (Dashboard → Quotations)." },
+      { label: "Register the sample", desc: "On receipt, register the sample and its tests (Dashboard → Samples). A draft report and invoice are created for it." },
+      { label: "Enter & validate results", desc: "Open the sample, enter each result, save, then validate. The sample completes once every test is validated." },
+      { label: "Issue the report", desc: "Review the completed sample's report and issue it (Dashboard → Reports)." },
+      { label: "Invoice & payment", desc: "Issue the invoice and mark it paid once payment is received (Dashboard → Invoices)." },
     ],
     notes: [],
   },

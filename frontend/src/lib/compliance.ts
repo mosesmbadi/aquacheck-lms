@@ -43,6 +43,21 @@ export function matchQualifier(
   return null;
 }
 
+/** Where a limit's sample basis begins: "Not Detectable/25g", "Absent in 100 mL", "Nil (per 100ml)". */
+const LIMIT_BASIS_RE = /\s*(?:\/|\(|\bin\b|\bper\b)/i;
+
+/**
+ * The qualifier a standard limit is written as — either exactly, or followed by the
+ * sample basis it applies to, which must not turn "Not Detectable in 25g" into a
+ * numeric limit of 25.
+ */
+function matchLimitQualifier(limit: string, qualifiers: ResultQualifier[]): ResultQualifier | null {
+  const exact = matchQualifier(limit, qualifiers);
+  if (exact) return exact;
+  const basis = LIMIT_BASIS_RE.exec(limit);
+  return basis && basis.index > 0 ? matchQualifier(limit.slice(0, basis.index), qualifiers) : null;
+}
+
 /**
  * Why the REMARKS column reads the way it does.
  *
@@ -121,7 +136,7 @@ export function evaluateRemark(
     return resultQ?.exceeds_limit ? REMARKS.out_of_range : REMARKS.no_standard;
   }
 
-  const limitQ = matchQualifier(limit, qualifiers);
+  const limitQ = matchLimitQualifier(limit, qualifiers);
 
   // Qualitative limit demanding absence ("Not Detectable", "Nil", "Absent").
   if (limitQ && !limitQ.is_detected) {
@@ -140,9 +155,13 @@ export function evaluateRemark(
   } else {
     number = toNumber(value);
   }
-  if (number === null) return REMARKS.indeterminate;
-
   const range = RANGE_RE.exec(limit);
+  if (number === null) {
+    // "Detected" carries no count, but any presence exceeds a limit of zero.
+    if (resultQ?.is_detected && !range && toNumber(limit) === 0) return REMARKS.non_compliant;
+    return REMARKS.indeterminate;
+  }
+
   if (range) {
     const low = parseFloat(range[1]);
     const high = parseFloat(range[2]);

@@ -206,6 +206,8 @@ export const documentsApi = {
     content?: { heading: string; body: string }[];
   }) => api.post<Document>("/documents", data),
   update: (id: number, data: Partial<Document>) => api.put<Document>(`/documents/${id}`, data),
+  delete: (id: number) => api.delete(`/documents/${id}`),
+  removeFile: (id: number) => api.delete<Document>(`/documents/${id}/upload`),
   uploadFile: (id: number, file: File) => {
     const fd = new FormData();
     fd.append("file", file);
