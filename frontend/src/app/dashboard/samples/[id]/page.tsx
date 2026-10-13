@@ -170,14 +170,22 @@ export default function SampleDetailPage() {
     },
   });
 
+  // The server refuses to validate a result the report can't evaluate (e.g. an
+  // unrecognised value against "Not Detectable"); its reasons are listed here.
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+
+  const refreshAfterValidation = () => {
+    qc.invalidateQueries({ queryKey: ["test-results", { sample_id: sampleId }] });
+    qc.invalidateQueries({ queryKey: ["sample", sampleId] });
+    qc.invalidateQueries({ queryKey: ["samples"] });
+    qc.invalidateQueries({ queryKey: ["reports"] }); // a completed sample's report becomes listable
+  };
+
   const validateMutation = useMutation({
     mutationFn: (resultId: number) => testResultsApi.validate(resultId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["test-results", { sample_id: sampleId }] });
-      qc.invalidateQueries({ queryKey: ["sample", sampleId] });
-      qc.invalidateQueries({ queryKey: ["samples"] });
-      qc.invalidateQueries({ queryKey: ["reports"] }); // a completed sample's report becomes listable
-    },
+    onMutate: () => setValidationErrors([]),
+    onSuccess: refreshAfterValidation,
+    onError: (err) => setValidationErrors([apiErrorMessage(err, "Could not validate the result.")]),
   });
 
   const validateAllMutation = useMutation({
@@ -185,17 +193,21 @@ export default function SampleDetailPage() {
       // Sequential, not Promise.all: each validate call recomputes the sample's
       // completion status from committed results, so firing them in parallel can
       // race and leave the sample stuck (each request misses the others' commits).
-      const results = [];
+      // A refused result doesn't stop the rest from being validated.
+      const errors: string[] = [];
       for (const id of resultIds) {
-        results.push(await testResultsApi.validate(id));
+        try {
+          await testResultsApi.validate(id);
+        } catch (err) {
+          errors.push(apiErrorMessage(err, `Could not validate result #${id}.`));
+        }
       }
-      return results;
+      return errors;
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["test-results", { sample_id: sampleId }] });
-      qc.invalidateQueries({ queryKey: ["sample", sampleId] });
-      qc.invalidateQueries({ queryKey: ["samples"] });
-      qc.invalidateQueries({ queryKey: ["reports"] });
+    onMutate: () => setValidationErrors([]),
+    onSuccess: (errors) => {
+      setValidationErrors(errors);
+      refreshAfterValidation();
     },
   });
 
@@ -567,6 +579,22 @@ export default function SampleDetailPage() {
             }
           />
           <CardBody className="p-0">
+            {validationErrors.length > 0 && (
+              <div className="m-3 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+                <p className="font-semibold mb-1">
+                  {validationErrors.length === 1 ? "A result was" : `${validationErrors.length} results were`} not validated:
+                </p>
+                <ul className="list-disc pl-4 space-y-0.5">
+                  {validationErrors.map((e) => <li key={e}>{e}</li>)}
+                </ul>
+              </div>
+            )}
+            {/* Recognised result tokens, offered on every result box. */}
+            <datalist id="result-qualifier-options">
+              {qualifiers
+                .filter((q) => q.kind === "qualifier" && q.is_active)
+                .map((q) => <option key={q.id} value={q.code}>{q.label}</option>)}
+            </datalist>
             {resultsLoading ? (
               <div className="flex items-center justify-center py-10 text-gray-400">Loading...</div>
             ) : (
@@ -719,6 +747,13 @@ function ResultEntryRow({
   const remark = getRemark(item, draft);
   const isValidated = existingResult?.status === "validated";
   const isManualRemark = item.remark_rule === "manual";
+  // Typed something the evaluator can't read (e.g. "DETECTABLE" against "Not Detectable").
+  const unrecognised = !isManualRemark && !isValidated && !!value.trim() && remark.kind === "indeterminate";
+  // Validation is judged on what is saved, which the server re-checks.
+  const savedRemark = existingResult
+    ? getRemark(item, { result_value: existingResult.result_value ?? "", notes: "", remarks: storedRemark(existingResult) })
+    : null;
+  const validateBlocked = savedRemark?.kind === "indeterminate" || savedRemark?.kind === "not_tested";
 
   return (
     <tr className={`hover:bg-blue-50/50 transition-colors ${isValidated ? "bg-green-50/30" : ""}`}>
@@ -780,16 +815,23 @@ function ResultEntryRow({
       <td className="px-3 py-1 text-center">
         <input
           type="text"
+          list={isManualRemark ? undefined : "result-qualifier-options"}
           className={`w-full ${item.remark_rule === "manual" ? "max-w-[220px]" : "max-w-[100px]"} mx-auto px-2 py-1 text-center text-sm border rounded
             ${isValidated
               ? "bg-green-50 border-green-200 text-green-800 cursor-not-allowed"
-              : "border-gray-300 focus:border-primary-400 focus:ring-1 focus:ring-primary-400"
+              : unrecognised
+                ? "border-red-400 bg-red-50 text-red-800 focus:ring-1 focus:ring-red-400"
+                : "border-gray-300 focus:border-primary-400 focus:ring-1 focus:ring-primary-400"
             } outline-none`}
           value={value}
           onChange={(e) => onUpdate(item.id, "result_value", e.target.value)}
           placeholder={item.unit || "—"}
+          title={unrecognised ? "Not recognised — pick a value from the list or enter a number" : undefined}
           disabled={isValidated}
         />
+        {unrecognised && (
+          <p className="mt-0.5 text-[10px] text-red-600 leading-tight">Not recognised — pick from the list or enter a number</p>
+        )}
       </td>
 
       {/* Standard limit */}
@@ -846,8 +888,13 @@ function ResultEntryRow({
             ) : (existingResult.status === "completed" || existingResult.status === "in_progress") ? (
               <button
                 onClick={() => onValidate(existingResult.id)}
-                className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded hover:bg-blue-200 transition-colors"
-                title="Validate this result"
+                disabled={validateBlocked}
+                className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded hover:bg-blue-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-blue-100"
+                title={
+                  validateBlocked
+                    ? savedRemark?.advisory ?? "This result can't be evaluated yet — correct it and save first"
+                    : "Validate this result"
+                }
               >
                 Validate
               </button>

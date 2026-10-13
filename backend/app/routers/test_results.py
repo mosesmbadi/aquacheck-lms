@@ -8,13 +8,53 @@ from app.models.contract import Contract
 from app.models.sample import Sample, SampleStatus
 from app.models.test_result import TestResult, TestStatus
 from app.models.test_catalog import TestCatalogItem
+from app.models.result_qualifier import ResultQualifier, QualifierKind
 from app.schemas.test_result import TestResultCreate, TestResultUpdate, TestResultOut, UncertaintyResult, BulkResultCreate
 from app.services.access import customer_can_see_results, ensure_staff, is_customer
 from app.services.audit import log_action
+from app.services.compliance import RemarkKind, evaluate_item_remark
 from app.services.uncertainty import calculate_uncertainty
 from app.routers.inventory import deduct_reagents_for_test_result
 
 router = APIRouter(prefix="/test-results", tags=["Test Results"])
+
+
+def _validation_blocker(tr: TestResult, db: Session) -> Optional[str]:
+    """Why this result can't be validated yet, or None.
+
+    Evaluates the remark the way the printed report does (reports._result_sections), so
+    a validated result never reaches a report with a "—" where its conformity statement
+    should be (ISO/IEC 17025 §7.8.6)."""
+    if not tr.catalog_item_id:
+        return None  # legacy method-based result; no catalog limit to evaluate against
+    catalog = db.query(TestCatalogItem).filter(TestCatalogItem.id == tr.catalog_item_id).first()
+    if not catalog:
+        return None
+    raw = tr.raw_observations or {}
+    if catalog.remark_rule != "manual" and (raw.get("remarks") or raw.get("compliance")):
+        return None  # a stored remark overrides the derived one on the report
+    specification = (
+        raw.get("specification") or raw.get("standard_limit") or raw.get("limit")
+        or catalog.standard_limit or "—"
+    )
+    qualifiers = db.query(ResultQualifier).all()
+    remark = evaluate_item_remark(
+        catalog.remark_rule, specification, tr.result_value, qualifiers,
+        raw.get("remarks"), raw.get("who_limit") or catalog.who_limit,
+    )
+    if remark.kind == RemarkKind.not_tested:
+        return f"{catalog.name}: no result has been entered."
+    if remark.kind != RemarkKind.indeterminate:
+        return None
+    if catalog.remark_rule == "manual":
+        return f"{catalog.name}: enter the remark before validating."
+    codes = ", ".join(
+        q.code for q in qualifiers if q.kind == QualifierKind.qualifier and q.is_active
+    )
+    return (
+        f'{catalog.name}: the result "{tr.result_value}" can\'t be evaluated against '
+        f'"{specification}". Enter a number or one of: {codes}.'
+    )
 
 
 def _with_remarks(raw_observations: Optional[dict], remarks: str) -> dict:
@@ -148,12 +188,23 @@ def update_test_result(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Test result not found")
     had_value = bool(tr.result_value)
     update_data = payload.model_dump(exclude_unset=True)
+    if update_data.get("status") == TestStatus.validated and tr.status != TestStatus.validated:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Use the validate action to validate a result.",
+        )
     # If result_value is set, mark completed
     if "result_value" in update_data and update_data["result_value"] and tr.status == TestStatus.in_progress:
         tr.status = TestStatus.completed
         tr.completed_at = datetime.now(timezone.utc)
     for k, v in update_data.items():
         setattr(tr, k, v)
+    if tr.status == TestStatus.validated:
+        # An edit must not leave a validated result that the report can't evaluate.
+        blocker = _validation_blocker(tr, db)
+        if blocker:
+            db.rollback()
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=blocker)
     # Deduct reagents on first-time completion (value added)
     if not had_value and tr.result_value and tr.catalog_item_id:
         deduct_reagents_for_test_result(db, tr.id, tr.catalog_item_id, current_user.id)
@@ -176,6 +227,9 @@ def validate_test_result(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Test result not found")
     if tr.status not in [TestStatus.completed, TestStatus.in_progress]:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Test must be completed before validation")
+    blocker = _validation_blocker(tr, db)
+    if blocker:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=blocker)
     tr.status = TestStatus.validated
     tr.validated_by = current_user.id
     tr.validated_at = datetime.now(timezone.utc)
