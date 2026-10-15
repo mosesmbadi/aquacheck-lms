@@ -2,7 +2,7 @@
 
 export type TestCategory = "physicochemical" | "microbiological";
 
-export type SampleCategory = "dialysis" | "potable" | "waste" | "packaged_drinking_water" | "paint";
+export type SampleCategory = "dialysis" | "potable" | "waste" | "packaged_drinking_water" | "paint" | "swimming_pool";
 
 export type WaterType =
   | "dialysis_potable"
@@ -11,6 +11,7 @@ export type WaterType =
   | "potable_treated"
   | "packaged_drinking_water"
   | "paint"
+  | "swimming_pool"
   | "waste_1"
   | "waste_2"
   | "waste_3"

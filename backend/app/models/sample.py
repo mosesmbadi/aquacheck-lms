@@ -23,6 +23,9 @@ class SampleCategory(str, enum.Enum):
     # Paints, paint raw materials and plant-area swabs (ASTM D5588 / D4300) — rated, not
     # checked against a specification.
     paint = "paint"
+    # Swimming pools and similar recreational water — judged against the WHO Guidelines
+    # for Safe Recreational Water Environments, Vol. 2.
+    swimming_pool = "swimming_pool"
 
 
 class Sample(Base):

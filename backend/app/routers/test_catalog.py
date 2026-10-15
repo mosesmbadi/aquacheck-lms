@@ -572,6 +572,27 @@ PAINT_TESTS = [
 ]
 
 
+# ─── Swimming pools — WHO Guidelines for Safe Recreational Water Environments ─
+# Vol. 2: Swimming Pools and Similar Environments. Kept in the lab's report order.
+# Free chlorine and ORP are minimums — too little disinfectant is the failure.
+
+SWIMMING_POOL_TESTS = [
+    # ── Physicochemical ──────────────────────────────────────────────────────
+    {"name": "pH", "category": "physicochemical", "unit": "", "method_name": "Direct Method", "standard_limit": "7.2 – 7.8", "sort_order": 10},
+    {"name": "Turbidity NTU", "category": "physicochemical", "unit": "NTU", "method_name": "Absorptometric Method: 8237", "standard_limit": "0.5", "sort_order": 20},
+    {"name": "Free Chlorine mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "DPD Method: 8021", "standard_limit": "≥ 1", "sort_order": 30},
+    {"name": "Combined Chlorine mg/L", "category": "physicochemical", "unit": "mg/L", "method_name": "DPD Method: 8167 (Total − Free)", "standard_limit": "0.2", "sort_order": 40},
+    {"name": "Oxidation Reduction Potential (ORP) mV", "category": "physicochemical", "unit": "mV", "method_name": "Direct Method", "standard_limit": "≥ 720", "sort_order": 50},
+    # ── Microbiological ──────────────────────────────────────────────────────
+    {"name": "E.coli CFU/100ml sample", "category": "microbiological", "unit": "CFU/100mL", "method_name": "KS ISO 9308-1:2014", "standard_limit": "< 1", "sort_order": 60},
+    {"name": "Total Coliforms CFU/100ml sample", "category": "microbiological", "unit": "CFU/100mL", "method_name": "KS ISO 9308-1:2014", "standard_limit": "< 1", "sort_order": 70},
+    {"name": "Heterotrophic Plate Count CFU/ml at 37°C", "category": "microbiological", "unit": "CFU/mL", "method_name": "KS ISO 6222:1999", "standard_limit": "< 200", "sort_order": 80},
+    {"name": "Pseudomonas aeruginosa CFU/100ml sample", "category": "microbiological", "unit": "CFU/100mL", "method_name": "KS ISO 16266:2006", "standard_limit": "< 1", "sort_order": 90},
+    {"name": "Staphylococcus aureus CFU/100ml sample", "category": "microbiological", "unit": "CFU/100mL", "method_name": "KS ISO 6888-1:2021", "standard_limit": "< 100", "sort_order": 100},
+    {"name": "Legionella spp CFU/100ml sample", "category": "microbiological", "unit": "CFU/100mL", "method_name": "ISO 11731", "standard_limit": "< 1", "sort_order": 110},
+]
+
+
 _CHLORINE_NAMES = {"Free Chlorine mg/L", "Total Chlorine mg/L", "Chloramine as Cl₂ mg/L"}
 
 
@@ -692,9 +713,10 @@ def default_sort_order(name: str, current: int = 0) -> int:
 
 
 def _uses_default_order(water_type) -> bool:
-    # Waste schedules follow NEMA order; paint tests have their own short list.
+    # Waste schedules follow NEMA order; paint and swimming-pool tests have their own
+    # short lists.
     wt = str(water_type or "")
-    return not wt.startswith("waste_") and wt != "paint"
+    return not wt.startswith("waste_") and wt not in ("paint", "swimming_pool")
 
 
 def apply_default_report_order(db: Session) -> int:
@@ -729,6 +751,7 @@ def seed_catalog(db: Session) -> int:
         + [{**item, "water_type": "packaged_drinking_water"} for item in PACKAGED_DRINKING_WATER_TESTS]
         + WASTE_SCHEDULE_TESTS
         + [{**item, "water_type": "paint"} for item in PAINT_TESTS]
+        + [{**item, "water_type": "swimming_pool"} for item in SWIMMING_POOL_TESTS]
     )
     added = 0
     for item in all_items:

@@ -1,6 +1,7 @@
 import os
 import uuid
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
@@ -71,13 +72,28 @@ _SEED_DATA = [
 ]
 
 
+_SEED_CODES = {entry["code"] for entry in _SEED_DATA}
+
+
+def _get_live_document(db: Session, document_id: int) -> Document:
+    doc = (
+        db.query(Document)
+        .filter(Document.id == document_id, Document.deleted_at.is_(None))
+        .first()
+    )
+    if not doc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+    return doc
+
+
 def seed_documents(db: Session) -> int:
     added = 0
     for entry in _SEED_DATA:
         doc = db.query(Document).filter(Document.code == entry["code"]).first()
         if doc:
-            # Re-extract content if empty (e.g. after a DB reset)
-            if not doc.content:
+            # A soft-deleted row means an admin removed it — don't bring it back.
+            # Otherwise re-extract content if empty (e.g. after a DB reset)
+            if doc.deleted_at is None and not doc.content:
                 docx_path = os.path.join(DOCS_SOURCE, entry["source"])
                 if os.path.exists(docx_path):
                     doc.content = extract_sections(docx_path)
@@ -113,8 +129,13 @@ def create_document(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
-    if db.query(Document).filter(Document.code == payload.code).first():
-        raise HTTPException(status_code=400, detail="A document with this code already exists.")
+    existing = db.query(Document).filter(Document.code == payload.code).first()
+    if existing:
+        if existing.deleted_at is None:
+            raise HTTPException(status_code=400, detail="A document with this code already exists.")
+        # Reusing the code of a deleted seeded document — drop the tombstone row
+        db.delete(existing)
+        db.flush()
     content = [s.model_dump() for s in payload.content] if payload.content else []
     doc = Document(
         code=payload.code,
@@ -140,9 +161,7 @@ async def upload_document_file(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
-    doc = db.query(Document).filter(Document.id == document_id).first()
-    if not doc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+    doc = _get_live_document(db, document_id)
 
     ext = Path(file.filename or "").suffix.lower()
     if ext not in (".pdf", ".docx"):
@@ -185,7 +204,7 @@ def list_documents(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    q = db.query(Document)
+    q = db.query(Document).filter(Document.deleted_at.is_(None))
     if category:
         q = q.filter(Document.category == category)
     return q.order_by(Document.code).all()
@@ -197,9 +216,7 @@ def get_document(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    doc = db.query(Document).filter(Document.id == document_id).first()
-    if not doc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+    doc = _get_live_document(db, document_id)
     return doc
 
 
@@ -211,9 +228,7 @@ def get_document_pdf(
     _: User = Depends(get_current_user),
 ):
     """Stream a PDF for inline preview or download. Serves uploaded file if present."""
-    doc = db.query(Document).filter(Document.id == document_id).first()
-    if not doc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+    doc = _get_live_document(db, document_id)
 
     if doc.uploaded_file and os.path.exists(doc.uploaded_file):
         with open(doc.uploaded_file, "rb") as f:
@@ -253,9 +268,7 @@ def remove_document_file(
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
     """Detach a wrongly uploaded PDF; the document falls back to its written content."""
-    doc = db.query(Document).filter(Document.id == document_id).first()
-    if not doc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+    doc = _get_live_document(db, document_id)
     _remove_uploaded_file(doc)
     db.commit()
     db.refresh(doc)
@@ -269,18 +282,14 @@ def delete_document(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
-    doc = db.query(Document).filter(Document.id == document_id).first()
-    if not doc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
-    # The seeded SOPs and master lists are re-created on every startup, so deleting one
-    # would not stick. Their uploaded file can still be removed or replaced.
-    if any(entry["code"] == doc.code for entry in _SEED_DATA):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="This controlled document can't be deleted. Remove or replace its uploaded file instead.",
-        )
+    doc = _get_live_document(db, document_id)
     _remove_uploaded_file(doc)
-    db.delete(doc)
+    if doc.code in _SEED_CODES:
+        # Seeded SOPs/master lists are re-created on startup when missing, so keep the
+        # row as a tombstone instead of deleting it.
+        doc.deleted_at = datetime.now(timezone.utc)
+    else:
+        db.delete(doc)
     db.commit()
     log_action(db, current_user.id, "DELETE_DOCUMENT", "document", str(document_id))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -293,9 +302,7 @@ def update_document(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
-    doc = db.query(Document).filter(Document.id == document_id).first()
-    if not doc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+    doc = _get_live_document(db, document_id)
 
     update_data = payload.model_dump(exclude_unset=True)
     if "content" in update_data and update_data["content"] is not None:

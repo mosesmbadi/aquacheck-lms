@@ -19,6 +19,7 @@ import {
   Building2,
   AlertCircle,
   PaintBucket,
+  LifeBuoy,
 } from "lucide-react";
 import { CustomerSearch } from "@/components/ui/CustomerSearch";
 
@@ -30,6 +31,7 @@ const SAMPLE_CATEGORIES = [
   { value: "waste", label: "Waste Water", icon: Factory, color: "orange" },
   { value: "packaged_drinking_water", label: "Packaged Drinking Water", icon: FlaskConical, color: "purple" },
   { value: "paint", label: "Paints & Industrial Products", icon: PaintBucket, color: "rose" },
+  { value: "swimming_pool", label: "Swimming Pool Water", icon: LifeBuoy, color: "cyan" },
 ] as const;
 
 const DISCHARGE_DESTINATIONS = [
@@ -60,6 +62,7 @@ function getWaterType(category: string, potableType?: string | null): string {
   }
   if (category === "packaged_drinking_water") return "packaged_drinking_water";
   if (category === "paint") return "paint";
+  if (category === "swimming_pool") return "swimming_pool";
   return "";
 }
 
@@ -78,7 +81,7 @@ const schema = z
       (v) => (v === "" || v === null || v === undefined ? undefined : v),
       z.coerce.number().int().positive().optional()
     ),
-    sample_category: z.enum(["dialysis", "potable", "waste", "packaged_drinking_water", "paint"], {
+    sample_category: z.enum(["dialysis", "potable", "waste", "packaged_drinking_water", "paint", "swimming_pool"], {
       required_error: "Sample category is required",
     }),
     potable_type: z.enum(["natural", "treated"]).optional().nullable(),
@@ -348,6 +351,9 @@ function CategoryCard({
     rose: selected
       ? "border-rose-500 bg-rose-50 text-rose-700"
       : "border-gray-200 hover:border-rose-300 hover:bg-rose-50 text-gray-600",
+    cyan: selected
+      ? "border-cyan-500 bg-cyan-50 text-cyan-700"
+      : "border-gray-200 hover:border-cyan-300 hover:bg-cyan-50 text-gray-600",
   } as const;
 
   return (

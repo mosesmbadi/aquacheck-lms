@@ -104,11 +104,13 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
 
   // Layout options: a value stored on the report wins, else the client's default
   // (issuing the report stores the resolved value). WHO drinking-water guidelines mean
-  // nothing for effluent or paint, and a paint report's remarks are its ratings.
+  // nothing for effluent or paint, and a paint report's remarks are its ratings. A
+  // swimming-pool report's specification already is the WHO recreational-water guideline.
   const category = sample?.sample_category;
   const showWho =
     category !== "waste" &&
     category !== "paint" &&
+    category !== "swimming_pool" &&
     (typeof rc.show_who_limits === "boolean" ? rc.show_who_limits : !!customer?.report_show_who);
   const showRemarks =
     category === "paint" ||
@@ -221,6 +223,7 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
 
   const isWaste = sample.sample_category === "waste";
   const isPackaged = sample.sample_category === "packaged_drinking_water";
+  const isSwimmingPool = sample.sample_category === "swimming_pool";
   // Paint reports are rated, not judged against a specification: no limit column,
   // no conformity statement.
   const isPaint = sample.sample_category === "paint";
@@ -243,7 +246,7 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
       ]
     : [
         ...legendEntries(qualifiers, isWaste).map((q) => ({ code: q.code, label: q.label })),
-        ...(showWho && !qualifiers.some((q) => q.code.toUpperCase() === "WHO")
+        ...((showWho || isSwimmingPool) && !qualifiers.some((q) => q.code.toUpperCase() === "WHO")
           ? [{ code: "WHO", label: "World Health Organization" }]
           : []),
       ];
@@ -276,6 +279,11 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
   } else if (isPackaged) {
     specHeader = "KS EAS 12:2018\nPackaged Drinking Water Limit";
     scheduleContext = "KS EAS 12:2018 specifications for packaged drinking water";
+  } else if (isSwimmingPool) {
+    specHeader =
+      rc.specification_title ||
+      "W.H.O Guidelines for Safe Recreational Water Environments;\nVolume 2 Swimming Pools & Similar Environments.";
+    scheduleContext = "W.H.O. guidelines for safe recreational water, swimming pools, and similar environments";
   } else {
     const potableLabel = isNaturalPotable ? "Natural Potable Water" : "Treated Potable Water";
     specHeader = rc.specification_title || `KS EAS 12:2018\n${potableLabel} Limit`;
@@ -551,7 +559,11 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
                   : !showRemarks
                     ? <p>{NO_REMARKS_COMMENT}</p>
                   : hasNonCompliant
-                    ? isWaste
+                    // Pool limits include minimums (free chlorine, ORP), so "exceeded"
+                    // would misstate a too-low result.
+                    ? isSwimmingPool
+                      ? <p>The sample does not comply with {scheduleContext}. The parameters; {nonCompliantItems.map((i) => i.name).join(", ")} do not meet the set limits. Corrective treatment of the pool water is therefore recommended.</p>
+                    : isWaste
                       ? <p>The parameters; {nonCompliantItems.map((i) => i.name).join(", ")} do not meet the set specifications for {scheduleContext}. Treatment is therefore recommended.</p>
                       : <p>The sample does not comply with {scheduleContext}. The {nonCompliantItems.map((i) => i.name).join(", ")} exceeded the set limit. {isNaturalPotable ? "Treatment" : "Further treatment"} is therefore recommended.</p>
                     : evaluatedCount > 0

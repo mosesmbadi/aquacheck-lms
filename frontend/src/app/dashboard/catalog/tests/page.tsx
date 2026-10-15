@@ -25,6 +25,7 @@ const WATER_TYPE_OPTIONS = [
   { value: "potable_treated",         label: "Treated Potable Water" },
   { value: "packaged_drinking_water", label: "Packaged Drinking Water" },
   { value: "paint",                   label: "Paints & Industrial Products" },
+  { value: "swimming_pool",           label: "Swimming Pool Water" },
   { value: "waste_1",                 label: "Waste Water (Schedule 1)" },
   { value: "waste_2",                 label: "Waste Water (Schedule 2)" },
   { value: "waste_3",                 label: "Waste Water (Schedule 3)" },
@@ -75,7 +76,7 @@ const CATEGORY_LABELS: Record<TestCategory, string> = {
   microbiological: "Microbiological",
 };
 
-type WaterTypeFilter = "all" | "dialysis" | "waste_water" | "packaged_drinking_water" | "potable" | "paint";
+type WaterTypeFilter = "all" | "dialysis" | "waste_water" | "packaged_drinking_water" | "potable" | "paint" | "swimming_pool";
 
 const WATER_TYPE_FILTERS: { value: WaterTypeFilter; label: string }[] = [
   { value: "all",                      label: "All Water Types" },
@@ -84,6 +85,7 @@ const WATER_TYPE_FILTERS: { value: WaterTypeFilter; label: string }[] = [
   { value: "packaged_drinking_water",  label: "Packaged Drinking Water" },
   { value: "potable",                  label: "Potable Water" },
   { value: "paint",                    label: "Paints & Industrial" },
+  { value: "swimming_pool",            label: "Swimming Pool Water" },
 ];
 
 function matchesWaterType(waterType: string | undefined | null, filter: WaterTypeFilter): boolean {
@@ -94,6 +96,7 @@ function matchesWaterType(waterType: string | undefined | null, filter: WaterTyp
   if (filter === "packaged_drinking_water") return wt === "packaged_drinking_water";
   if (filter === "potable")                 return wt.startsWith("potable");
   if (filter === "paint")                   return wt === "paint";
+  if (filter === "swimming_pool")           return wt === "swimming_pool";
   return false;
 }
 

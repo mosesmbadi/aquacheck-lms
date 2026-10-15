@@ -16,6 +16,7 @@ const CATEGORY_WATER_TYPES: Record<string, WaterType[]> = {
   potable: ["potable_natural", "potable_treated", "potable"],
   packaged_drinking_water: ["packaged_drinking_water"],
   paint: ["paint"],
+  swimming_pool: ["swimming_pool"],
 };
 
 function wasteWaterTypes(sample: Sample): WaterType[] {
