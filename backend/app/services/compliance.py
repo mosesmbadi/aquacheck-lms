@@ -22,6 +22,22 @@ _NO_STANDARD = {"", "-", "—", "–", "n/a", "na", "ns", "none", "no set standa
 _RANGE_RE = re.compile(r"^\s*([\d.]+)\s*[–\-]\s*([\d.]+)\s*$")
 # Leading comparator and trailing unit are tolerated: "≤ 100", "< 0.5", "100 mg/L".
 _NUMBER_RE = re.compile(r"-?\d+(?:\.\d+)?")
+# A bare number is a maximum. "≥ 720" is a minimum (ORP, free chlorine); "< 1" excludes
+# the limit itself.
+_COMPARATOR_RE = re.compile(r"^\s*(≥|>=|>|≤|<=|<)")
+_COMPARE = {
+    "≤": lambda n, lim: n <= lim,
+    "<=": lambda n, lim: n <= lim,
+    "<": lambda n, lim: n < lim,
+    "≥": lambda n, lim: n >= lim,
+    ">=": lambda n, lim: n >= lim,
+    ">": lambda n, lim: n > lim,
+}
+
+
+def _limit_comparator(limit: str) -> str:
+    match = _COMPARATOR_RE.match(limit)
+    return match.group(1) if match else "≤"
 
 
 def _norm(value: Optional[str]) -> str:
@@ -173,10 +189,12 @@ def evaluate_remark(
         return _REMARKS[RemarkKind.compliant if number == 0 else RemarkKind.non_compliant]
 
     # Quantitative limits from here on: resolve the result to a number.
+    comparator = _limit_comparator(limit)
     if result_q is not None:
         if result_q.exceeds_limit:
             # TNTC and friends are above any finite limit by definition.
-            return _REMARKS[RemarkKind.non_compliant]
+            is_minimum = comparator in ("≥", ">=", ">")
+            return _REMARKS[RemarkKind.compliant if is_minimum else RemarkKind.non_compliant]
         number = result_q.numeric_equivalent
     else:
         number = _to_float(value)
@@ -195,7 +213,7 @@ def evaluate_remark(
     limit_number = _to_float(limit)
     if limit_number is None:
         return _REMARKS[RemarkKind.indeterminate]
-    ok = number <= limit_number
+    ok = _COMPARE[comparator](number, limit_number)
     return _REMARKS[RemarkKind.compliant if ok else RemarkKind.non_compliant]
 
 

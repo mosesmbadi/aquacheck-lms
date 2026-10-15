@@ -18,6 +18,18 @@ const NO_STANDARD = new Set(["", "-", "—", "–", "n/a", "na", "ns", "none", "
 const RANGE_RE = /^\s*([\d.]+)\s*[–-]\s*([\d.]+)\s*$/;
 /** Leading comparator and trailing unit are tolerated: "≤ 100", "< 0.5", "100 mg/L". */
 const NUMBER_RE = /-?\d+(?:\.\d+)?/;
+/** A bare number is a maximum. "≥ 720" is a minimum (ORP, free chlorine); "< 1" excludes the limit itself. */
+const COMPARATOR_RE = /^\s*(≥|>=|>|≤|<=|<)/;
+const COMPARE: Record<string, (n: number, limit: number) => boolean> = {
+  "≤": (n, limit) => n <= limit,
+  "<=": (n, limit) => n <= limit,
+  "<": (n, limit) => n < limit,
+  "≥": (n, limit) => n >= limit,
+  ">=": (n, limit) => n >= limit,
+  ">": (n, limit) => n > limit,
+};
+
+const limitComparator = (limit: string) => COMPARATOR_RE.exec(limit)?.[1] ?? "≤";
 
 const norm = (value?: string | null) => (value ?? "").trim().toLowerCase();
 
@@ -147,10 +159,14 @@ export function evaluateRemark(
   }
 
   // Quantitative limits from here on: resolve the result to a number.
+  const comparator = limitComparator(limit);
   let number: number | null;
   if (resultQ) {
     // TNTC and friends are above any finite limit by definition.
-    if (resultQ.exceeds_limit) return REMARKS.non_compliant;
+    if (resultQ.exceeds_limit) {
+      const isMinimum = comparator === "≥" || comparator === ">=" || comparator === ">";
+      return isMinimum ? REMARKS.compliant : REMARKS.non_compliant;
+    }
     number = resultQ.numeric_equivalent ?? null;
   } else {
     number = toNumber(value);
@@ -170,7 +186,7 @@ export function evaluateRemark(
 
   const limitNumber = toNumber(limit);
   if (limitNumber === null) return REMARKS.indeterminate;
-  return number <= limitNumber ? REMARKS.compliant : REMARKS.non_compliant;
+  return COMPARE[comparator](number, limitNumber) ? REMARKS.compliant : REMARKS.non_compliant;
 }
 
 // Contamination rating scale (lab work instruction, ASTM D5588), by colony count.

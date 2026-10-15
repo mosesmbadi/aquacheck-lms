@@ -138,6 +138,18 @@ def _is_paint(sample) -> bool:
     return getattr(category, "value", category) == "paint"
 
 
+def _is_swimming_pool(sample) -> bool:
+    category = getattr(sample, "sample_category", None) if sample else None
+    return getattr(category, "value", category) == "swimming_pool"
+
+
+SWIMMING_POOL_SPEC_HEADER = (
+    "W.H.O Guidelines for Safe Recreational Water Environments;\n"
+    "Volume 2 Swimming Pools & Similar Environments."
+)
+SWIMMING_POOL_CONTEXT = "W.H.O. guidelines for safe recreational water, swimming pools, and similar environments"
+
+
 WHO_SPEC_HEADER = "W.H.O\nStandard\nLimit"
 WHO_LEGEND = ("WHO", "World Health Organization")
 NO_REMARKS_COMMENT = "The level of each parameter is shown in the RESULTS table above for the water submitted to the lab."
@@ -150,7 +162,8 @@ def report_options(content: dict, customer, sample):
     a report writes the resolved values onto it, so changing a client's defaults later
     never alters a report already issued. WHO drinking-water guidelines mean nothing for
     effluent or paint, and a paint report's remarks are its ratings, so neither option
-    applies to those."""
+    applies to those. A swimming-pool report's specification already is the WHO
+    (recreational water) guideline, so it gets no second WHO column."""
     content = content or {}
     category = getattr(sample, "sample_category", None) if sample else None
     category = getattr(category, "value", category)
@@ -161,7 +174,7 @@ def report_options(content: dict, customer, sample):
             return value
         return bool(getattr(customer, customer_attr, False)) if customer else False
 
-    show_who = category not in ("waste", "paint") and _option("show_who_limits", "report_show_who")
+    show_who = category not in ("waste", "paint", "swimming_pool") and _option("show_who_limits", "report_show_who")
     hide_remarks = category != "paint" and _option("hide_remarks", "report_hide_remarks")
     return show_who, not hide_remarks
 
@@ -200,7 +213,7 @@ def _remarks_para(remarks, style):
 
 
 def _auto_comment(sample, result_sections):
-    if not sample or not sample.waste_schedule:
+    if not sample or not (sample.waste_schedule or _is_swimming_pool(sample)):
         return None
     non_compliant = [
         row.get("parameter", "")
@@ -222,6 +235,14 @@ def _auto_comment(sample, result_sections):
         if untested
         else ""
     )
+    if _is_swimming_pool(sample):
+        if not non_compliant:
+            return f"All tested parameters comply with {SWIMMING_POOL_CONTEXT}." + gap
+        return (
+            f"The sample does not comply with {SWIMMING_POOL_CONTEXT}. The parameters; "
+            f"{', '.join(p for p in non_compliant if p)} do not meet the set limits. "
+            "Corrective treatment of the pool water is therefore recommended." + gap
+        )
     if not non_compliant:
         return (
             f"All tested parameters comply with the applicable NEMA schedule "
@@ -281,7 +302,11 @@ def _result_sections(test_results, content: dict, sample=None, catalog_by_id=Non
 
     catalog_by_id = catalog_by_id or {}
     waste_schedule = getattr(sample, "waste_schedule", None) if sample else None
-    default_spec_header = _SCHEDULE_SPEC_HEADERS.get(waste_schedule, "SPECIFICATION")
+    default_spec_header = (
+        SWIMMING_POOL_SPEC_HEADER
+        if _is_swimming_pool(sample)
+        else _SCHEDULE_SPEC_HEADERS.get(waste_schedule, "SPECIFICATION")
+    )
 
     is_paint = _is_paint(sample)
     sections = OrderedDict()
@@ -816,7 +841,9 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
         story.append(Paragraph("No analytical results are linked to this report yet.", styles["Normal"]))
 
     legend_note = _content_value(content, "ns_definition", None) or (
-        _paint_legend_note(qualifiers, result_sections) if is_paint else _legend_note(qualifiers, waste_schedule, show_who)
+        _paint_legend_note(qualifiers, result_sections) if is_paint
+        # The swimming-pool specification is a WHO guideline, so WHO is always on it.
+        else _legend_note(qualifiers, waste_schedule, show_who or _is_swimming_pool(sample))
     )
     story.append(Spacer(1, 0.2 * cm))
     if legend_note:

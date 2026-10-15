@@ -41,15 +41,11 @@ const STATIC_MASTERLISTS: Document[] = [
   { id: 0, code: "AQCMSTR04", title: "Master List of SOPs",               category: "masterlist", version: "1.0", status: "active", content: [], created_at: "", updated_at: "" },
 ];
 
-// Seeded controlled documents are re-created on startup, so they can't be deleted —
-// only their uploaded file can be removed or replaced.
-const SEEDED_CODES = new Set([...STATIC_SOPS, ...STATIC_MASTERLISTS].map((d) => d.code));
-
+// Keeps the static catalogue order, dropping entries the API no longer returns (deleted).
 function mergeWithApi(staticList: Document[], apiList: Document[]): Document[] {
-  if (!apiList.length) return staticList;
   const byCode = Object.fromEntries(apiList.map((d) => [d.code, d]));
   const staticCodes = new Set(staticList.map((s) => s.code));
-  const merged = staticList.map((s) => byCode[s.code] ?? s);
+  const merged = staticList.filter((s) => byCode[s.code]).map((s) => byCode[s.code]);
   const apiOnly = apiList.filter((d) => !staticCodes.has(d.code));
   return [...merged, ...apiOnly];
 }
@@ -556,7 +552,7 @@ function DocumentCard({ doc, isAdmin }: { doc: Document; isAdmin: boolean }) {
     onError: (err) => setActionError(errorDetail(err, "Could not remove the uploaded file.")),
   });
 
-  const canDelete = isAdmin && doc.id !== 0 && !SEEDED_CODES.has(doc.code);
+  const canDelete = isAdmin && doc.id !== 0;
 
   function handleDelete() {
     if (window.confirm(`Delete ${doc.code} — ${doc.title}? This cannot be undone.`)) deleteMutation.mutate();
@@ -788,12 +784,15 @@ function DocumentCard({ doc, isAdmin }: { doc: Document; isAdmin: boolean }) {
 
 function DocumentList({ staticDocs, isAdmin, category: catOverride }: { staticDocs: Document[]; isAdmin: boolean; category?: string }) {
   const category = (catOverride ?? staticDocs[0]?.category) as import("@/lib/types").DocumentCategory | undefined;
-  const { data: apiDocs = [] } = useQuery({
+  const { data: apiDocs, isSuccess } = useQuery({
     queryKey: ["documents", category],
     queryFn: () => documentsApi.list(category).then((r) => r.data),
     retry: false,
   });
-  const docs = staticDocs.length > 0 ? mergeWithApi(staticDocs, apiDocs) : apiDocs;
+  // Static catalogue is only a placeholder while loading or when the backend is offline
+  const docs = isSuccess
+    ? (staticDocs.length > 0 ? mergeWithApi(staticDocs, apiDocs) : apiDocs)
+    : staticDocs;
   if (docs.length === 0) {
     return <p className="text-sm text-gray-400 italic py-4">No documents in this category yet.</p>;
   }

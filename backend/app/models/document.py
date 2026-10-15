@@ -33,6 +33,8 @@ class Document(Base):
     content = Column(JSON, default=list, nullable=False)
     # Path to an uploaded PDF file (served directly instead of generating from content)
     uploaded_file = Column(String, nullable=True)
+    # Set when a seeded document is deleted; the row is kept so the seeder doesn't re-create it
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(
         DateTime(timezone=True),

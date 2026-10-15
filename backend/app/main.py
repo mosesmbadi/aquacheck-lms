@@ -198,6 +198,21 @@ def ensure_schema_compatibility():
             ))
             print("[LIMS] Added documents.uploaded_file column.")
 
+        # documents.deleted_at — soft-delete marker so deleted seeded docs aren't re-created
+        doc_deleted_at_exists = connection.execute(
+            text(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'documents' AND column_name = 'deleted_at'
+                """
+            )
+        ).scalar()
+        if not doc_deleted_at_exists:
+            connection.execute(text(
+                "ALTER TABLE documents ADD COLUMN deleted_at TIMESTAMP WITH TIME ZONE"
+            ))
+            print("[LIMS] Added documents.deleted_at column.")
+
         # users.customer_id — link customer-role users to a customer
         user_cust_exists = connection.execute(
             text(
@@ -468,6 +483,17 @@ def ensure_schema_compatibility():
         if not paint_exists:
             connection.execute(text("ALTER TYPE samplecategory ADD VALUE IF NOT EXISTS 'paint'"))
             print("[LIMS] Added 'paint' to samplecategory enum.")
+
+        # Extend samplecategory enum with swimming_pool (recreational water, WHO Vol. 2)
+        pool_exists = connection.execute(
+            text(
+                "SELECT 1 FROM pg_enum e JOIN pg_type t ON e.enumtypid = t.oid "
+                "WHERE t.typname = 'samplecategory' AND e.enumlabel = 'swimming_pool'"
+            )
+        ).scalar()
+        if not pool_exists:
+            connection.execute(text("ALTER TYPE samplecategory ADD VALUE IF NOT EXISTS 'swimming_pool'"))
+            print("[LIMS] Added 'swimming_pool' to samplecategory enum.")
 
         # test_catalog.section / remark_rule / who_limit — custom report section, remark
         # logic and the WHO guideline value printed for international clients
