@@ -121,6 +121,39 @@ def delete_user(
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if user.id == current_user.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot delete your own account")
+    if user.report_signatory:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"{user.full_name} is a report signatory. Assign someone else to that slot before deleting.",
+        )
+    # Only accounts with no activity (e.g. created by mistake) can be removed. Anyone who
+    # has logged in or touched a record stays, so the audit trail keeps pointing at a
+    # real person — ISO 17025 needs to show who did what; deactivate those instead.
+    referenced_in = _tables_referencing_user(db, user.id)
+    if referenced_in:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"{user.full_name} has activity on record ({', '.join(referenced_in)}), so the account "
+                "can't be deleted without breaking the audit trail. Untick \"Account is active\" instead."
+            ),
+        )
+    email = user.email
     db.delete(user)
     db.commit()
-    log_action(db, current_user.id, "DELETE_USER", "user", str(user_id))
+    log_action(db, current_user.id, "DELETE_USER", "user", str(user_id), old_value={"email": email})
+
+
+def _tables_referencing_user(db: Session, user_id: int) -> List[str]:
+    """Names of tables holding at least one row whose foreign key points at this user."""
+    found = []
+    for table in User.metadata.sorted_tables:
+        for fk in table.foreign_keys:
+            if fk.column.table.name != User.__tablename__:
+                continue
+            if db.query(fk.parent).filter(fk.parent == user_id).first() is not None:
+                found.append(table.name.replace("_", " "))
+                break
+    return found
