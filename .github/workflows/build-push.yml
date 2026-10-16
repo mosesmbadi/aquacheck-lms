@@ -1,0 +1,66 @@
+name: Build and push images
+
+# Builds the backend and frontend images and pushes them to Docker Hub. Deployment
+# (pulling the images and restarting containers on the server) is handled by the
+# chakula_deployment repo.
+#
+# Repository secrets (Settings → Secrets and variables → Actions):
+#   DOCKERHUB_USERNAME   Docker Hub account that owns the image repos
+#   DOCKERHUB_TOKEN      Docker Hub access token with read/write scope
+#
+# Repository variables (optional):
+#   NEXT_PUBLIC_API_URL  baked into the frontend bundle at build time;
+#                        defaults to https://lims.aquachecklab.com/api
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: build-push-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: backend
+            context: ./backend
+            image: aquacheck-backend
+          - name: frontend
+            context: ./frontend
+            image: aquacheck-frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=sha-
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL || 'https://lims.aquachecklab.com/api' }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
