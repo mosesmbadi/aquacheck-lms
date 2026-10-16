@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, ToggleLeft, ToggleRight, Pencil, Upload, X, Download } from "lucide-react";
+import { Plus, ToggleLeft, ToggleRight, Pencil, Upload, X, Download, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/Button";
@@ -257,6 +257,17 @@ export default function AdminPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["users"] }); closeEdit(); },
   });
 
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => usersApi.delete(id),
+    onMutate: () => setDeleteError(null),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["users"] }); closeEdit(); },
+    onError: (err: unknown) => {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setDeleteError(detail ?? "Could not delete this user. Please try again.");
+    },
+  });
+
   const toggleMutation = useMutation({
     mutationFn: ({ id, is_active }: { id: number; is_active: boolean }) =>
       usersApi.update(id, { is_active }),
@@ -278,6 +289,7 @@ export default function AdminPage() {
     setEditingUser(user);
     setPendingSignature(null);
     setSignatureError(null);
+    setDeleteError(null);
     resetEdit({
       full_name: user.full_name,
       job_title: user.job_title ?? "",
@@ -292,6 +304,7 @@ export default function AdminPage() {
     setEditingUser(null);
     setPendingSignature(null);
     setSignatureError(null);
+    setDeleteError(null);
     resetEdit();
   }
 
@@ -529,7 +542,24 @@ export default function AdminPage() {
               </div>
             </div>
 
+            {deleteError && <p className="text-xs text-red-500">{deleteError}</p>}
             <div className="flex gap-3 justify-end pt-2">
+              {editingUser.id !== currentUser?.id && (
+                <Button
+                  type="button"
+                  variant="danger"
+                  className="mr-auto gap-1.5"
+                  loading={deleteMutation.isPending}
+                  onClick={() => {
+                    if (confirm(`Delete ${editingUser.full_name} (${editingUser.email})? This cannot be undone.`)) {
+                      deleteMutation.mutate(editingUser.id);
+                    }
+                  }}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Delete User
+                </Button>
+              )}
               <Button type="button" variant="secondary" onClick={closeEdit}>Cancel</Button>
               <Button type="submit" loading={updateMutation.isPending} disabled={!editIsValid}>Save Changes</Button>
             </div>

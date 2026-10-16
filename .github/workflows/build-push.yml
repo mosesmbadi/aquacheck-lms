@@ -1,12 +1,17 @@
-name: Build and push images
+name: Build, push and deploy
 
-# Builds the backend and frontend images and pushes them to Docker Hub. Deployment
-# (pulling the images and restarting containers on the server) is handled by the
-# chakula_deployment repo.
+# Builds the backend and frontend images, pushes them to Docker Hub, then SSHes into
+# the server and restarts the AquaCheck services from the chakula_deployment checkout
+# (which owns docker-compose.yml, Caddy and the env files).
 #
 # Repository secrets (Settings → Secrets and variables → Actions):
 #   DOCKERHUB_USERNAME   Docker Hub account that owns the image repos
 #   DOCKERHUB_TOKEN      Docker Hub access token with read/write scope
+#   SSH_HOST             server IP or hostname
+#   SSH_USER             e.g. chakula
+#   SSH_PRIVATE_KEY      private key whose public half is in the server's ~/.ssh/authorized_keys
+#   SSH_PORT             optional, defaults to 22
+#   DEPLOY_PATH          chakula_deployment directory on the server, e.g. /home/chakula/chakula_deployment
 #
 # Repository variables (optional):
 #   NEXT_PUBLIC_API_URL  baked into the frontend bundle at build time;
@@ -18,9 +23,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# A newer push waits for the running one instead of cancelling it mid-deploy.
 concurrency:
-  group: build-push-${{ github.ref }}
-  cancel-in-progress: true
+  group: build-push-deploy-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build-push:
@@ -65,3 +71,33 @@ jobs:
             NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL || 'https://lims.aquachecklab.com' }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+  deploy:
+    needs: build-push
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Pull images and restart AquaCheck on the server
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          script: |
+            set -euo pipefail
+            cd "${{ secrets.DEPLOY_PATH }}"
+
+            echo "→ Pulling AquaCheck images..."
+            docker compose pull aquacheck_migrations aquacheck_backend aquacheck_frontend
+
+            # Only the AquaCheck services are touched; the other apps and Caddy keep running.
+            # The backend waits for migrations to finish before it starts.
+            echo "→ Running migrations and restarting AquaCheck..."
+            docker compose up -d aquacheck_migrations aquacheck_backend aquacheck_frontend
+
+            echo "→ Removing dangling images..."
+            docker image prune -f
+
+            docker compose ps aquacheck_backend aquacheck_frontend
+            echo "✓ AquaCheck deployed (${{ github.sha }})"
