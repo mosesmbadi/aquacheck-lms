@@ -66,9 +66,9 @@ export function Sidebar() {
     href === "/dashboard" ? pathname === "/dashboard" : pathname.startsWith(href);
 
   return (
-    <aside className="flex flex-col w-64 bg-dark text-white min-h-screen fixed left-0 top-0 z-40">
+    <aside className="flex flex-col w-64 bg-dark text-white h-screen fixed left-0 top-0 z-40">
       {/* Logo */}
-      <div className="px-4 py-4 border-b border-dark-700">
+      <div className="shrink-0 px-4 py-4 border-b border-dark-700">
         <Image
           src="/Images/aquacheck_logo.png"
           alt="AquaCheck Logo"
@@ -80,7 +80,7 @@ export function Sidebar() {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-4 overflow-y-auto space-y-0.5">
+      <nav className="flex-1 min-h-0 px-3 py-4 overflow-y-auto space-y-0.5">
         {(user?.role === "customer" ? customerNavItems : navItems).map(({ label, href, icon: Icon }) => (
           <Link
             key={href}
@@ -167,7 +167,7 @@ export function Sidebar() {
       </nav>
 
       {/* User section */}
-      <div className="px-3 py-4 border-t border-dark-700">
+      <div className="shrink-0 px-3 py-4 border-t border-dark-700">
         <div className="flex items-center gap-3 px-3 py-2 mb-1">
           <div className="w-8 h-8 rounded-full bg-primary-400 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
             {user?.full_name?.charAt(0)?.toUpperCase() ?? "?"}
