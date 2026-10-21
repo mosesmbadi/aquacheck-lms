@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timezone
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -173,6 +174,9 @@ def create_sample(
             currency = (cust.currency if cust else None) or "KES"
         else:
             currency = "KES"
+        # Customer currency used to be free text; only carry a clean ISO code onto the invoice.
+        m = re.match(r"\s*([A-Za-z]{3})\b", currency)
+        currency = m.group(1).upper() if m else "KES"
 
         invoice = Invoice(
             invoice_number=_next_invoice_number(db),

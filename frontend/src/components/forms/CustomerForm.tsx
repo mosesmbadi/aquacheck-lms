@@ -13,7 +13,12 @@ const schema = z.object({
   phone: z.string().optional(),
   address: z.string().optional(),
   organization_type: z.string().optional(),
-  currency: z.string().optional(),
+  currency: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z]{3}$/, "Use a 3-letter currency code, e.g. KES or USD")
+    .transform((v) => v.toUpperCase())
+    .optional(),
   report_show_who: z.boolean().optional(),
   report_hide_remarks: z.boolean().optional(),
 });
@@ -74,7 +79,7 @@ export function CustomerForm({ onSubmit, onCancel, loading, initialValues, submi
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <Input label="Currency" error={errors.currency?.message} {...register("currency")} placeholder="KES" />
+        <Input label="Currency" error={errors.currency?.message} {...register("currency")} placeholder="KES" maxLength={3} />
       </div>
 
       <Textarea label="Address" error={errors.address?.message} {...register("address")} rows={3} placeholder="Postal or physical address" />

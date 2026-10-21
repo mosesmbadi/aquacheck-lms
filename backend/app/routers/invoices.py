@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.deps import get_db, get_current_user
 from app.models.user import User, UserRole
 from app.models.invoice import Invoice, InvoiceStatus
+from app.models.contract import Contract
 from app.models.customer import Customer
 from app.models.sample import Sample
 from app.schemas.invoice import InvoiceCreate, InvoiceUpdate, InvoiceOut
@@ -60,12 +61,27 @@ def create_invoice(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if current_user.role == UserRole.customer:
+        raise HTTPException(status_code=403, detail="Customers cannot create invoices")
+    customer_id, contract_id = payload.customer_id, payload.contract_id
+    if payload.sample_id is not None:
+        s = db.query(Sample).filter(Sample.id == payload.sample_id).first()
+        if not s:
+            raise HTTPException(status_code=404, detail="Sample not found")
+        contract_id = contract_id or s.contract_id
+        sample_cust = s.customer_id
+        if not sample_cust and s.contract_id:
+            c = db.query(Contract).filter(Contract.id == s.contract_id).first()
+            sample_cust = c.customer_id if c else None
+        if customer_id and sample_cust and customer_id != sample_cust:
+            raise HTTPException(status_code=400, detail="Sample belongs to a different client")
+        customer_id = customer_id or sample_cust
     subtotal, vat_amount, total = _compute_totals(payload.items, payload.vat_rate)
     inv = Invoice(
         invoice_number=_next_invoice_number(db),
         sample_id=payload.sample_id,
-        customer_id=payload.customer_id,
-        contract_id=payload.contract_id,
+        customer_id=customer_id,
+        contract_id=contract_id,
         items=payload.items,
         subtotal=subtotal,
         vat_rate=payload.vat_rate,

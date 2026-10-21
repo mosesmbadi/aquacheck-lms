@@ -222,10 +222,37 @@ def _draw_totals(c: Canvas, invoice, currency: str):
         c.drawString(43, _y(600 + i * 10.6), line)
 
 
-def _draw_footer(c: Canvas):
+PAID_COLOR = colors.HexColor("#15803D")
+UNPAID_COLOR = colors.HexColor("#B91C1C")
+VOID_COLOR = colors.HexColor("#6B7280")
+
+
+def _status_value(invoice) -> str:
+    status = getattr(invoice.status, "value", invoice.status)
+    return str(status or "").lower()
+
+
+def _draw_payment_stamp(c: Canvas, status: str):
+    """PAID / UNPAID (or VOID) stamp in the free space right of the lab address."""
+    label, color = {
+        "paid": ("PAID", PAID_COLOR),
+        "void": ("VOID", VOID_COLOR),
+    }.get(status, ("UNPAID", UNPAID_COLOR))
+    left, top, right, bottom = 411, 125, 560, 165
+    c.setStrokeColor(color)
+    c.setLineWidth(2)
+    c.roundRect(left, _y(bottom), right - left, bottom - top, 4, stroke=1, fill=0)
+    c.setFillColor(color)
+    c.setFont("Helvetica-Bold", 20)
+    c.drawCentredString((left + right) / 2, _y((top + bottom) / 2 + 7), label)
+    c.setFillColor(TEXT)
+
+
+def _draw_footer(c: Canvas, paid: bool):
     _box(c, 162, 723, 353, 746)
     c.setFont("Times-Roman", 9)
-    c.drawString(166, _y(737), "We look forward to recieving your payment.")
+    message = "Payment received with thanks." if paid else "We look forward to receiving your payment."
+    c.drawString(166, _y(737), message)
     _labelled_boxes(c, [
         (36, 136, "Phone #", LAB_PHONE),
         (176, 335, "E-mail", LAB_EMAIL),
@@ -250,10 +277,12 @@ def build_invoice_pdf(invoice, customer) -> bytes:
 
     taxable = float(invoice.vat_rate or 0) > 0
     pages = _paginate(_build_rows(invoice.items or [], taxable))
+    status = _status_value(invoice)
 
     for index, rows in enumerate(pages):
         c.setFillColor(TEXT)
         _draw_header(c, invoice_date, invoice.invoice_number)
+        _draw_payment_stamp(c, status)
         _draw_bill_to(c, customer)
         _draw_terms(c, invoice.po_number or "", terms, due_date)
         _draw_items(c, rows)
@@ -262,7 +291,7 @@ def build_invoice_pdf(invoice, customer) -> bytes:
         else:
             c.setFont("Times-Italic", 9)
             c.drawRightString(ITEMS_RIGHT, _y(592), "Continued on next page")
-        _draw_footer(c)
+        _draw_footer(c, status == "paid")
         if len(pages) > 1:
             c.setFont("Times-Roman", 8)
             c.drawCentredString(PAGE_W / 2, _y(815), f"Page {index + 1} of {len(pages)}")
