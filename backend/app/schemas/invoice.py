@@ -23,6 +23,8 @@ class InvoiceCreate(BaseModel):
     po_number: Optional[str] = None
     notes: Optional[str] = None
 
+    _currency = field_validator("currency")(_validate_currency)
+
 
 class InvoiceUpdate(BaseModel):
     items: Optional[List[Any]] = None

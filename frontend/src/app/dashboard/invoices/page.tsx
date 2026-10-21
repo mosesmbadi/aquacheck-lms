@@ -11,7 +11,8 @@ import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { Input, Textarea } from "@/components/ui/Input";
 import { Table } from "@/components/ui/Table";
-import { invoicesApi } from "@/lib/api";
+import { CustomerSearch } from "@/components/ui/CustomerSearch";
+import { invoicesApi, customersApi, samplesApi, contractsApi } from "@/lib/api";
 import type { Invoice, InvoiceItem, InvoiceStatus } from "@/lib/types";
 import { getCurrentUser } from "@/lib/auth";
 
@@ -27,6 +28,7 @@ export default function InvoicesPage() {
   const currentUser = getCurrentUser();
   const isCustomer = currentUser?.role === "customer";
   const [editInvoice, setEditInvoice] = useState<Invoice | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
 
   const { data: invoices = [], isLoading } = useQuery({
     queryKey: ["invoices"],
@@ -137,6 +139,11 @@ export default function InvoicesPage() {
           <p className="text-sm text-gray-500">
             Invoices are auto-generated when a sample is received. Edit items and issue when ready.
           </p>
+          {!isCustomer && (
+            <Button onClick={() => setShowCreate(true)}>
+              <Plus className="w-4 h-4" /> New Invoice
+            </Button>
+          )}
         </div>
 
         <Table<Invoice>
@@ -147,6 +154,18 @@ export default function InvoicesPage() {
           keyExtractor={(r) => r.id}
         />
       </div>
+
+      {showCreate && (
+        <InvoiceCreateModal
+          invoices={invoices as Invoice[]}
+          onClose={() => setShowCreate(false)}
+          onCreated={(inv) => {
+            qc.invalidateQueries({ queryKey: ["invoices"] });
+            setShowCreate(false);
+            setEditInvoice(inv);
+          }}
+        />
+      )}
 
       {editInvoice && (
         <InvoiceEditModal
@@ -159,6 +178,98 @@ export default function InvoicesPage() {
         />
       )}
     </DashboardLayout>
+  );
+}
+
+// Creates a draft for the chosen client, then hands it to InvoiceEditModal for line items.
+function InvoiceCreateModal({
+  invoices,
+  onClose,
+  onCreated,
+}: {
+  invoices: Invoice[];
+  onClose: () => void;
+  onCreated: (inv: Invoice) => void;
+}) {
+  const [customerId, setCustomerId] = useState<number | undefined>();
+  const [sampleId, setSampleId] = useState<number | undefined>();
+  const [error, setError] = useState("");
+
+  const { data: customers = [] } = useQuery({
+    queryKey: ["customers"],
+    queryFn: () => customersApi.list().then((r) => r.data),
+  });
+  const { data: samples = [] } = useQuery({
+    queryKey: ["samples"],
+    queryFn: () => samplesApi.list().then((r) => r.data),
+  });
+  const { data: contracts = [] } = useQuery({
+    queryKey: ["contracts"],
+    queryFn: () => contractsApi.list().then((r) => r.data),
+  });
+
+  // A sample belongs to a client directly or through its contract.
+  const contractCustomer = new Map(contracts.map((c) => [c.id, c.customer_id]));
+  const clientSamples = customerId
+    ? samples.filter((s) =>
+        (s.customer_id ?? (s.contract_id ? contractCustomer.get(s.contract_id) : undefined)) === customerId)
+    : [];
+  const invoicedSamples = new Map(
+    invoices.filter((i) => i.sample_id && i.status !== "void").map((i) => [i.sample_id!, i.invoice_number]));
+  const existingInvoice = sampleId ? invoicedSamples.get(sampleId) : undefined;
+
+  const createMut = useMutation({
+    mutationFn: () => {
+      const cust = customers.find((c) => c.id === customerId);
+      const code = (cust?.currency ?? "").trim().slice(0, 3).toUpperCase();
+      return invoicesApi.create({
+        customer_id: customerId,
+        sample_id: sampleId,
+        items: [{ name: "", quantity: 1, unit_price: 0, total: 0 }],
+        vat_rate: 16,
+        currency: /^[A-Z]{3}$/.test(code) ? code : "KES",
+      } as Partial<Invoice>);
+    },
+    onSuccess: (res) => onCreated(res.data),
+    onError: (e: unknown) => setError(apiErrorMessage(e, "Failed to create invoice")),
+  });
+
+  return (
+    <Modal open title="New Invoice" onClose={onClose}>
+      <div className="space-y-4">
+        {error && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded">{error}</p>}
+        <CustomerSearch customers={customers} value={customerId}
+          onChange={(id) => { setCustomerId(id); setSampleId(undefined); }} label="Client" required />
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Sample (optional)</label>
+          <select
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm disabled:bg-gray-50"
+            value={sampleId ?? ""}
+            disabled={!customerId}
+            onChange={(e) => setSampleId(e.target.value ? Number(e.target.value) : undefined)}
+          >
+            <option value="">{customerId ? "— Not linked to a sample —" : "Select a client first"}</option>
+            {clientSamples.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.sample_code}{invoicedSamples.has(s.id) ? ` (has ${invoicedSamples.get(s.id)})` : ""}
+              </option>
+            ))}
+          </select>
+          {existingInvoice && (
+            <p className="text-xs text-amber-700 mt-1">
+              This sample already has invoice {existingInvoice}. Only continue if this is an additional charge.
+            </p>
+          )}
+        </div>
+        <p className="text-xs text-gray-500">A draft invoice will be created; add line items on the next screen.</p>
+        <div className="flex gap-2 justify-end pt-2 border-t">
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button onClick={() => createMut.mutate()} disabled={!customerId} loading={createMut.isPending}>
+            Create Draft
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
