@@ -460,6 +460,13 @@ def create_report(
         sample = db.query(Sample).filter(Sample.id == sample_id).first()
         if not sample:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sample not found")
+        # One report per sample — corrections are made by amending it, not by issuing another.
+        existing = db.query(Report).filter(Report.content["sample_id"].as_integer() == sample.id).first()
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Sample already has report {existing.report_number} — edit or amend that one instead.",
+            )
 
     contract_id = payload.contract_id
     if not contract_id and sample and sample.contract_id:
@@ -752,10 +759,13 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
             return sample.physical_sample_id
         return sample.sample_code if sample else report.report_number
 
+    show_who, show_remarks = report_options(content, customer, sample)
+    # On reports with WHO limits and no remarks the lab labels this row as the client.
+    contact_label = "CLIENT:" if show_who and not show_remarks else "CONTACT PERSON:"
     info_data = [
         ["SAMPLE DESCRIPTION:", sample.description if sample and sample.description else _content_value(content, "sample_description", "N/A"), "SAMPLING DATE:", _format_date(_content_value(content, "sampling_date", sample.collection_date if sample else None))],
         ["SUBMITTED BY/CLIENT:", _submitted_by_value(), "RECEIVED ON:", _format_date(_content_value(content, "received_on", sample.received_at if sample else None))],
-        ["CONTACT PERSON:", _contact_person_value(), "ANALYSIS DATE:", _format_date(_content_value(content, "analysis_date", report.created_at))],
+        [contact_label, _contact_person_value(), "ANALYSIS DATE:", _format_date(_content_value(content, "analysis_date", report.created_at))],
         ["SAMPLED BY:", _sampled_by_value(), "REPORT ISSUED ON:", _format_date(report.issued_at or _content_value(content, "report_issued_on", None))],
         ["SAMPLING LOCATION:", _content_value(content, "sampling_location", sample.collection_location if sample else "N/A"), "SAMPLE LAB ID:", _sample_lab_id_value()],
     ]
@@ -772,7 +782,6 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
     story.append(info_table)
     story.append(Spacer(1, 0.2 * cm))
 
-    show_who, show_remarks = report_options(content, customer, sample)
     result_sections = _result_sections(test_results, content, sample, catalog_by_id, qualifiers, show_who)
     is_paint = _is_paint(sample)
     if result_sections:

@@ -66,7 +66,7 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
   const isCustomer = getCurrentUser()?.role === "customer";
   // The sample's report may still be a draft that the Reports page hides until its
   // results are validated — fetch it anyway, or the preview would create a duplicate.
-  const { data: allReports = [] } = useQuery<Report[]>({
+  const { data: allReports = [], isSuccess: reportsLoaded, isFetching: reportsFetching } = useQuery<Report[]>({
     queryKey: ["reports", "include-pending"],
     queryFn: () => reportsApi.list({ include_pending: !isCustomer }).then((r) => r.data),
   });
@@ -94,11 +94,16 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
     onSuccess: () => qc.invalidateQueries({ queryKey: ["reports"] }),
   });
 
+  // Wait for the reports list (and any refetch) to settle first — until it has, "no
+  // report found" only means "not loaded yet", and creating one then duplicates it.
   useEffect(() => {
-    if (!isCustomer && !reportId && sample && !report && !createReport.isPending) {
+    if (
+      !isCustomer && !reportId && sample && reportsLoaded && !reportsFetching && !report &&
+      createReport.isIdle
+    ) {
       createReport.mutate();
     }
-  }, [reportId, sample?.id, report?.id]);
+  }, [reportId, sample?.id, report?.id, reportsLoaded, reportsFetching]);
 
   const rc = report?.content || {};
 
@@ -305,6 +310,8 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
       ? `${customer.contact_person}${customer.phone ? ` - ${customer.phone}` : ""}`
       : "") ||
     "—";
+  // On reports with WHO limits and no remarks the lab labels this row as the client.
+  const contactLabel: string = showWho && !showRemarks ? "CLIENT:" : "CONTACT PERSON:";
   // The client is the party the report is issued to, so a linked one takes precedence.
   // Without a client (walk-in or ad-hoc sample) the contact person stands in.
   const submittedBy: string =
@@ -418,7 +425,7 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
                   <td style={{ padding: "2px 4px", textAlign: "right" }}>{receivedDate}</td>
                 </tr>
                 <tr>
-                  <td style={{ padding: "2px 4px" }}><strong>CONTACT PERSON:</strong></td>
+                  <td style={{ padding: "2px 4px" }}><strong>{contactLabel}</strong></td>
                   <td style={{ padding: "2px 4px", textTransform: "uppercase" }} colSpan={2}>{contactPerson}</td>
                   <td style={{ padding: "2px 4px", textAlign: "right" }}><strong>ANALYSIS DATE:</strong></td>
                   <td style={{ padding: "2px 4px", textAlign: "right" }}>{analysisDate}</td>
@@ -479,7 +486,7 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
                   <Fragment key={section.title}>
                     {!isWaste && sectionIndex > 0 && (
                       <tr style={{ pageBreakAfter: "avoid", breakAfter: "avoid" }}>
-                        <td colSpan={columnCount} style={{ background: "#333", color: "#fff", border: "1px solid #000", padding: "4px 5px", fontWeight: "bold", textTransform: "uppercase" }}>
+                        <td colSpan={columnCount} style={{ background: "#e0e0e0", border: "1px solid #000", padding: "4px 5px", fontWeight: "bold", textTransform: "uppercase" }}>
                           {section.title}
                         </td>
                       </tr>

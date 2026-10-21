@@ -300,7 +300,7 @@ export default function ReportsPage() {
         </Modal>
       )}
 
-      <Modal open={showCreate} onClose={() => { setShowCreate(false); reset(); }} title="Create Report" size="lg">
+      <Modal open={showCreate} onClose={() => { setShowCreate(false); reset(); createMutation.reset(); }} title="Create Report" size="lg">
         <form onSubmit={handleSubmit(async (data) => {
           await createMutation.mutateAsync({
             contract_id: data.contract_id || undefined,
@@ -326,8 +326,7 @@ export default function ReportsPage() {
               show_who_limits: toLayoutOption(data.show_who_limits),
               hide_remarks: toLayoutOption(data.hide_remarks),
             },
-          } as Partial<Report>);
-          reset();
+          } as Partial<Report>).then(() => reset(), () => {});
         })} className="space-y-4">
           <Select label="Contract (optional — leave blank for a standalone sample)" error={errors.contract_id?.message} {...register("contract_id")}>
             <option value="">No contract / standalone</option>
@@ -372,8 +371,13 @@ export default function ReportsPage() {
           <LayoutOptionSelects showWho={register("show_who_limits")} hideRemarks={register("hide_remarks")} />
           <Textarea label="Conclusion / Remarks" error={errors.final_comment?.message} {...register("final_comment")} rows={4} placeholder="Summary of the final result and any remarks to appear on the report." />
           <Textarea label="Disclaimer Override" error={errors.disclaimer?.message} {...register("disclaimer")} rows={3} placeholder="Optional custom disclaimer text for this report." />
+          {createMutation.isError && (
+            <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded border border-red-200">
+              {apiErrorMessage(createMutation.error, "Failed to create report. Please try again.")}
+            </p>
+          )}
           <div className="flex gap-3 justify-end pt-2">
-            <Button type="button" variant="secondary" onClick={() => { setShowCreate(false); reset(); }}>Cancel</Button>
+            <Button type="button" variant="secondary" onClick={() => { setShowCreate(false); reset(); createMutation.reset(); }}>Cancel</Button>
             <Button type="submit" loading={createMutation.isPending} disabled={!isValid}>Create Report</Button>
           </div>
         </form>
