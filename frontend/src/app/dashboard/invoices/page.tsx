@@ -176,6 +176,7 @@ function InvoiceEditModal({
   const [dueDate, setDueDate] = useState(invoice.due_date ?? "");
   const [poNumber, setPoNumber] = useState(invoice.po_number ?? "");
   const [notes, setNotes] = useState(invoice.notes ?? "");
+  const [currency, setCurrency] = useState(invoice.currency);
   const [error, setError] = useState("");
 
   const subtotal = items.reduce((s, i) => s + Number(i.total || 0), 0);
@@ -202,6 +203,7 @@ function InvoiceEditModal({
       invoicesApi.update(invoice.id, {
         items,
         vat_rate: vatRate,
+        currency,
         due_date: dueDate || undefined,
         po_number: poNumber || undefined,
         notes: notes || undefined,
@@ -236,7 +238,12 @@ function InvoiceEditModal({
           </div>
           <div>
             <span className="text-gray-500">Currency:</span>{" "}
-            <span className="font-medium">{invoice.currency}</span>
+            {invoice.status === "draft" ? (
+              <input className="w-20 px-2 py-0.5 border rounded text-sm font-medium uppercase" value={currency}
+                onChange={(e) => setCurrency(e.target.value.toUpperCase())} />
+            ) : (
+              <span className="font-medium">{currency}</span>
+            )}
           </div>
         </div>
 
@@ -273,7 +280,7 @@ function InvoiceEditModal({
                             {pkg}
                           </td>
                           <td className="px-2 py-1.5 text-right font-mono font-semibold text-blue-800">
-                            {invoice.currency} {group.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            {currency} {group.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                           </td>
                           <td />
                         </tr>
@@ -281,7 +288,7 @@ function InvoiceEditModal({
                           <tr key={idx} className="border-t bg-white">
                             <td className="px-4 py-1 text-gray-600 text-xs">{it.name}</td>
                             <td className="px-2 py-1 text-right text-xs text-gray-500 font-mono">
-                              {invoice.currency} {Number(it.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                              {currency} {Number(it.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                             </td>
                             <td className="px-1 py-1">
                               <button onClick={() => removeItem(idx)} className="text-red-400 hover:text-red-600">×</button>
@@ -321,7 +328,7 @@ function InvoiceEditModal({
                           value={it.unit_price} onChange={(e) => updateItem(idx, { unit_price: Number(e.target.value) })} />
                       </td>
                       <td className="px-2 py-1 text-right font-mono">
-                        {invoice.currency} {it.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        {currency} {it.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                       </td>
                       <td className="px-1 py-1">
                         <button onClick={() => removeItem(idx)} className="text-red-400 hover:text-red-600">×</button>
@@ -344,9 +351,9 @@ function InvoiceEditModal({
 
         <div className="flex justify-end">
           <div className="w-64 text-sm space-y-1">
-            <div className="flex justify-between"><span>Subtotal</span><span>{invoice.currency} {subtotal.toFixed(2)}</span></div>
-            <div className="flex justify-between"><span>VAT ({vatRate}%)</span><span>{invoice.currency} {vatAmount.toFixed(2)}</span></div>
-            <div className="flex justify-between font-bold border-t pt-1"><span>Total</span><span>{invoice.currency} {total.toFixed(2)}</span></div>
+            <div className="flex justify-between"><span>Subtotal</span><span>{currency} {subtotal.toFixed(2)}</span></div>
+            <div className="flex justify-between"><span>VAT ({vatRate}%)</span><span>{currency} {vatAmount.toFixed(2)}</span></div>
+            <div className="flex justify-between font-bold border-t pt-1"><span>Total</span><span>{currency} {total.toFixed(2)}</span></div>
           </div>
         </div>
 

@@ -1,7 +1,8 @@
 from datetime import datetime, date
 from typing import Optional, List, Any
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from app.models.invoice import InvoiceStatus
+from app.schemas.customer import _validate_currency
 
 
 class InvoiceItemSchema(BaseModel):
@@ -31,6 +32,8 @@ class InvoiceUpdate(BaseModel):
     po_number: Optional[str] = None
     notes: Optional[str] = None
     status: Optional[InvoiceStatus] = None
+
+    _currency = field_validator("currency")(_validate_currency)
 
 
 class InvoiceOut(BaseModel):
