@@ -315,10 +315,11 @@ function InvoiceEditModal({
         items,
         vat_rate: vatRate,
         currency,
-        due_date: dueDate || undefined,
-        po_number: poNumber || undefined,
-        notes: notes || undefined,
-      } as Partial<Invoice>),
+        // null (not undefined) so clearing a field is actually saved
+        due_date: dueDate || null,
+        po_number: poNumber.trim() || null,
+        notes: notes || null,
+      } as unknown as Partial<Invoice>),
     onSuccess: onSaved,
     onError: (e: unknown) => setError(apiErrorMessage(e, "Failed to save invoice")),
   });
