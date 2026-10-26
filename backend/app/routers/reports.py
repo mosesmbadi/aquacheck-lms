@@ -764,7 +764,7 @@ def generate_pdf(report_id: int, db: Session = Depends(get_db), current_user: Us
     contact_label = "CLIENT:" if show_who and not show_remarks else "CONTACT PERSON:"
     info_data = [
         ["SAMPLE DESCRIPTION:", sample.description if sample and sample.description else _content_value(content, "sample_description", "N/A"), "SAMPLING DATE:", _format_date(_content_value(content, "sampling_date", sample.collection_date if sample else None))],
-        ["SUBMITTED BY/CLIENT:", _submitted_by_value(), "RECEIVED ON:", _format_date(_content_value(content, "received_on", sample.received_at if sample else None))],
+        ["SUBMITTED BY:",_submitted_by_value(), "RECEIVED ON:", _format_date(_content_value(content, "received_on", sample.received_at if sample else None))],
         [contact_label, _contact_person_value(), "ANALYSIS DATE:", _format_date(_content_value(content, "analysis_date", report.created_at))],
         ["SAMPLED BY:", _sampled_by_value(), "REPORT ISSUED ON:", _format_date(report.issued_at or _content_value(content, "report_issued_on", None))],
         ["SAMPLING LOCATION:", _content_value(content, "sampling_location", sample.collection_location if sample else "N/A"), "SAMPLE LAB ID:", _sample_lab_id_value()],

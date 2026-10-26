@@ -196,15 +196,28 @@ def build_quotation_pdf(quotation, customer) -> bytes:
     story.append(totals_table)
     story.append(Spacer(1, 0.4 * cm))
 
-    if quotation.notes:
-        story.append(Paragraph("<b>NOTES</b>", small_style))
-        story.append(Paragraph(quotation.notes.replace("\n", "<br/>"), small_style))
-        story.append(Spacer(1, 0.2 * cm))
+    # Notes and Terms always print as boxed sections; left empty, they leave room to write.
+    def _section_box(heading, text):
+        body = Paragraph(text.replace("\n", "<br/>"), small_style) if text else ""
+        box = Table([[Paragraph(f"<b>{heading}</b>", small_style)], [body]], colWidths=[17 * cm], rowHeights=[None, None if text else 1.5 * cm])
+        box.setStyle(TableStyle([
+            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#d1d5db")),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("PADDING", (0, 0), (-1, -1), 4),
+        ]))
+        story.append(box)
+        story.append(Spacer(1, 0.3 * cm))
 
-    if quotation.terms:
-        story.append(Paragraph("<b>TERMS &amp; CONDITIONS</b>", small_style))
-        story.append(Paragraph(quotation.terms.replace("\n", "<br/>"), small_style))
-        story.append(Spacer(1, 0.2 * cm))
+    story.append(Paragraph("We look forward to receiving your Order", small_style))
+    story.append(Spacer(1, 0.15 * cm))
+    _section_box("NOTES", quotation.notes)
+
+    story.append(Paragraph(
+        "A minimum of 2 litres per sample on a clean, sterile container is required.<br/>Turnaround time is 3 working days.",
+        small_style,
+    ))
+    story.append(Spacer(1, 0.15 * cm))
+    _section_box("TERMS &amp; CONDITIONS", quotation.terms)
 
     story.append(Spacer(1, 0.8 * cm))
     signatory_table = Table([
