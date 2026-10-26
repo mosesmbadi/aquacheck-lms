@@ -397,7 +397,13 @@ function CreateQuotationModal({
           </div>
         </div>
 
-        <Textarea label="Notes" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+        <Textarea
+          label="Notes"
+          rows={4}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder={"e.g. Sample quantity: 2 litres per sample on a clean sterile container\nTurnaround time: 3 working days"}
+        />
         <Textarea label="Terms & Conditions" rows={3} value={terms} onChange={(e) => setTerms(e.target.value)} />
 
         <div className="flex justify-end gap-2 pt-2 border-t">

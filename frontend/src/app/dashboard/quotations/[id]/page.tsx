@@ -29,8 +29,6 @@ export default function QuotationDetailPage() {
   const qc = useQueryClient();
 
   const [showSend, setShowSend] = useState(false);
-  const [editingTerms, setEditingTerms] = useState(false);
-  const [termsText, setTermsText] = useState("");
   const [error, setError] = useState("");
 
   const { data: quote, isLoading } = useQuery({
@@ -52,13 +50,13 @@ export default function QuotationDetailPage() {
     },
   });
 
-  const updateTermsMut = useMutation({
-    mutationFn: (terms: string) => quotationsApi.update(id, { terms }),
+  const updateTextMut = useMutation({
+    mutationFn: (data: { notes?: string; terms?: string }) => quotationsApi.update(id, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["quotation", id] });
-      setEditingTerms(false);
+      setError("");
     },
-    onError: () => setError("Failed to save terms."),
+    onError: (e: unknown) => setError(apiErrorMessage(e, "Failed to save changes.")),
   });
 
   if (isLoading || !quote) {
@@ -122,50 +120,26 @@ export default function QuotationDetailPage() {
             </div>
           </div>
 
-          {q.notes && (
-            <div className="mt-4">
-              <h3 className="font-semibold text-sm">Notes</h3>
-              <p className="text-sm text-gray-600 whitespace-pre-wrap">{q.notes}</p>
-            </div>
-          )}
-          <div className="mt-3">
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-sm">Terms &amp; Conditions</h3>
-              {!editingTerms && (
-                <button
-                  onClick={() => { setTermsText(q.terms ?? ""); setEditingTerms(true); }}
-                  className="text-xs text-primary-600 hover:text-primary-700 underline"
-                >
-                  {q.terms ? "Edit" : "Add terms"}
-                </button>
-              )}
-            </div>
-            {editingTerms ? (
-              <div className="mt-2 space-y-2">
-                <textarea
-                  value={termsText}
-                  onChange={(e) => setTermsText(e.target.value)}
-                  rows={6}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-primary-400 focus:ring-1 focus:ring-primary-400 outline-none"
-                  placeholder="Enter terms and conditions…"
-                />
-                <div className="flex gap-2 justify-end">
-                  <button onClick={() => setEditingTerms(false)} className="text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5 border border-gray-300 rounded-lg">Cancel</button>
-                  <button
-                    onClick={() => updateTermsMut.mutate(termsText)}
-                    disabled={updateTermsMut.isPending}
-                    className="text-xs text-white bg-primary-600 hover:bg-primary-700 px-3 py-1.5 rounded-lg disabled:opacity-50"
-                  >
-                    {updateTermsMut.isPending ? "Saving…" : "Save"}
-                  </button>
-                </div>
-              </div>
-            ) : q.terms ? (
-              <p className="text-sm text-gray-600 whitespace-pre-wrap mt-1">{q.terms}</p>
-            ) : (
-              <p className="text-xs text-gray-400 italic mt-1">No terms and conditions set.</p>
-            )}
-          </div>
+          <EditableTextSection
+            className="mt-4"
+            title="Notes"
+            value={q.notes}
+            addLabel="Add notes"
+            emptyText="No notes set."
+            placeholder="Enter notes (e.g. sample quantity, turnaround time)…"
+            saving={updateTextMut.isPending}
+            onSave={(notes) => updateTextMut.mutateAsync({ notes })}
+          />
+          <EditableTextSection
+            className="mt-3"
+            title="Terms & Conditions"
+            value={q.terms}
+            addLabel="Add terms"
+            emptyText="No terms and conditions set."
+            placeholder="Enter terms and conditions…"
+            saving={updateTextMut.isPending}
+            onSave={(terms) => updateTextMut.mutateAsync({ terms })}
+          />
         </div>
 
         <div className="bg-white border rounded-lg p-6 space-y-3 h-fit">
@@ -206,6 +180,70 @@ export default function QuotationDetailPage() {
       )}
       {error && <p className="text-red-500 text-sm mt-3">{error}</p>}
     </DashboardLayout>
+  );
+}
+
+function EditableTextSection({
+  className,
+  title,
+  value,
+  addLabel,
+  emptyText,
+  placeholder,
+  saving,
+  onSave,
+}: {
+  className?: string;
+  title: string;
+  value?: string | null;
+  addLabel: string;
+  emptyText: string;
+  placeholder: string;
+  saving: boolean;
+  onSave: (text: string) => Promise<unknown>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState("");
+
+  return (
+    <div className={className}>
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold text-sm">{title}</h3>
+        {!editing && (
+          <button
+            onClick={() => { setText(value ?? ""); setEditing(true); }}
+            className="text-xs text-primary-600 hover:text-primary-700 underline"
+          >
+            {value ? "Edit" : addLabel}
+          </button>
+        )}
+      </div>
+      {editing ? (
+        <div className="mt-2 space-y-2">
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={6}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-primary-400 focus:ring-1 focus:ring-primary-400 outline-none"
+            placeholder={placeholder}
+          />
+          <div className="flex gap-2 justify-end">
+            <button onClick={() => setEditing(false)} className="text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5 border border-gray-300 rounded-lg">Cancel</button>
+            <button
+              onClick={() => onSave(text).then(() => setEditing(false), () => {})}
+              disabled={saving}
+              className="text-xs text-white bg-primary-600 hover:bg-primary-700 px-3 py-1.5 rounded-lg disabled:opacity-50"
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
+      ) : value ? (
+        <p className="text-sm text-gray-600 whitespace-pre-wrap mt-1">{value}</p>
+      ) : (
+        <p className="text-xs text-gray-400 italic mt-1">{emptyText}</p>
+      )}
+    </div>
   );
 }
 
