@@ -125,7 +125,7 @@ function CreateQuotationModal({
   const [currency, setCurrency] = useState<string>("KES");
   const [validUntil, setValidUntil] = useState<string>("");
   const [notes, setNotes] = useState<string>("");
-  const [terms, setTerms] = useState<string>("Payment within 30 days. Prices valid for 30 days from issue date.");
+  const [terms, setTerms] = useState<string>("");
   const [items, setItems] = useState<QuotationItem[]>([]);
   const [error, setError] = useState<string>("");
 
