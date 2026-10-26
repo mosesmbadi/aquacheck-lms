@@ -1,233 +1,235 @@
 import io
 import os
+from xml.sax.saxutils import escape
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.styles import ParagraphStyle
 
 _LOGO_PATH = os.path.join(os.path.dirname(__file__), "..", "images", "aquacheck logo.png")
 
+# Laid out after the lab's existing quote template: navy text, lavender rules.
+NAVY = colors.HexColor("#1a237e")
+BORDER = colors.HexColor("#8c8ccc")
+HEADER_BG = colors.HexColor("#e5e5e5")
+
+PAGE_WIDTH = 18 * cm
+# Description | Qty | Rate | Total
+ITEM_COLS = [10.5 * cm, 1.3 * cm, 3.1 * cm, 3.1 * cm]
+
+COMPANY_NAME = "AQUACHECK LABORATORIES LTD"
+COMPANY_ADDRESS = "Westlands commercial centre, Old block, 1st Floor, Room No:4<br/>216-00300<br/>Westlands, Nairobi"
+COMPANY_PHONE = "0755596064"
+COMPANY_EMAIL = "Info@aquachecklab.com"
+COMPANY_WEBSITE = "www.aquachecklab.com"
+
+ORDER_MESSAGE = "We look forward to receiving your Order"
+
+
+def _fmt_amount(value) -> str:
+    try:
+        return f"{float(value):,.2f}"
+    except (TypeError, ValueError):
+        return "0.00"
+
 
 def _fmt_money(value, currency: str) -> str:
-    try:
-        return f"{currency} {float(value):,.2f}"
-    except (TypeError, ValueError):
-        return f"{currency} 0.00"
+    return f"{currency} {_fmt_amount(value)}"
+
+
+def _text(value) -> str:
+    """Escape free text for a Paragraph, keeping its line breaks."""
+    return escape(str(value or "")).replace("\n", "<br/>")
 
 
 def build_quotation_pdf(quotation, customer) -> bytes:
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=2 * cm, bottomMargin=2 * cm)
-    styles = getSampleStyleSheet()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=A4,
+        leftMargin=1.5 * cm, rightMargin=1.5 * cm, topMargin=1.2 * cm, bottomMargin=1.2 * cm,
+    )
     story = []
 
-    title_style = ParagraphStyle("title", parent=styles["Heading1"], textColor=colors.HexColor("#1A1A2E"), fontSize=16, alignment=1, spaceAfter=6)
-    company_style = ParagraphStyle("company", parent=styles["Normal"], fontSize=8, leading=10, alignment=2)
-    small_style = ParagraphStyle("small", parent=styles["Normal"], fontSize=8, leading=10)
-
-    # Logo — use the image file; fall back to bold text if the file is missing
-    logo_path = os.path.normpath(_LOGO_PATH)
-    if os.path.isfile(logo_path):
-        logo_cell = RLImage(logo_path, width=5 * cm, height=1.8 * cm, kind="proportional")
-    else:
-        logo_cell = Paragraph("<b>AQUACHECK</b><br/>Trusted Quality Check Partner", styles["Title"])
-
-    header_table = Table(
-        [[
-            logo_cell,
-            Paragraph(
-                "AQUACHECK LABORATORIES LIMITED<br/>P.O. Box 216 - 00300, NAIROBI<br/>Westlands Commercial Centre<br/>Off Ring Road, Parklands Rd<br/>Email: info@aquachecklab.com<br/>Website: www.aquachecklab.com<br/>Tel: 0755596064/0734933819",
-                company_style,
-            ),
-        ]],
-        colWidths=[8.2 * cm, 8.8 * cm],
-    )
-    header_table.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("LINEBELOW", (0, 0), (-1, 0), 1, colors.HexColor("#60a5fa")),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-    ]))
-    story.append(header_table)
-    story.append(Spacer(1, 0.15 * cm))
-    story.append(Paragraph("QUOTATION", title_style))
-    story.append(Spacer(1, 0.15 * cm))
+    body = ParagraphStyle("body", fontName="Times-Roman", fontSize=9, leading=11, textColor=NAVY)
+    body_right = ParagraphStyle("body_right", parent=body, alignment=2)
+    body_center = ParagraphStyle("body_center", parent=body, alignment=1)
+    label = ParagraphStyle("label", fontName="Helvetica", fontSize=9, leading=11, textColor=NAVY, alignment=1)
+    label_left = ParagraphStyle("label_left", parent=label, alignment=0)
+    title_style = ParagraphStyle("title", fontName="Helvetica-Bold", fontSize=22, leading=26, textColor=NAVY, alignment=2)
+    company_name_style = ParagraphStyle("company_name", fontName="Times-Roman", fontSize=12, leading=15, textColor=NAVY)
+    company_addr_style = ParagraphStyle("company_addr", fontName="Times-Roman", fontSize=11, leading=14, textColor=NAVY)
+    totals_label = ParagraphStyle("totals_label", fontName="Helvetica-Bold", fontSize=11, leading=14, textColor=NAVY)
+    total_label = ParagraphStyle("total_label", parent=totals_label, fontSize=15, leading=18)
 
     currency = quotation.currency or "KES"
-    valid_until = quotation.valid_until.strftime("%d/%m/%Y") if quotation.valid_until else "—"
     issued_on = quotation.created_at.strftime("%d/%m/%Y") if quotation.created_at else "—"
+    valid_until = quotation.valid_until.strftime("%d/%m/%Y") if quotation.valid_until else None
 
-    info_data = [
-        ["QUOTE #:", quotation.quote_number, "DATE:", issued_on],
-        ["CLIENT:", customer.name if customer else "N/A", "VALID UNTIL:", valid_until],
-        ["CONTACT:", (customer.contact_person if customer else "") or "—", "EMAIL:", (customer.email if customer else "") or "—"],
-        ["ADDRESS:", (customer.address if customer else "") or "—", "PHONE:", (customer.phone if customer else "") or "—"],
-    ]
-    info_table = Table(info_data, colWidths=[3.2 * cm, 5.3 * cm, 3.2 * cm, 5.3 * cm])
-    info_table.setStyle(TableStyle([
-        ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
-        ("FONTSIZE", (0, 0), (-1, -1), 8),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-        ("TOPPADDING", (0, 0), (-1, -1), 1),
-        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-        ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"),
+    # ── Header: logo + lab address on the left, title + Date/Quote# box on the right ──
+    logo_path = os.path.normpath(_LOGO_PATH)
+    if os.path.isfile(logo_path):
+        logo = RLImage(logo_path, width=5.5 * cm, height=2 * cm, kind="proportional")
+    else:
+        logo = Paragraph("<b>AQUACHECK</b>", title_style)
+
+    meta_header = [Paragraph("Date", label), Paragraph("Quote#", label)]
+    meta_values = [Paragraph(issued_on, body_center), Paragraph(_text(quotation.quote_number), body_center)]
+    if valid_until:
+        meta_header.append(Paragraph("Valid Until", label))
+        meta_values.append(Paragraph(valid_until, body_center))
+    meta_col = 2.6 * cm if valid_until else 3.2 * cm
+    meta_box = Table([meta_header, meta_values], colWidths=[meta_col] * len(meta_header), hAlign="RIGHT")
+    meta_box.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.75, BORDER),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
     ]))
-    story.append(info_table)
+
+    company = [
+        Spacer(1, 0.3 * cm),
+        Paragraph(COMPANY_NAME, company_name_style),
+        Spacer(1, 0.1 * cm),
+        Paragraph(COMPANY_ADDRESS, company_addr_style),
+    ]
+    header = Table(
+        [[[logo] + company, [Paragraph("Quotation", title_style), Spacer(1, 0.2 * cm), meta_box]]],
+        colWidths=[9 * cm, 9 * cm],
+    )
+    header.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    story.append(header)
+    story.append(Spacer(1, 0.8 * cm))
+
+    # ── Customer: Name / Address box ──
+    customer_lines = []
+    if customer:
+        customer_lines = [customer.name, customer.contact_person, customer.address, customer.phone, customer.email]
+    customer_text = "<br/>".join(_text(v) for v in customer_lines if v) or "—"
+    customer_box = Table(
+        [[Paragraph("Name / Address", label_left)], [Paragraph(customer_text, body)]],
+        colWidths=[8.5 * cm], rowHeights=[None, None], hAlign="LEFT",
+    )
+    customer_box.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), 0.75, BORDER),
+        ("LINEBELOW", (0, 0), (-1, 0), 0.75, BORDER),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("TOPPADDING", (0, 0), (-1, 0), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
+        ("LEFTPADDING", (0, 0), (-1, 0), 10),
+        ("BOTTOMPADDING", (0, 1), (-1, 1), 30),
+    ]))
+    story.append(customer_box)
+    story.append(Spacer(1, 0.8 * cm))
+
+    # ── Items: Description | Qty | Rate | Total ──
+    rows = [[Paragraph("Description", label), Paragraph("Qty", label), Paragraph("Rate", label), Paragraph("Total", label)]]
+    for item in quotation.items or []:
+        description = [_text(item.get("name") or "—")]
+        included = item.get("included_tests") or []
+        if item.get("package_id") and included:
+            groups = [
+                ("PHYSIOCHEMICAL TEST", [t for t in included if t.get("category") == "physicochemical"]),
+                ("MICROBIOLOGICAL TEST", [t for t in included if t.get("category") == "microbiological"]),
+                ("OTHER TESTS", [t for t in included if t.get("category") not in ("physicochemical", "microbiological")]),
+            ]
+            for heading, tests in groups:
+                if tests:
+                    names = ", ".join(_text(t.get("name") or "—") for t in tests)
+                    description.append(f"<br/>{heading}<br/>{names}")
+        rows.append([
+            Paragraph("<br/>".join(description), body),
+            Paragraph(f"{float(item.get('quantity', 0)):g}", body_right),
+            Paragraph(_fmt_amount(item.get("unit_price", 0)), body_right),
+            Paragraph(_fmt_amount(item.get("total", 0)), body_right),
+        ])
+    # Blank row so the column rules run on below the last item, as on the template.
+    rows.append(["", "", "", ""])
+    row_heights = [None] * (len(rows) - 1) + [3 * cm]
+
+    items_table = Table(rows, colWidths=ITEM_COLS, rowHeights=row_heights, repeatRows=1)
+    items_table.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), 0.75, BORDER),
+        ("LINEAFTER", (0, 0), (-2, -1), 0.75, BORDER),
+        ("LINEBELOW", (0, 0), (-1, 0), 0.75, BORDER),
+        ("BACKGROUND", (0, 0), (-1, 0), HEADER_BG),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("TOPPADDING", (0, 0), (-1, 0), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
+        ("TOPPADDING", (0, 1), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 1), (-1, -1), 4),
+    ]))
+    story.append(items_table)
+
+    # ── Notes / Terms on the left, totals on the right ──
+    notes_cell = [Paragraph(ORDER_MESSAGE, body), Spacer(1, 0.25 * cm), Paragraph("<b>NOTES</b>", body)]
+    if quotation.notes:
+        notes_cell.append(Paragraph(_text(quotation.notes), body))
+    terms_cell = [Paragraph("<b>TERMS &amp; CONDITIONS</b>", body)]
+    if quotation.terms:
+        terms_cell.append(Paragraph(_text(quotation.terms), body))
+
+    totals = Table(
+        [
+            [Paragraph("Subtotal", totals_label), Paragraph(_fmt_money(quotation.subtotal, currency), body)],
+            [Paragraph(f"Sales Tax ({float(quotation.vat_rate or 0):g}%)", totals_label), Paragraph(_fmt_money(quotation.vat_amount, currency), body)],
+            [Paragraph("Total", total_label), Paragraph(_fmt_money(quotation.total, currency), body)],
+        ],
+        colWidths=[ITEM_COLS[2] + 0.3 * cm, ITEM_COLS[3] - 0.3 * cm],
+    )
+    totals.setStyle(TableStyle([
+        ("LINEBELOW", (0, 0), (-1, -2), 0.75, BORDER),
+        ("LINEAFTER", (0, 0), (0, -1), 0.75, BORDER),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+    ]))
+
+    left_width = ITEM_COLS[0] + ITEM_COLS[1]
+    footer_block = Table(
+        [[notes_cell, ""], [terms_cell, totals]],
+        colWidths=[left_width, PAGE_WIDTH - left_width],
+        rowHeights=[None, None],
+    )
+    footer_block.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), 0.75, BORDER),
+        ("LINEAFTER", (0, 0), (0, -1), 0.75, BORDER),
+        ("LINEBELOW", (0, 0), (0, 0), 0.75, BORDER),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("TOPPADDING", (0, 0), (0, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (0, -1), 40),
+        ("TOPPADDING", (1, 1), (1, 1), 0),
+        ("BOTTOMPADDING", (1, 1), (1, 1), 0),
+        ("LEFTPADDING", (1, 1), (1, 1), 0),
+        ("RIGHTPADDING", (1, 1), (1, 1), 0),
+    ]))
+    story.append(footer_block)
     story.append(Spacer(1, 0.3 * cm))
 
-    # Items table
-    items = quotation.items or []
-    rows = [["#", "TEST / SERVICE", "QTY", "UNIT PRICE", "TOTAL"]]
-    # Track special row indices for styling
-    package_header_rows = []   # blue header rows
-    category_header_rows = []  # light-coloured category sub-headers
-    sub_test_rows = []         # indented test name rows
-
-    row_idx = 1  # data rows start at index 1 (header is 0)
-    item_counter = 1
-
-    # Separate package items from individual items
-    individual_items = [i for i in items if not i.get("package_id")]
-    package_items   = [i for i in items if i.get("package_id")]
-
-    for item in individual_items:
-        rows.append([
-            str(item_counter),
-            item.get("name", "—"),
-            f"{float(item.get('quantity', 0)):g}",
-            _fmt_money(item.get("unit_price", 0), currency),
-            _fmt_money(item.get("total", 0), currency),
-        ])
-        row_idx += 1
-        item_counter += 1
-
-    for item in package_items:
-        included = item.get("included_tests") or []
-        physio = [t for t in included if t.get("category") == "physicochemical"]
-        micro  = [t for t in included if t.get("category") == "microbiological"]
-        other  = [t for t in included if t.get("category") not in ("physicochemical", "microbiological")]
-        test_count = len(included)
-
-        # Package header row
-        pkg_label = f"{item.get('name', 'Package')}  ({test_count} test{'s' if test_count != 1 else ''} included)"
-        rows.append([
-            str(item_counter),
-            pkg_label,
-            f"{float(item.get('quantity', 0)):g}",
-            _fmt_money(item.get("unit_price", 0), currency),
-            _fmt_money(item.get("total", 0), currency),
-        ])
-        package_header_rows.append(row_idx)
-        row_idx += 1
-        item_counter += 1
-
-        def _add_category(label, tests):
-            nonlocal row_idx
-            if not tests:
-                return
-            rows.append(["", f"   {label}", "", "", ""])
-            category_header_rows.append(row_idx)
-            row_idx += 1
-            for t in tests:
-                rows.append(["", f"      • {t.get('name', '—')}", "", "", "included"])
-                sub_test_rows.append(row_idx)
-                row_idx += 1
-
-        _add_category("Physio-Chemical Tests", physio)
-        _add_category("Microbiological Tests", micro)
-        _add_category("Other Tests", other)
-
-        # Empty spacer row between package blocks
-        rows.append(["", "", "", "", ""])
-        row_idx += 1
-
-    col_widths = [1 * cm, 8.5 * cm, 1.5 * cm, 2.5 * cm, 2.5 * cm]
-    items_table = Table(rows, colWidths=col_widths)
-    table_style_cmds = [
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e5e7eb")),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d1d5db")),
-        ("FONTSIZE", (0, 0), (-1, -1), 8),
+    # ── Contact row ──
+    contact = Table(
+        [
+            [Paragraph("Phone #", label), "", Paragraph("E-mail", label), "", Paragraph("Web Site", label)],
+            [Paragraph(COMPANY_PHONE, body_center), "", Paragraph(COMPANY_EMAIL, body_center), "", Paragraph(COMPANY_WEBSITE, body_center)],
+        ],
+        colWidths=[3.6 * cm, 2.6 * cm, 6.2 * cm, 0.4 * cm, 5.2 * cm],
+    )
+    contact.setStyle(TableStyle([
+        ("BOX", (0, 0), (0, -1), 0.75, BORDER),
+        ("BOX", (2, 0), (2, -1), 0.75, BORDER),
+        ("BOX", (4, 0), (4, -1), 0.75, BORDER),
+        ("LINEBELOW", (0, 0), (0, 0), 0.75, BORDER),
+        ("LINEBELOW", (2, 0), (2, 0), 0.75, BORDER),
+        ("LINEBELOW", (4, 0), (4, 0), 0.75, BORDER),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("ALIGN", (2, 1), (-1, -1), "RIGHT"),
-        ("PADDING", (0, 0), (-1, -1), 3),
-    ]
-    # Package header rows — blue band
-    for pr in package_header_rows:
-        table_style_cmds += [
-            ("BACKGROUND", (0, pr), (-1, pr), colors.HexColor("#dbeafe")),
-            ("FONTNAME", (0, pr), (-1, pr), "Helvetica-Bold"),
-            ("TEXTCOLOR", (0, pr), (-1, pr), colors.HexColor("#1e40af")),
-        ]
-    # Category sub-header rows — very light grey
-    for cr in category_header_rows:
-        table_style_cmds += [
-            ("BACKGROUND", (0, cr), (-1, cr), colors.HexColor("#f3f4f6")),
-            ("FONTNAME", (0, cr), (-1, cr), "Helvetica-Bold"),
-            ("TEXTCOLOR", (0, cr), (-1, cr), colors.HexColor("#374151")),
-            ("FONTSIZE", (0, cr), (-1, cr), 7),
-        ]
-    # Individual test rows — pale and italic
-    for sr in sub_test_rows:
-        table_style_cmds += [
-            ("BACKGROUND", (0, sr), (-1, sr), colors.HexColor("#f9fafb")),
-            ("TEXTCOLOR", (0, sr), (-1, sr), colors.HexColor("#6b7280")),
-            ("FONTSIZE", (0, sr), (-1, sr), 7),
-        ]
-    items_table.setStyle(TableStyle(table_style_cmds))
-    story.append(items_table)
-    story.append(Spacer(1, 0.2 * cm))
-
-    # Totals
-    totals = [
-        ["Subtotal", _fmt_money(quotation.subtotal, currency)],
-        [f"VAT ({float(quotation.vat_rate):g}%)", _fmt_money(quotation.vat_amount, currency)],
-        ["TOTAL", _fmt_money(quotation.total, currency)],
-    ]
-    totals_table = Table(totals, colWidths=[13 * cm, 4 * cm])
-    totals_table.setStyle(TableStyle([
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
-        ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
-        ("LINEABOVE", (0, -1), (-1, -1), 1, colors.black),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
     ]))
-    story.append(totals_table)
-    story.append(Spacer(1, 0.4 * cm))
-
-    # Notes and Terms always print as boxed sections; left empty, they leave room to write.
-    def _section_box(heading, text):
-        body = Paragraph(text.replace("\n", "<br/>"), small_style) if text else ""
-        box = Table([[Paragraph(f"<b>{heading}</b>", small_style)], [body]], colWidths=[17 * cm], rowHeights=[None, None if text else 1.5 * cm])
-        box.setStyle(TableStyle([
-            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#d1d5db")),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("PADDING", (0, 0), (-1, -1), 4),
-        ]))
-        story.append(box)
-        story.append(Spacer(1, 0.3 * cm))
-
-    story.append(Paragraph("We look forward to receiving your Order", small_style))
-    story.append(Spacer(1, 0.15 * cm))
-    _section_box("NOTES", quotation.notes)
-
-    story.append(Paragraph(
-        "A minimum of 2 litres per sample on a clean, sterile container is required.<br/>Turnaround time is 3 working days.",
-        small_style,
-    ))
-    story.append(Spacer(1, 0.15 * cm))
-    _section_box("TERMS &amp; CONDITIONS", quotation.terms)
-
-    story.append(Spacer(1, 0.8 * cm))
-    signatory_table = Table([
-        [Paragraph("<b>Authorized by</b><br/>AquaCheck Laboratories Ltd", styles["Normal"])]
-    ], colWidths=[8.5 * cm])
-    signatory_table.setStyle(TableStyle([
-        ("LINEABOVE", (0, 0), (0, 0), 1, colors.black),
-        ("TOPPADDING", (0, 0), (-1, -1), 8),
-    ]))
-    story.append(signatory_table)
+    story.append(contact)
 
     doc.build(story)
     return buffer.getvalue()
