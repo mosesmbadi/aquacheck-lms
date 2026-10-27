@@ -306,6 +306,7 @@ export const quotationsApi = {
   update: (
     id: number,
     data: Partial<{
+      quote_number: string;
       items: QuotationItem[];
       vat_rate: number;
       currency: string;

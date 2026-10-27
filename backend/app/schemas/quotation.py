@@ -39,6 +39,7 @@ class QuotationCreate(QuotationBase):
 
 
 class QuotationUpdate(BaseModel):
+    quote_number: Optional[str] = None  # admin only; format QTN/<seq>/<year>
     quotation_type: Optional[QuotationType] = None
     items: Optional[List[QuotationItem]] = None
     vat_rate: Optional[float] = None

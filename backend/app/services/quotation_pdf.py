@@ -99,6 +99,8 @@ def build_quotation_pdf(quotation, customer) -> bytes:
     )
     header.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        # Cell alignment decides where the nested meta box sits; push it flush right under the title.
+        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
         ("LEFTPADDING", (0, 0), (-1, -1), 0),
         ("RIGHTPADDING", (0, 0), (-1, -1), 0),
     ]))
@@ -198,7 +200,8 @@ def build_quotation_pdf(quotation, customer) -> bytes:
     footer_block.setStyle(TableStyle([
         ("BOX", (0, 0), (-1, -1), 0.75, BORDER),
         ("LINEAFTER", (0, 0), (0, -1), 0.75, BORDER),
-        ("LINEBELOW", (0, 0), (0, 0), 0.75, BORDER),
+        # Full width so the rule also runs above Subtotal on the right.
+        ("LINEBELOW", (0, 0), (-1, 0), 0.75, BORDER),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("TOPPADDING", (0, 0), (0, -1), 4),
         ("BOTTOMPADDING", (0, 0), (0, -1), 40),
