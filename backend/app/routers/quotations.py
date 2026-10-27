@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import datetime, timezone
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -164,6 +165,25 @@ def update_quotation(
         raise HTTPException(status_code=404, detail="Quotation not found")
 
     data = payload.model_dump(exclude_unset=True)
+    if data.get("quote_number") is not None:
+        if current_user.role != UserRole.admin:
+            raise HTTPException(status_code=403, detail="Only admins can change the quotation number")
+        new_number = data["quote_number"].strip().upper()
+        # Must stay parseable by _next_quote_number so the sequence continues from it
+        if not re.fullmatch(r"QTN/\d+/\d{4}", new_number):
+            raise HTTPException(status_code=400, detail="Quotation number must be in the format QTN/<number>/<year>")
+        if new_number != quote.quote_number:
+            clash = db.query(Quotation).filter(
+                Quotation.quote_number == new_number, Quotation.id != quote.id
+            ).first()
+            if clash:
+                raise HTTPException(status_code=400, detail=f"Quotation number {new_number} is already in use")
+            log_action(
+                db, current_user.id, "RENUMBER_QUOTATION", "quotation", str(quote.id),
+                old_value={"quote_number": quote.quote_number}, new_value={"quote_number": new_number},
+            )
+            quote.quote_number = new_number
+
     if "items" in data or "vat_rate" in data:
         items_src = payload.items if payload.items is not None else [QuotationItem(**i) for i in (quote.items or [])]
         vat_rate = payload.vat_rate if payload.vat_rate is not None else float(quote.vat_rate or 0)

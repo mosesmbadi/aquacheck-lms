@@ -12,6 +12,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Input, Textarea } from "@/components/ui/Input";
 import { quotationsApi, customersApi } from "@/lib/api";
 import { apiErrorMessage } from "@/lib/utils";
+import { getCurrentUser } from "@/lib/auth";
 import type { Quotation, Customer } from "@/lib/types";
 
 const statusVariant: Record<string, "default" | "success" | "warning" | "danger" | "info"> = {
@@ -30,6 +31,9 @@ export default function QuotationDetailPage() {
 
   const [showSend, setShowSend] = useState(false);
   const [error, setError] = useState("");
+  const [editingNumber, setEditingNumber] = useState(false);
+  const [numberText, setNumberText] = useState("");
+  const isAdmin = getCurrentUser()?.role === "admin";
 
   const { data: quote, isLoading } = useQuery({
     queryKey: ["quotation", id],
@@ -59,6 +63,17 @@ export default function QuotationDetailPage() {
     onError: (e: unknown) => setError(apiErrorMessage(e, "Failed to save changes.")),
   });
 
+  const updateNumberMut = useMutation({
+    mutationFn: (quote_number: string) => quotationsApi.update(id, { quote_number }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["quotation", id] });
+      qc.invalidateQueries({ queryKey: ["quotations"] });
+      setEditingNumber(false);
+      setError("");
+    },
+    onError: (e: unknown) => setError(apiErrorMessage(e, "Failed to change quotation number.")),
+  });
+
   if (isLoading || !quote) {
     return (
       <DashboardLayout title="Quotation">
@@ -78,7 +93,42 @@ export default function QuotationDetailPage() {
             <ArrowLeft className="w-4 h-4 mr-1" /> Back
           </Button>
           <div>
-            <h1 className="text-2xl font-bold font-mono">{q.quote_number}</h1>
+            {editingNumber ? (
+              <div className="flex items-center gap-2">
+                <input
+                  value={numberText}
+                  onChange={(e) => setNumberText(e.target.value)}
+                  className="text-xl font-bold font-mono px-2 py-1 border border-gray-300 rounded-lg focus:border-primary-400 focus:ring-1 focus:ring-primary-400 outline-none"
+                  placeholder="QTN/390/2026"
+                  autoFocus
+                />
+                <button
+                  onClick={() => updateNumberMut.mutate(numberText.trim())}
+                  disabled={updateNumberMut.isPending || !numberText.trim()}
+                  className="text-xs text-white bg-primary-600 hover:bg-primary-700 px-3 py-1.5 rounded-lg disabled:opacity-50"
+                >
+                  {updateNumberMut.isPending ? "Saving…" : "Save"}
+                </button>
+                <button
+                  onClick={() => { setEditingNumber(false); setError(""); }}
+                  className="text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5 border border-gray-300 rounded-lg"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl font-bold font-mono">{q.quote_number}</h1>
+                {isAdmin && (
+                  <button
+                    onClick={() => { setNumberText(q.quote_number); setEditingNumber(true); }}
+                    className="text-xs text-primary-600 hover:text-primary-700 underline"
+                  >
+                    Edit number
+                  </button>
+                )}
+              </div>
+            )}
             <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
               <Badge variant={statusVariant[q.status] ?? "default"}>{q.status}</Badge>
               <span>Created {format(new Date(q.created_at), "dd MMM yyyy")}</span>
