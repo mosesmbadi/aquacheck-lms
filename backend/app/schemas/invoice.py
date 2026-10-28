@@ -27,6 +27,7 @@ class InvoiceCreate(BaseModel):
 
 
 class InvoiceUpdate(BaseModel):
+    invoice_number: Optional[str] = None  # admin only
     items: Optional[List[Any]] = None
     vat_rate: Optional[float] = None
     currency: Optional[str] = None
