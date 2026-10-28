@@ -282,6 +282,8 @@ function InvoiceEditModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const isAdmin = getCurrentUser()?.role === "admin";
+  const [invoiceNumber, setInvoiceNumber] = useState(invoice.invoice_number);
   const [items, setItems] = useState<InvoiceItem[]>(invoice.items || []);
   const [vatRate, setVatRate] = useState(Number(invoice.vat_rate));
   const [dueDate, setDueDate] = useState(invoice.due_date ?? "");
@@ -312,6 +314,7 @@ function InvoiceEditModal({
   const updateMut = useMutation({
     mutationFn: () =>
       invoicesApi.update(invoice.id, {
+        ...(isAdmin && { invoice_number: invoiceNumber.trim() }),
         items,
         vat_rate: vatRate,
         currency,
@@ -336,6 +339,13 @@ function InvoiceEditModal({
         {error && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded">{error}</p>}
 
         <div className="grid grid-cols-2 gap-3 text-sm">
+          {isAdmin && (
+            <div className="col-span-2">
+              <span className="text-gray-500">Invoice #:</span>{" "}
+              <input className="w-48 px-2 py-0.5 border rounded text-sm font-mono font-medium" value={invoiceNumber}
+                onChange={(e) => setInvoiceNumber(e.target.value)} />
+            </div>
+          )}
           <div>
             <span className="text-gray-500">Sample:</span>{" "}
             <span className="font-medium">{invoice.sample_code ?? "—"}</span>

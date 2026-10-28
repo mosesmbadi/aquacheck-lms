@@ -20,7 +20,12 @@ router = APIRouter(prefix="/invoices", tags=["Invoices"])
 def _next_invoice_number(db: Session) -> str:
     year = datetime.now(timezone.utc).year
     count = db.query(Invoice).filter(Invoice.invoice_number.like(f"INV-{year}-%")).count()
-    return f"INV-{year}-{str(count + 1).zfill(5)}"
+    # Admins can rename invoices, so the count may lag behind numbers already taken.
+    while True:
+        count += 1
+        number = f"INV-{year}-{str(count).zfill(5)}"
+        if not db.query(Invoice.id).filter(Invoice.invoice_number == number).first():
+            return number
 
 
 def _compute_totals(items: list, vat_rate: float):
@@ -140,6 +145,21 @@ def update_invoice(
         raise HTTPException(status_code=404, detail="Invoice not found")
 
     update_data = payload.model_dump(exclude_unset=True)
+    old_number = inv.invoice_number
+    if "invoice_number" in update_data:
+        new_number = (update_data["invoice_number"] or "").strip()
+        if new_number == inv.invoice_number:
+            update_data.pop("invoice_number")
+        else:
+            if current_user.role != UserRole.admin:
+                raise HTTPException(status_code=403, detail="Only admins can change the invoice number")
+            if not new_number:
+                raise HTTPException(status_code=400, detail="Invoice number cannot be empty")
+            clash = db.query(Invoice).filter(Invoice.invoice_number == new_number, Invoice.id != inv.id).first()
+            if clash:
+                raise HTTPException(status_code=400, detail=f"Invoice number {new_number} is already in use")
+            update_data["invoice_number"] = new_number
+
     for k, v in update_data.items():
         setattr(inv, k, v)
 
@@ -150,6 +170,9 @@ def update_invoice(
     db.commit()
     db.refresh(inv)
     log_action(db, current_user.id, "UPDATE_INVOICE", "invoice", str(invoice_id))
+    if "invoice_number" in update_data:
+        log_action(db, current_user.id, "RENUMBER_INVOICE", "invoice", str(invoice_id),
+                   old_value={"invoice_number": old_number}, new_value={"invoice_number": inv.invoice_number})
     return _serialize(inv, db)
 
 
