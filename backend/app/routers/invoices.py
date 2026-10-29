@@ -19,13 +19,15 @@ router = APIRouter(prefix="/invoices", tags=["Invoices"])
 
 def _next_invoice_number(db: Session) -> str:
     year = datetime.now(timezone.utc).year
-    count = db.query(Invoice).filter(Invoice.invoice_number.like(f"INV-{year}-%")).count()
-    # Admins can rename invoices, so the count may lag behind numbers already taken.
-    while True:
-        count += 1
-        number = f"INV-{year}-{str(count).zfill(5)}"
-        if not db.query(Invoice.id).filter(Invoice.invoice_number == number).first():
-            return number
+    prefix = f"INV-{year}-"
+    # Admins can rename invoices, so continue from the highest number in use rather than the count.
+    rows = db.query(Invoice.invoice_number).filter(Invoice.invoice_number.like(f"{prefix}%")).all()
+    highest = 0
+    for (number,) in rows:
+        suffix = number[len(prefix):]
+        if suffix.isdigit():
+            highest = max(highest, int(suffix))
+    return f"{prefix}{str(highest + 1).zfill(5)}"
 
 
 def _compute_totals(items: list, vat_rate: float):
