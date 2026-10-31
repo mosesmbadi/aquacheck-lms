@@ -143,13 +143,21 @@ export const equipmentApi = {
 // ─── Reports ──────────────────────────────────────────────────────────────────
 export const reportsApi = {
   /** include_pending (staff): also drafts whose sample results aren't all validated yet. */
-  list: (params?: { include_pending?: boolean }) => api.get<Report[]>("/reports", { params }),
+  list: (params?: { include_pending?: boolean; sample_id?: number }) => api.get<Report[]>("/reports", { params }),
   get: (id: number) => api.get<Report>(`/reports/${id}`),
   create: (data: Partial<Report>) => api.post<Report>("/reports", data),
   update: (id: number, data: { content?: Report["content"]; status?: string; amendment_reason?: string }) =>
     api.put<Report>(`/reports/${id}`, data),
   issue: (id: number) => api.post<Report>(`/reports/${id}/issue`),
   pdfUrl: (id: number) => `${BASE_URL}/reports/${id}/pdf`,
+  /** The report PDF to show in the browser. signers: user ids to sign this printout instead. */
+  pdfBlob: (id: number, signers?: number[]) =>
+    api
+      .get<Blob>(`/reports/${id}/pdf`, {
+        params: { inline: true, signers: signers?.length ? signers.join(",") : undefined },
+        responseType: "blob",
+      })
+      .then((res) => new Blob([res.data], { type: "application/pdf" })),
   downloadPdf: async (id: number, reportNumber: string) => {
     const res = await api.get(`/reports/${id}/pdf`, { responseType: "blob" });
     const url = window.URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));

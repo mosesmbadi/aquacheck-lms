@@ -57,8 +57,8 @@ def get_public_report(
 
     if is_authorized:
         # Same loading as the PDF, so sections, order and remarks match the report.
-        test_results, catalog_by_id, qualifiers = load_report_results(db, sample)
-        result_sections = _result_sections(test_results, content, sample, catalog_by_id, qualifiers, show_who)
+        items, result_by_item, qualifiers = load_report_results(db, sample)
+        result_sections = _result_sections(items, result_by_item, content, sample, qualifiers, show_who)
         parameters = [
             {
                 "parameter": row.get("parameter", "—"),

@@ -74,6 +74,8 @@ from reportlab.platypus import (
 from reportlab.platypus import PageTemplate, Frame
 from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
 
+from app.services.pdf_fonts import FONT, FONT_BOLD
+
 _PRIMARY = colors.HexColor("#0369a1")   # primary-700 blue
 _LIGHT    = colors.HexColor("#e0f2fe")  # primary-50
 
@@ -87,17 +89,17 @@ def _header_footer(canvas, doc, code: str, version: str):
     canvas.rect(0, h - 1.8 * cm, w, 1.8 * cm, fill=True, stroke=False)
 
     canvas.setFillColor(colors.white)
-    canvas.setFont("Helvetica-Bold", 10)
+    canvas.setFont(FONT_BOLD, 10)
     canvas.drawString(1.5 * cm, h - 1.1 * cm, "AQUACHECK LABORATORIES LTD")
 
-    canvas.setFont("Helvetica", 9)
+    canvas.setFont(FONT, 9)
     canvas.drawRightString(w - 1.5 * cm, h - 1.1 * cm, f"{code}  |  Rev {version}")
 
     # ── Bottom bar ─────────────────────────────────────────────────────────
     canvas.setFillColor(_LIGHT)
     canvas.rect(0, 0, w, 0.8 * cm, fill=True, stroke=False)
     canvas.setFillColor(_PRIMARY)
-    canvas.setFont("Helvetica", 8)
+    canvas.setFont(FONT, 8)
     canvas.drawString(1.5 * cm, 0.3 * cm, "Controlled Document — AquaCheck LIMS")
     canvas.drawRightString(w - 1.5 * cm, 0.3 * cm, f"Page {doc.page}")
 
@@ -130,7 +132,7 @@ def generate_pdf(
         "DocTitle",
         parent=styles["Normal"],
         fontSize=14,
-        fontName="Helvetica-Bold",
+        fontName=FONT_BOLD,
         textColor=_PRIMARY,
         spaceAfter=4,
         alignment=TA_CENTER,
@@ -139,6 +141,7 @@ def generate_pdf(
         "Meta",
         parent=styles["Normal"],
         fontSize=9,
+        fontName=FONT,
         textColor=colors.HexColor("#6b7280"),
         alignment=TA_CENTER,
         spaceAfter=2,
@@ -147,7 +150,7 @@ def generate_pdf(
         "SectionHeading",
         parent=styles["Normal"],
         fontSize=10,
-        fontName="Helvetica-Bold",
+        fontName=FONT_BOLD,
         textColor=_PRIMARY,
         spaceBefore=14,
         spaceAfter=4,
@@ -157,6 +160,7 @@ def generate_pdf(
         "Body",
         parent=styles["Normal"],
         fontSize=9,
+        fontName=FONT,
         leading=14,
         textColor=colors.HexColor("#374151"),
         spaceAfter=4,

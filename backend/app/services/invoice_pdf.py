@@ -6,6 +6,8 @@ from reportlab.lib.utils import simpleSplit
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen.canvas import Canvas
 
+from app.services.pdf_fonts import FONT, FONT_BOLD, FONT_ITALIC
+
 _LOGO_PATH = os.path.join(os.path.dirname(__file__), "..", "images", "aquacheck logo.png")
 
 PAGE_W, PAGE_H = A4
@@ -74,7 +76,7 @@ def _box(c: Canvas, left, top, right, bottom, fill=None):
     c.setFillColor(TEXT)
 
 
-def _labelled_boxes(c: Canvas, cells, top, mid, bottom, label_font=("Helvetica", 9), value_font=("Times-Roman", 9)):
+def _labelled_boxes(c: Canvas, cells, top, mid, bottom, label_font=(FONT, 9), value_font=(FONT, 9)):
     """Draw adjacent header/value box pairs: cells = [(left, right, label, value), ...]."""
     for left, right, label, value in cells:
         _box(c, left, top, right, mid)
@@ -99,7 +101,7 @@ def _build_rows(items, taxable: bool):
         name = str(item.get("name") or "")
         if item.get("package_name"):
             name = f"{item['package_name']}: {name}"
-        lines = simpleSplit(name, "Times-Roman", ROW_FONT_SIZE, desc_width) or [""]
+        lines = simpleSplit(name, FONT, ROW_FONT_SIZE, desc_width) or [""]
         amount = _money(item.get("total", 0)) + ("T" if taxable else "")
         rows.append({
             "qty": _qty(item.get("quantity", "")),
@@ -130,26 +132,26 @@ def _draw_header(c: Canvas, invoice_date: str, invoice_number: str):
         c.drawImage(logo_path, 39, _y(80), width=180, height=56, preserveAspectRatio=True, anchor="w", mask="auto")
     else:
         c.setFillColor(TEXT)
-        c.setFont("Helvetica-Bold", 22)
+        c.setFont(FONT_BOLD, 22)
         c.drawString(39, _y(58), "Aquacheck")
 
     c.setFillColor(TEXT)
-    c.setFont("Helvetica-Bold", 20)
+    c.setFont(FONT_BOLD, 20)
     c.drawRightString(556, _y(48), "INVOICE")
 
-    number_size = _fit_font(invoice_number, "Times-Roman", 9, 560 - 488 - 6)
+    number_size = _fit_font(invoice_number, FONT, 9, 560 - 488 - 6)
     _labelled_boxes(c, [(411, 488, "Date", invoice_date)], 67, 81, 103)
     _labelled_boxes(c, [(488, 560, "Invoice #", invoice_number)], 67, 81, 103,
-                    value_font=("Times-Roman", number_size))
+                    value_font=(FONT, number_size))
 
-    c.setFont("Times-Roman", 12)
+    c.setFont(FONT, 12)
     for i, line in enumerate(LAB_ADDRESS):
         c.drawString(39, _y(102 + i * 15), line)
 
 
 def _draw_bill_to(c: Canvas, customer):
     _box(c, 36, 181, 267, 199)
-    c.setFont("Helvetica", 9)
+    c.setFont(FONT, 9)
     c.drawString(48, _y(193), "Bill To")
     _box(c, 36, 204, 267, 253)
     lines = []
@@ -157,10 +159,10 @@ def _draw_bill_to(c: Canvas, customer):
         lines.append(customer.name or "")
         if customer.address:
             lines.extend(customer.address.splitlines())
-    c.setFont("Times-Roman", 9)
+    c.setFont(FONT, 9)
     y = 214
     for raw in lines:
-        for line in simpleSplit(raw, "Times-Roman", 9, 267 - 36 - 10):
+        for line in simpleSplit(raw, FONT, 9, 267 - 36 - 10):
             if y > 250:
                 return
             c.drawString(41, _y(y), line)
@@ -184,13 +186,13 @@ def _draw_items(c: Canvas, rows):
         c.line(x, _y(ITEMS_HEAD_TOP), x, _y(ITEMS_BOTTOM))
 
     head_y = _y((ITEMS_HEAD_TOP + ITEMS_HEAD_BOTTOM) / 2 + 3)
-    c.setFont("Helvetica", 9)
+    c.setFont(FONT, 9)
     c.drawCentredString((ITEMS_LEFT + COL_QTY_END) / 2, head_y, "Quantity")
     c.drawCentredString((COL_QTY_END + COL_DESC_END) / 2, head_y, "Description")
     c.drawCentredString((COL_DESC_END + COL_RATE_END) / 2, head_y, "Rate")
     c.drawCentredString((COL_RATE_END + ITEMS_RIGHT) / 2, head_y, "Amount")
 
-    c.setFont("Times-Roman", ROW_FONT_SIZE)
+    c.setFont(FONT, ROW_FONT_SIZE)
     top = ITEMS_HEAD_BOTTOM + 3
     for row in rows:
         baseline = _y(top + ROW_FONT_SIZE)
@@ -212,12 +214,12 @@ def _draw_totals(c: Canvas, invoice, currency: str):
     for label, value, top, bottom, size in totals:
         _box(c, COL_DESC_END, top, ITEMS_RIGHT, bottom)
         baseline = _y((top + bottom) / 2 + size / 3)
-        c.setFont("Helvetica-Bold", size)
+        c.setFont(FONT_BOLD, size)
         c.drawString(COL_DESC_END + 12, baseline, label)
-        c.setFont("Times-Roman", 9)
+        c.setFont(FONT, 9)
         c.drawRightString(ITEMS_RIGHT - 8, _y((top + bottom) / 2 + 3), f"{currency} {_money(value)}")
 
-    c.setFont("Times-Roman", 9)
+    c.setFont(FONT, 9)
     for i, line in enumerate(PAYMENT_DETAILS):
         c.drawString(43, _y(600 + i * 10.6), line)
 
@@ -243,14 +245,14 @@ def _draw_payment_stamp(c: Canvas, status: str):
     c.setLineWidth(2)
     c.roundRect(left, _y(bottom), right - left, bottom - top, 4, stroke=1, fill=0)
     c.setFillColor(color)
-    c.setFont("Helvetica-Bold", 20)
+    c.setFont(FONT_BOLD, 20)
     c.drawCentredString((left + right) / 2, _y((top + bottom) / 2 + 7), label)
     c.setFillColor(TEXT)
 
 
 def _draw_footer(c: Canvas, paid: bool):
     _box(c, 162, 723, 353, 746)
-    c.setFont("Times-Roman", 9)
+    c.setFont(FONT, 9)
     message = "Payment received with thanks." if paid else "We look forward to receiving your payment."
     c.drawString(166, _y(737), message)
     _labelled_boxes(c, [
@@ -289,11 +291,11 @@ def build_invoice_pdf(invoice, customer) -> bytes:
         if index == len(pages) - 1:
             _draw_totals(c, invoice, currency)
         else:
-            c.setFont("Times-Italic", 9)
+            c.setFont(FONT_ITALIC, 9)
             c.drawRightString(ITEMS_RIGHT, _y(592), "Continued on next page")
         _draw_footer(c, status == "paid")
         if len(pages) > 1:
-            c.setFont("Times-Roman", 8)
+            c.setFont(FONT, 8)
             c.drawCentredString(PAGE_W / 2, _y(815), f"Page {index + 1} of {len(pages)}")
         c.showPage()
 

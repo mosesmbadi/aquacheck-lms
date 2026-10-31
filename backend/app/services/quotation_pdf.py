@@ -7,6 +7,8 @@ from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
 from reportlab.lib.styles import ParagraphStyle
 
+from app.services.pdf_fonts import FONT, FONT_BOLD
+
 _LOGO_PATH = os.path.join(os.path.dirname(__file__), "..", "images", "aquacheck logo.png")
 
 # Laid out after the lab's existing quote template: navy text, lavender rules.
@@ -51,15 +53,15 @@ def build_quotation_pdf(quotation, customer) -> bytes:
     )
     story = []
 
-    body = ParagraphStyle("body", fontName="Times-Roman", fontSize=9, leading=11, textColor=NAVY)
+    body = ParagraphStyle("body", fontName=FONT, fontSize=9, leading=11, textColor=NAVY)
     body_right = ParagraphStyle("body_right", parent=body, alignment=2)
     body_center = ParagraphStyle("body_center", parent=body, alignment=1)
-    label = ParagraphStyle("label", fontName="Helvetica", fontSize=9, leading=11, textColor=NAVY, alignment=1)
+    label = ParagraphStyle("label", fontName=FONT, fontSize=9, leading=11, textColor=NAVY, alignment=1)
     label_left = ParagraphStyle("label_left", parent=label, alignment=0)
-    title_style = ParagraphStyle("title", fontName="Helvetica-Bold", fontSize=22, leading=26, textColor=NAVY, alignment=2)
-    company_name_style = ParagraphStyle("company_name", fontName="Times-Roman", fontSize=12, leading=15, textColor=NAVY)
-    company_addr_style = ParagraphStyle("company_addr", fontName="Times-Roman", fontSize=11, leading=14, textColor=NAVY)
-    totals_label = ParagraphStyle("totals_label", fontName="Helvetica-Bold", fontSize=11, leading=14, textColor=NAVY)
+    title_style = ParagraphStyle("title", fontName=FONT_BOLD, fontSize=22, leading=26, textColor=NAVY, alignment=2)
+    company_name_style = ParagraphStyle("company_name", fontName=FONT, fontSize=12, leading=15, textColor=NAVY)
+    company_addr_style = ParagraphStyle("company_addr", fontName=FONT, fontSize=11, leading=14, textColor=NAVY)
+    totals_label = ParagraphStyle("totals_label", fontName=FONT_BOLD, fontSize=11, leading=14, textColor=NAVY)
     total_label = ParagraphStyle("total_label", parent=totals_label, fontSize=15, leading=18)
 
     currency = quotation.currency or "KES"
