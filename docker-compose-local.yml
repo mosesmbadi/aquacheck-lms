@@ -47,6 +47,7 @@ services:
       dockerfile: Dockerfile
     container_name: aquacheck_backend
     restart: unless-stopped
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     env_file:
       - .env.local
     ports:

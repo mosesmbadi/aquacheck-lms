@@ -3,6 +3,9 @@
 }
 
 lims.aquachecklab.com {
+    # Compress responses: JSON lists and the Next.js bundles shrink several-fold.
+    encode zstd gzip
+
     route {
         coraza_waf {
             load_owasp_crs
