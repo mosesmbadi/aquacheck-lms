@@ -691,7 +691,7 @@ LAB_ADDRESS_LINES = [
     "Off Ring Road, Parklands Rd",
     "Email: info@aquachecklab.com",
     "Website: www.aquachecklab.com",
-    "TEL: 0755596064/0734933839",
+    "TEL: 0755596064/0734933819",
 ]
 DISCLAIMER_TEXT = (
     "These results only apply to the sample submitted and the recommendations/comments are "
@@ -710,7 +710,8 @@ _BLACK = colors.black
 _HEADER_BG = colors.HexColor("#e0e0e0")
 _ZEBRA_BG = colors.HexColor("#d9d9d9")
 _REMARK_COLORS = {"non_compliant": "#cc0000", "compliant": "#006600"}
-_CONTENT_WIDTH = A4[0] - 30 * mm
+_SIDE_MARGIN = 10 * mm
+_CONTENT_WIDTH = A4[0] - 2 * _SIDE_MARGIN
 
 
 def _styles():
@@ -825,7 +826,7 @@ def generate_pdf(
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=A4, title=f"Test Report {report.report_number}",
-        leftMargin=15 * mm, rightMargin=15 * mm, topMargin=15 * mm, bottomMargin=20 * mm,
+        leftMargin=_SIDE_MARGIN, rightMargin=_SIDE_MARGIN, topMargin=10 * mm, bottomMargin=20 * mm,
     )
     story = []
 
@@ -843,6 +844,7 @@ def generate_pdf(
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("LEFTPADDING", (0, 0), (-1, -1), 0),
         ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
         ("LINEBELOW", (0, 0), (-1, 0), 1.5, _BLACK),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
     ]))
@@ -970,11 +972,11 @@ def generate_pdf(
                 table_style.append(("BACKGROUND", (0, len(rows) - 1), (-1, len(rows) - 1), _ZEBRA_BG))
     # Widths (cm) by printed columns: test, method, results, [spec], [WHO], [remarks].
     widths = {
-        (True, False, True): [6.0, 4.0, 3.5, 4.5],
-        (False, False, True): [5.4, 4.0, 2.3, 3.6, 2.7],
-        (False, True, True): [4.6, 3.6, 2.0, 3.0, 2.3, 2.5],
-        (False, False, False): [6.2, 5.0, 2.6, 4.2],
-        (False, True, False): [5.4, 4.3, 2.3, 3.0, 3.0],
+        (True, False, True): [6.4, 4.6, 3.5, 4.5],
+        (False, False, True): [5.9, 4.9, 2.0, 3.3, 2.9],
+        (False, True, True): [4.9, 4.2, 1.9, 3.0, 2.3, 2.7],
+        (False, False, False): [6.5, 5.5, 2.6, 4.4],
+        (False, True, False): [5.8, 4.9, 2.3, 3.0, 3.0],
     }[(is_paint, show_who, show_remarks)]
     results_table = Table(rows, colWidths=[w * cm for w in widths], repeatRows=1)
     results_table.setStyle(TableStyle(table_style))
