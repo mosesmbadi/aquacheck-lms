@@ -19,6 +19,7 @@ from reportlab.lib import colors
 from reportlab.lib.units import cm, mm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether, Image as RLImage
 from reportlab.lib.styles import ParagraphStyle
+from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen.canvas import Canvas
 from app.services.pdf_fonts import FONT, FONT_BOLD, FONT_ITALIC
 from app.deps import get_db, get_current_user
@@ -906,13 +907,21 @@ def generate_pdf(
         ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
         ("LEFTPADDING", (0, 0), (-1, -1), 3),
         ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+        # The right-hand block ends flush with the results table's right edge.
+        ("RIGHTPADDING", (3, 0), (3, -1), 0),
     ]
     if sample and sample.notes:
         detail_rows.append([Paragraph("<b>NOTES:</b>", st["body"]), Paragraph(escape(sample.notes), st["body"]), "", ""])
         detail_style.append(("SPAN", (1, len(detail_rows) - 1), (3, len(detail_rows) - 1)))
-    # The right-hand values are short (dates, lab ID): a narrow column keeps them
-    # beside their labels, and the spare width goes to the left-hand values.
-    details_table = Table(detail_rows, colWidths=[3.4 * cm, _CONTENT_WIDTH - 10.1 * cm, 3.5 * cm, 3.2 * cm])
+    # The right-hand values are short (dates, lab ID): their column is sized to the
+    # longest one so the block sits against the right edge, beside its labels, and
+    # the spare width goes to the left-hand values.
+    value2_width = max(stringWidth(str(value2), FONT, 9) for _, _, _, value2 in details) + 3 + 1
+    value2_width = min(max(value2_width, 1.8 * cm), 4.5 * cm)
+    details_table = Table(
+        detail_rows,
+        colWidths=[3.4 * cm, _CONTENT_WIDTH - 6.9 * cm - value2_width, 3.5 * cm, value2_width],
+    )
     details_table.setStyle(TableStyle(detail_style))
     story.append(details_table)
     story.append(Spacer(1, 8))
