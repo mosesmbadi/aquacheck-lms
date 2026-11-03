@@ -898,7 +898,7 @@ def generate_pdf(
     ]
     detail_rows = [
         [Paragraph(f"<b>{label}</b>", st["body"]), Paragraph(escape(str(value)).upper(), st["body"]),
-         Paragraph(f"<b>{label2}</b>", st["body_right"]), Paragraph(escape(str(value2)), st["body"])]
+         Paragraph(f"<b>{label2}</b>", st["body_right"]), Paragraph(escape(str(value2)), st["body_right"])]
         for label, value, label2, value2 in details
     ]
     detail_style = [
