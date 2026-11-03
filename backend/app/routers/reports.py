@@ -725,7 +725,7 @@ def _styles():
         "head_center": ParagraphStyle("head_center", parent=body, fontName=FONT_BOLD, leading=10.5, alignment=1),
         "address": ParagraphStyle("address", parent=body, fontSize=6.75, leading=10, alignment=2, textColor=colors.HexColor("#333333")),
         "report_no": ParagraphStyle("report_no", parent=body, fontSize=7, alignment=2, textColor=colors.HexColor("#555555")),
-        "title": ParagraphStyle("title", parent=body, fontName=FONT_BOLD, fontSize=12, leading=15, alignment=1, spaceBefore=6, spaceAfter=6),
+        "title": ParagraphStyle("title", parent=body, fontName=FONT_BOLD, fontSize=12, leading=15, alignment=1, spaceAfter=6),
         "note_heading": ParagraphStyle("note_heading", parent=body, fontName=FONT_BOLD, fontSize=10, leading=13, spaceBefore=6),
         "note": ParagraphStyle("note", parent=body, fontSize=7.5, leading=10.5),
         "signer": ParagraphStyle("signer", parent=body, alignment=1),
@@ -850,7 +850,6 @@ def generate_pdf(
     ]))
     story.append(header)
     amended = ' <font color="#b45309">[AMENDED]</font>' if report.status == ReportStatus.amended else ""
-    story.append(Spacer(1, 4))
     story.append(Paragraph(f"Report No: <b>{escape(report.report_number)}</b>{amended}", st["report_no"]))
     story.append(Paragraph(f"<u>{escape(_content_value(content, 'report_title', 'TEST REPORT'))}</u>", st["title"]))
 
@@ -898,7 +897,7 @@ def generate_pdf(
     ]
     detail_rows = [
         [Paragraph(f"<b>{label}</b>", st["body"]), Paragraph(escape(str(value)).upper(), st["body"]),
-         Paragraph(f"<b>{label2}</b>", st["body_right"]), Paragraph(escape(str(value2)), st["body_right"])]
+         Paragraph(f"<b>{label2}</b>", st["body_right"]), Paragraph(escape(str(value2)), st["body"])]
         for label, value, label2, value2 in details
     ]
     detail_style = [
@@ -911,7 +910,9 @@ def generate_pdf(
     if sample and sample.notes:
         detail_rows.append([Paragraph("<b>NOTES:</b>", st["body"]), Paragraph(escape(sample.notes), st["body"]), "", ""])
         detail_style.append(("SPAN", (1, len(detail_rows) - 1), (3, len(detail_rows) - 1)))
-    details_table = Table(detail_rows, colWidths=[3.4 * cm, 6.6 * cm, 3.5 * cm, _CONTENT_WIDTH - 13.5 * cm])
+    # The right-hand values are short (dates, lab ID): a narrow column keeps them
+    # beside their labels, and the spare width goes to the left-hand values.
+    details_table = Table(detail_rows, colWidths=[3.4 * cm, _CONTENT_WIDTH - 10.1 * cm, 3.5 * cm, 3.2 * cm])
     details_table.setStyle(TableStyle(detail_style))
     story.append(details_table)
     story.append(Spacer(1, 8))

@@ -215,7 +215,7 @@ export default function PublicReportPage() {
         )}
 
         <p className="text-center text-xs text-gray-400">
-          {data.laboratory} · ISO/IEC 17025 Accredited Laboratory
+          {data.laboratory}
         </p>
         {data.system_generated_note && (
           <p className="text-center text-xs text-gray-400 italic">{data.system_generated_note}</p>
