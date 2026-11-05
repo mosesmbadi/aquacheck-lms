@@ -6,6 +6,7 @@ import re
 import base64
 import os
 from pathlib import Path
+from urllib.parse import quote
 from xml.sax.saxutils import escape
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import or_
@@ -33,6 +34,7 @@ from app.models.test_catalog import TestCatalogItem, TestCategory
 from app.models.result_qualifier import ResultQualifier
 from app.schemas.report import ReportCreate, ReportUpdate, ReportOut
 from app.services.audit import log_action
+from app.services.auth import create_access_token, decode_access_token
 from app.services.barcode import generate_barcode
 from app.services.compliance import evaluate_item_remark, legend_entries
 from app.services.signatories import frozen_signatories, resolve_signatories
@@ -84,9 +86,9 @@ _SCHEDULE_SPEC_HEADERS = {
 }
 
 _SCHEDULE_CONTEXT = {
-    3: "discharge into the environment based on the legal notice No.120 of EMCA, 2006",
-    5: "discharge into public sewers based on the legal notice No.120 of EMCA, 2006",
-    6: "discharge of treated effluent into the environment based on the legal notice No.120 of EMCA, 2006",
+    3: "NEMA specifications for discharge into the environment based on the legal notice No. 120 of EMCA, 2006",
+    5: "NEMA specifications for discharge into public sewers based on the legal notice No. 120 of EMCA, 2006",
+    6: "NEMA specifications for discharge of treated effluent into the environment based on the legal notice No. 120 of EMCA, 2006",
 }
 
 WHO_CONTEXT = "the World Health Organization (WHO) Guidelines for Drinking-water Quality"
@@ -363,7 +365,7 @@ def _comment_paragraphs(content, sample, result_sections, context, natural, show
             )
         elif category == "waste":
             paragraphs.append(
-                f"The parameters; {names} do not meet the set specifications for {context}. "
+                f"The parameters; {names} do not meet {context}. "
                 "Treatment is therefore recommended."
             )
         else:
@@ -781,6 +783,48 @@ def _signature_block(sig: dict, styles):
     return block
 
 
+def _pdf_filename(report: Report) -> str:
+    return f"{report.report_number.replace('/', '_')}.pdf"
+
+
+# How long a preview link works: long enough to keep the preview open while printing.
+_PDF_LINK_EXPIRE_MINUTES = 60
+
+
+@router.post("/{report_id}/pdf-link")
+def create_pdf_link(
+    report_id: int,
+    signers: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """A link to the report PDF that a browser can open without the Authorization header.
+    Its path ends in the report's file name, so the browser's PDF viewer and print dialog
+    name the file after the report. The token has no "sub", so it can't be used to log in."""
+    report = db.query(Report).filter(Report.id == report_id).first()
+    if not report:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
+    _ensure_customer_can_view(report, current_user, db)
+    token = create_access_token(
+        {"pdf_report": report.id, "pdf_user": current_user.id, "signers": signers},
+        timedelta(minutes=_PDF_LINK_EXPIRE_MINUTES),
+    )
+    return {"path": f"/reports/{report.id}/file/{quote(_pdf_filename(report))}?token={token}"}
+
+
+@router.get("/{report_id}/file/{filename}")
+def open_pdf_link(report_id: int, filename: str, token: str, db: Session = Depends(get_db)):
+    """The report PDF behind a create_pdf_link link, with the access of the user who
+    requested the link. The file name is only there for the browser."""
+    payload = decode_access_token(token)
+    if payload is None or payload.get("pdf_report") != report_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="This report link has expired.")
+    user = db.query(User).filter(User.id == payload.get("pdf_user")).first()
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="This report link has expired.")
+    return generate_pdf(report_id, inline=True, signers=payload.get("signers"), db=db, current_user=user)
+
+
 @router.get("/{report_id}/pdf")
 def generate_pdf(
     report_id: int,
@@ -826,7 +870,8 @@ def generate_pdf(
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
-        buffer, pagesize=A4, title=f"Test Report {report.report_number}",
+        # Browsers offer the PDF's title as the file name when saving from the print dialog.
+        buffer, pagesize=A4, title=report.report_number,
         leftMargin=_SIDE_MARGIN, rightMargin=_SIDE_MARGIN, topMargin=10 * mm, bottomMargin=20 * mm,
     )
     story = []
@@ -1082,5 +1127,5 @@ def generate_pdf(
     return StreamingResponse(
         buffer,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'{disposition}; filename="{report.report_number}.pdf"'},
+        headers={"Content-Disposition": f'{disposition}; filename="{_pdf_filename(report)}"'},
     )

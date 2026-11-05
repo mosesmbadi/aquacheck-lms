@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Printer, X, Clock, Download, ExternalLink, Loader2 } from "lucide-react";
@@ -22,7 +22,6 @@ interface TestReportPrintProps {
  */
 export default function TestReportPrint({ sampleId, reportId, onClose, signatories = [] }: TestReportPrintProps) {
   const frameRef = useRef<HTMLIFrameElement>(null);
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const qc = useQueryClient();
 
   const { data: sample } = useQuery<Sample>({
@@ -62,20 +61,15 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
   }, [reportId, sample?.id, report?.id, reportsLoaded, reportsFetching]);
 
   const signerIds = useMemo(() => signatories.map((u) => u.id), [signatories]);
-  // Regenerated on every open: the PDF reflects the sample's current results.
-  const { data: pdfBlob, isError: pdfFailed } = useQuery<Blob>({
-    queryKey: ["report-pdf", report?.id, signerIds.join(","), report?.updated_at],
-    queryFn: () => reportsApi.pdfBlob(report!.id, signerIds),
+  // Regenerated on every open: the PDF reflects the sample's current results. While open
+  // it stays put (staleTime), or returning to this tab would reload the report mid-read.
+  const { data: pdfUrl, isError: pdfFailed } = useQuery<string>({
+    queryKey: ["report-pdf-link", report?.id, signerIds.join(","), report?.updated_at],
+    queryFn: () => reportsApi.pdfLink(report!.id, signerIds),
     enabled: !!report,
     gcTime: 0,
+    staleTime: Infinity,
   });
-
-  useEffect(() => {
-    if (!pdfBlob) return;
-    const url = URL.createObjectURL(pdfBlob);
-    setPdfUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [pdfBlob]);
 
   const handlePrint = () => {
     const frame = frameRef.current?.contentWindow;
@@ -83,7 +77,8 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
       frame?.focus();
       frame?.print();
     } catch {
-      // Some browsers can't print a PDF from inside a frame; their own viewer can.
+      // A frame served from the API's origin can't be printed from this page, and some
+      // browsers can't print a PDF from inside a frame; their own viewer can.
       if (pdfUrl) window.open(pdfUrl, "_blank");
     }
   };
@@ -134,7 +129,13 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
         {/* Report */}
         <div className="bg-gray-100">
           {pdfUrl ? (
-            <iframe ref={frameRef} src={pdfUrl} title="Test report" className="w-full h-[80vh] border-0" />
+            <div className="relative h-[80vh]">
+              {/* Shows through the frame until the server has generated the PDF. */}
+              <div className="absolute inset-0 flex items-center justify-center text-sm text-gray-500 gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" /> Generating report…
+              </div>
+              <iframe ref={frameRef} src={pdfUrl} title="Test report" className="relative w-full h-full border-0" />
+            </div>
           ) : (
             <div className="h-[60vh] flex items-center justify-center text-sm text-gray-500 gap-2">
               {pdfFailed ? (

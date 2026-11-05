@@ -150,14 +150,17 @@ export const reportsApi = {
     api.put<Report>(`/reports/${id}`, data),
   issue: (id: number) => api.post<Report>(`/reports/${id}/issue`),
   pdfUrl: (id: number) => `${BASE_URL}/reports/${id}/pdf`,
-  /** The report PDF to show in the browser. signers: user ids to sign this printout instead. */
-  pdfBlob: (id: number, signers?: number[]) =>
+  /**
+   * A temporary link to the report PDF for showing it in the browser. A real URL rather
+   * than a blob, so saving or printing it names the file after the report instead of a
+   * random id. signers: user ids to sign this printout instead.
+   */
+  pdfLink: (id: number, signers?: number[]) =>
     api
-      .get<Blob>(`/reports/${id}/pdf`, {
-        params: { inline: true, signers: signers?.length ? signers.join(",") : undefined },
-        responseType: "blob",
+      .post<{ path: string }>(`/reports/${id}/pdf-link`, null, {
+        params: { signers: signers?.length ? signers.join(",") : undefined },
       })
-      .then((res) => new Blob([res.data], { type: "application/pdf" })),
+      .then((res) => `${BASE_URL}${res.data.path}`),
   downloadPdf: async (id: number, reportNumber: string) => {
     const res = await api.get(`/reports/${id}/pdf`, { responseType: "blob" });
     const url = window.URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
