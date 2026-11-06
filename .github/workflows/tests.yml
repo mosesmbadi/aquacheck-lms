@@ -1,0 +1,67 @@
+name: Tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: lims_user
+          POSTGRES_PASSWORD: lims_pass
+          POSTGRES_DB: lims_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lims_user -d lims_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install the PDF font
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends fonts-crosextra-carlito
+      - run: pip install -r requirements-dev.txt
+      - run: pytest
+        env:
+          TEST_DATABASE_URL: postgresql://lims_user:lims_pass@localhost:5432/lims_test
+
+  e2e:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: e2e
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Start the stack
+        run: npm install && npm run stack:up
+      - run: npx playwright install --with-deps chromium
+      - run: npm test
+      - name: Show service logs
+        if: failure()
+        run: docker compose logs
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+      - name: Stop the stack
+        if: always()
+        run: npm run stack:down

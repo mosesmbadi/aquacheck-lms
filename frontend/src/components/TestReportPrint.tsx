@@ -63,7 +63,20 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
   const signerIds = useMemo(() => signatories.map((u) => u.id), [signatories]);
   // Regenerated on every open: the PDF reflects the sample's current results. While open
   // it stays put (staleTime), or returning to this tab would reload the report mid-read.
-  const { data: pdfUrl, isError: pdfFailed } = useQuery<string>({
+  const { data: previewUrl, isError: pdfFailed } = useQuery<string>({
+    queryKey: ["report-pdf-preview", report?.id, signerIds.join(","), report?.updated_at],
+    queryFn: () => reportsApi.previewBlobUrl(report!.id, signerIds),
+    enabled: !!report,
+    gcTime: 0,
+    staleTime: Infinity,
+  });
+  useEffect(() => {
+    if (!previewUrl) return;
+    return () => window.URL.revokeObjectURL(previewUrl);
+  }, [previewUrl]);
+
+  // The named link behind "Open in a new tab". The preview itself can't use it (see previewBlobUrl).
+  const { data: pdfUrl } = useQuery<string>({
     queryKey: ["report-pdf-link", report?.id, signerIds.join(","), report?.updated_at],
     queryFn: () => reportsApi.pdfLink(report!.id, signerIds),
     enabled: !!report,
@@ -77,8 +90,7 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
       frame?.focus();
       frame?.print();
     } catch {
-      // A frame served from the API's origin can't be printed from this page, and some
-      // browsers can't print a PDF from inside a frame; their own viewer can.
+      // Some browsers can't print a PDF from inside a frame; their own viewer can.
       if (pdfUrl) window.open(pdfUrl, "_blank");
     }
   };
@@ -97,13 +109,13 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
           <div className="flex items-center gap-2">
             <button
               onClick={handlePrint}
-              disabled={!pdfUrl}
+              disabled={!previewUrl}
               className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors disabled:opacity-50"
             >
               <Printer className="w-4 h-4" /> Print
             </button>
             <button
-              onClick={() => report && reportsApi.downloadPdf(report.id, report.report_number)}
+              onClick={() => report && reportsApi.downloadPdf(report.id, report.report_number, signerIds)}
               disabled={!report}
               title="Download PDF"
               className="p-2 text-gray-600 hover:text-gray-800 rounded-lg hover:bg-gray-200 disabled:opacity-50"
@@ -128,13 +140,11 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
 
         {/* Report */}
         <div className="bg-gray-100">
-          {pdfUrl ? (
-            <div className="relative h-[80vh]">
-              {/* Shows through the frame until the server has generated the PDF. */}
-              <div className="absolute inset-0 flex items-center justify-center text-sm text-gray-500 gap-2">
-                <Loader2 className="w-4 h-4 animate-spin" /> Generating report…
-              </div>
-              <iframe ref={frameRef} src={pdfUrl} title="Test report" className="relative w-full h-full border-0" />
+          {previewUrl ? (
+            <div className="h-[80vh]">
+              {/* No viewer toolbar: its download button would name the file after the blob's
+                  random id. The buttons above print and download under the report's name. */}
+              <iframe ref={frameRef} src={`${previewUrl}#toolbar=0`} title="Test report" className="w-full h-full border-0" />
             </div>
           ) : (
             <div className="h-[60vh] flex items-center justify-center text-sm text-gray-500 gap-2">

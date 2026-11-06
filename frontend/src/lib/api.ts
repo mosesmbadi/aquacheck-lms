@@ -151,9 +151,21 @@ export const reportsApi = {
   issue: (id: number) => api.post<Report>(`/reports/${id}/issue`),
   pdfUrl: (id: number) => `${BASE_URL}/reports/${id}/pdf`,
   /**
-   * A temporary link to the report PDF for showing it in the browser. A real URL rather
-   * than a blob, so saving or printing it names the file after the report instead of a
-   * random id. signers: user ids to sign this printout instead.
+   * The report PDF as a blob URL, for the in-page preview. A frame can't show the API's
+   * own URL: the production proxy sends X-Frame-Options: DENY, and a blob isn't subject
+   * to it. The caller revokes the URL. signers: user ids to sign this printout instead.
+   */
+  previewBlobUrl: (id: number, signers?: number[]): Promise<string> =>
+    api
+      .get(`/reports/${id}/pdf`, {
+        params: { signers: signers?.length ? signers.join(",") : undefined },
+        responseType: "blob",
+      })
+      .then((res) => window.URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }))),
+  /**
+   * A temporary link to the report PDF for opening it in its own tab. A real URL rather
+   * than a blob, so saving it from the browser's viewer names the file after the report
+   * instead of a random id. signers: user ids to sign this printout instead.
    */
   pdfLink: (id: number, signers?: number[]) =>
     api
@@ -161,8 +173,11 @@ export const reportsApi = {
         params: { signers: signers?.length ? signers.join(",") : undefined },
       })
       .then((res) => `${BASE_URL}${res.data.path}`),
-  downloadPdf: async (id: number, reportNumber: string) => {
-    const res = await api.get(`/reports/${id}/pdf`, { responseType: "blob" });
+  downloadPdf: async (id: number, reportNumber: string, signers?: number[]) => {
+    const res = await api.get(`/reports/${id}/pdf`, {
+      params: { signers: signers?.length ? signers.join(",") : undefined },
+      responseType: "blob",
+    });
     const url = window.URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
     const a = document.createElement("a");
     a.href = url;

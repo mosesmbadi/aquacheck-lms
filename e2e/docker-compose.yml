@@ -1,0 +1,69 @@
+# A throwaway copy of the production stack for the browser tests, on http://localhost:18080.
+# It has its own project name and an in-memory database, so it can't touch real data.
+name: aquacheck-e2e
+
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: lims_user
+      POSTGRES_PASSWORD: lims_pass
+      POSTGRES_DB: lims_e2e
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lims_user -d lims_e2e"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # The tables come from the backend's startup rather than the Alembic migrations.
+  backend:
+    build:
+      context: ../backend
+    environment:
+      DATABASE_URL: postgresql://lims_user:lims_pass@db:5432/lims_e2e
+      SECRET_KEY: e2e-secret-key
+      ADMIN_EMAIL: e2e-admin@aquachecklab.com
+      ADMIN_PASSWORD: e2e-admin-password
+      STAFF_DEFAULT_PASSWORD: e2e-staff-password
+    volumes:
+      - ../docs:/app/docs_source:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 120s
+
+  frontend:
+    build:
+      context: ../frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:18080
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:18080
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/login"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  caddy:
+    build:
+      context: ../caddy
+    ports:
+      - "18080:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy

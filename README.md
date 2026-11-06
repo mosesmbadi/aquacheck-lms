@@ -120,6 +120,30 @@ alembic upgrade head
 ---
 
 
+## Tests
+GitHub Actions runs both suites on every pull request to main and every push to main
+(`.github/workflows/tests.yml`).
+
+### Backend (pytest)
+Needs a PostgreSQL database whose name ends in `_test`. The tests wipe it and refuse to run against anything else.
+```bash
+docker run --rm -d --name lims_test_db -p 55432:5432 -e POSTGRES_USER=lims_user -e POSTGRES_PASSWORD=lims_pass -e POSTGRES_DB=lims_test postgres:15
+cd backend
+pip install -r requirements-dev.txt
+pytest
+```
+
+### Browser (Playwright)
+Runs against a throwaway copy of the stack on http://localhost:18080, behind the same WAF and security headers as production.
+```bash
+cd e2e
+npm install
+npx playwright install chromium
+npm run stack:up
+npm test
+npm run stack:down
+```
+
 ## DB Backups
 ### Create Backup
 ./scripts/backup.sh

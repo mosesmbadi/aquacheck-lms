@@ -1,0 +1,3 @@
+-r requirements.txt
+pytest==8.2.2
+pypdf==4.2.0

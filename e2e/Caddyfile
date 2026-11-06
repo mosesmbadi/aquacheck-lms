@@ -1,0 +1,41 @@
+# Production's proxy behaviour for the browser tests, on plain HTTP. Keep it in step with
+# ../caddy/Caddyfile: the WAF directives below are a copy of production's.
+:80 {
+    encode zstd gzip
+
+    # Security headers production sends, read from its live responses. They aren't in
+    # ../caddy/Caddyfile, but X-Frame-Options is what blocks a PDF URL inside the preview
+    # frame, so the tests must run with it.
+    header {
+        X-Frame-Options DENY
+        X-Content-Type-Options nosniff
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy strict-origin-when-cross-origin
+    }
+
+    route {
+        coraza_waf {
+            load_owasp_crs
+            directives `
+                Include @coraza.conf-recommended
+                Include @crs-setup.conf.example
+                SecAction "id:900200,phase:1,nolog,pass,t:none,setvar:'tx.allowed_methods=GET HEAD POST OPTIONS PUT PATCH DELETE'"
+                Include @owasp_crs/*.conf
+                SecRuleEngine On
+                SecRequestBodyAccess On
+                SecResponseBodyAccess On
+                SecResponseBodyMimeType text/plain text/html text/xml application/json
+                SecRequestBodyLimit 13107200
+                SecRequestBodyNoFilesLimit 131072
+            `
+        }
+
+        handle /api/* {
+            reverse_proxy backend:8000
+        }
+
+        handle {
+            reverse_proxy frontend:3000
+        }
+    }
+}
