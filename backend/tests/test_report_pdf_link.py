@@ -17,17 +17,17 @@ def new_link(client, report, user, **params) -> str:
     return response.json()["path"]
 
 
-def test_link_opens_the_pdf_without_a_login_under_the_reports_name(client, make_user, make_report):
-    report = make_report()
+def test_link_opens_the_pdf_without_a_login_under_the_sample_code(client, make_user, make_report):
+    report = make_report()  # on sample QT/1/2026
     path = new_link(client, report, make_user())
 
-    assert urlparse(path).path == f"/reports/{report.id}/file/{report.report_number}.pdf"
+    assert urlparse(path).path == f"/reports/{report.id}/file/QT-1-2026.pdf"
     response = client.get(f"{API}{path}")
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/pdf"
     assert response.content.startswith(b"%PDF-")
     # Inline, so a new tab shows the report rather than downloading it.
-    assert response.headers["content-disposition"] == f'inline; filename="{report.report_number}.pdf"'
+    assert response.headers["content-disposition"] == 'inline; filename="QT-1-2026.pdf"'
 
 
 def test_link_requires_a_login_to_create(client, make_report):

@@ -27,35 +27,41 @@ def pdf_text(response) -> str:
 # ── The document ──────────────────────────────────────────────────────────────
 
 
-def test_download_is_named_after_the_report(client, make_user, make_report):
-    report = make_report()
+def test_download_is_named_after_the_sample_code(client, make_user, make_report):
+    report = make_report()  # on sample QT/1/2026
     response = client.get(f"{API}/reports/{report.id}/pdf", headers=auth(make_user()))
     pdf_reader(response)
-    assert response.headers["content-disposition"] == f'attachment; filename="{report.report_number}.pdf"'
+    assert response.headers["content-disposition"] == 'attachment; filename="QT-1-2026.pdf"'
 
 
 def test_inline_opens_in_the_browser_instead_of_downloading(client, make_user, make_report):
     report = make_report()
     response = client.get(f"{API}/reports/{report.id}/pdf", params={"inline": True}, headers=auth(make_user()))
-    assert response.headers["content-disposition"] == f'inline; filename="{report.report_number}.pdf"'
+    assert response.headers["content-disposition"] == 'inline; filename="QT-1-2026.pdf"'
 
 
-def test_pdf_title_is_the_report_number(client, make_user, make_report):
+def test_pdf_title_is_the_file_name(client, make_user, make_report):
     """Browsers offer the PDF's title as the file name when saving from the print dialog."""
     report = make_report()
     response = client.get(f"{API}/reports/{report.id}/pdf", headers=auth(make_user()))
-    assert pdf_reader(response).metadata.title == report.report_number
+    assert pdf_reader(response).metadata.title == "QT-1-2026"
 
 
-def test_slash_in_report_number_cannot_break_the_file_name(client, make_user, make_report):
-    report = make_report(report_number="RPT/2026/7")
-    headers = auth(make_user())
-    response = client.get(f"{API}/reports/{report.id}/pdf", headers=headers)
-    assert 'filename="RPT_2026_7.pdf"' in response.headers["content-disposition"]
-
-    path = client.post(f"{API}/reports/{report.id}/pdf-link", headers=headers).json()["path"]
-    assert f"/reports/{report.id}/file/RPT_2026_7.pdf?" in path
+def test_link_uses_the_same_file_name_as_the_download(client, make_user, make_report):
+    report = make_report()
+    path = client.post(f"{API}/reports/{report.id}/pdf-link", headers=auth(make_user())).json()["path"]
+    assert f"/reports/{report.id}/file/QT-1-2026.pdf?" in path
     assert client.get(f"{API}{path}").status_code == 200
+
+
+def test_report_without_a_sample_is_named_after_its_report_number(client, db, make_user, make_report):
+    report = make_report(report_number="RPT/2026/7")
+    report.content = {}
+    db.commit()
+
+    path = client.post(f"{API}/reports/{report.id}/pdf-link", headers=auth(make_user())).json()["path"]
+
+    assert f"/reports/{report.id}/file/RPT-2026-7.pdf?" in path
 
 
 def test_requested_test_without_a_result_is_reported_as_not_tested(client, db, make_user, make_report):

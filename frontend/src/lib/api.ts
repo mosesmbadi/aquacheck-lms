@@ -173,15 +173,18 @@ export const reportsApi = {
         params: { signers: signers?.length ? signers.join(",") : undefined },
       })
       .then((res) => `${BASE_URL}${res.data.path}`),
-  downloadPdf: async (id: number, reportNumber: string, signers?: number[]) => {
+  /** Saves the report PDF under the name the API gives it (the sample code). */
+  downloadPdf: async (id: number, signers?: number[]) => {
     const res = await api.get(`/reports/${id}/pdf`, {
       params: { signers: signers?.length ? signers.join(",") : undefined },
       responseType: "blob",
     });
+    const disposition: string = res.headers["content-disposition"] ?? "";
+    const match = disposition.match(/filename="?([^";]+)"?/);
     const url = window.URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${reportNumber.replace(/\//g, "_")}.pdf`;
+    a.download = match?.[1] ?? `report-${id}.pdf`;
     a.click();
     window.URL.revokeObjectURL(url);
   },

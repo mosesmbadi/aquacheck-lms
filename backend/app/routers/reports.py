@@ -783,8 +783,15 @@ def _signature_block(sig: dict, styles):
     return block
 
 
-def _pdf_filename(report: Report) -> str:
-    return f"{report.report_number.replace('/', '_')}.pdf"
+def _report_sample(report: Report, db: Session) -> Optional[Sample]:
+    sample_id = (report.content or {}).get("sample_id")
+    return db.query(Sample).filter(Sample.id == sample_id).first() if sample_id else None
+
+
+def _pdf_name(report: Report, sample: Optional[Sample]) -> str:
+    """What the report's PDF is called, without the extension: the sample code, so
+    QT/1234/2026 becomes QT-1234-2026. A report with no sample uses its report number."""
+    return (sample.sample_code if sample else report.report_number).replace("/", "-")
 
 
 # How long a preview link works: long enough to keep the preview open while printing.
@@ -800,7 +807,7 @@ def create_pdf_link(
 ):
     """A link to the report PDF that a browser can open without the Authorization header.
     Its path ends in the report's file name, so the browser's PDF viewer and print dialog
-    name the file after the report. The token has no "sub", so it can't be used to log in."""
+    use that name too. The token has no "sub", so it can't be used to log in."""
     report = db.query(Report).filter(Report.id == report_id).first()
     if not report:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
@@ -809,7 +816,8 @@ def create_pdf_link(
         {"pdf_report": report.id, "pdf_user": current_user.id, "signers": signers},
         timedelta(minutes=_PDF_LINK_EXPIRE_MINUTES),
     )
-    return {"path": f"/reports/{report.id}/file/{quote(_pdf_filename(report))}?token={token}"}
+    filename = f"{_pdf_name(report, _report_sample(report, db))}.pdf"
+    return {"path": f"/reports/{report.id}/file/{quote(filename)}?token={token}"}
 
 
 @router.get("/{report_id}/file/{filename}")
@@ -847,8 +855,7 @@ def generate_pdf(
 
     contract = db.query(Contract).filter(Contract.id == report.contract_id).first() if report.contract_id else None
     content = report.content or {}
-    sample_id = content.get("sample_id")
-    sample = db.query(Sample).filter(Sample.id == sample_id).first() if sample_id else None
+    sample = _report_sample(report, db)
 
     # A sample may be linked to a client directly (standalone sample) or through its
     # contract; fall back through both before giving up.
@@ -871,7 +878,7 @@ def generate_pdf(
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         # Browsers offer the PDF's title as the file name when saving from the print dialog.
-        buffer, pagesize=A4, title=report.report_number,
+        buffer, pagesize=A4, title=_pdf_name(report, sample),
         leftMargin=_SIDE_MARGIN, rightMargin=_SIDE_MARGIN, topMargin=10 * mm, bottomMargin=20 * mm,
     )
     story = []
@@ -1127,5 +1134,5 @@ def generate_pdf(
     return StreamingResponse(
         buffer,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'{disposition}; filename="{_pdf_filename(report)}"'},
+        headers={"Content-Disposition": f'{disposition}; filename="{_pdf_name(report, sample)}.pdf"'},
     )
