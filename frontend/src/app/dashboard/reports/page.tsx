@@ -198,7 +198,7 @@ export default function ReportsPage() {
             </Button>
           )}
           {(r.status === "issued" || r.status === "amended") && !r.content?.sample_id && (
-            <Button size="sm" variant="secondary" onClick={() => reportsApi.downloadPdf(r.id, r.report_number)}>
+            <Button size="sm" variant="secondary" onClick={() => reportsApi.downloadPdf(r.id)}>
               <Download className="w-3.5 h-3.5" /> PDF
             </Button>
           )}

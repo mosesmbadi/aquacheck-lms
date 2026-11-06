@@ -115,7 +115,7 @@ export default function TestReportPrint({ sampleId, reportId, onClose, signatori
               <Printer className="w-4 h-4" /> Print
             </button>
             <button
-              onClick={() => report && reportsApi.downloadPdf(report.id, report.report_number, signerIds)}
+              onClick={() => report && reportsApi.downloadPdf(report.id, signerIds)}
               disabled={!report}
               title="Download PDF"
               className="p-2 text-gray-600 hover:text-gray-800 rounded-lg hover:bg-gray-200 disabled:opacity-50"

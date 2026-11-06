@@ -13,7 +13,7 @@ let reportId: number;
 let reportNumber: string;
 let framingErrors: string[];
 
-const pdfFileName = () => `${reportNumber.replace(/\//g, "_")}.pdf`;
+const pdfFileName = () => `${sampleCode.replace(/\//g, "-")}.pdf`;
 
 /** An issued report on a completed sample, created through the API as staff would. */
 test.beforeAll(async ({ request }) => {
@@ -77,7 +77,7 @@ async function expectPreviewShowsThePdf(page: Page) {
   await expect(page.getByRole("button", { name: "Print", exact: true })).toBeEnabled();
 }
 
-/** Resolves once the modal's Download button delivers the file under the report's name. */
+/** Resolves once the modal's Download button delivers the file under the sample code. */
 function reportDownload(page: Page) {
   return page.waitForEvent("download", {
     predicate: (download) => download.suggestedFilename() === pdfFileName(),
@@ -110,7 +110,7 @@ test("Reports page: preview shows the report and Download names the file", async
   await download;
 });
 
-test("Open in a new tab links to the PDF under the report's name, through the WAF", async ({ page, request }) => {
+test("Open in a new tab links to the PDF under the sample code, through the WAF", async ({ page, request }) => {
   await page.goto("/dashboard/reports");
   await page.locator("tr", { hasText: reportNumber }).getByRole("button", { name: "View / Print" }).click();
 
