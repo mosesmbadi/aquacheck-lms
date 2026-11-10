@@ -722,14 +722,14 @@ def _styles():
     return {
         "body": body,
         "body_right": ParagraphStyle("body_right", parent=body, alignment=2),
-        "cell": ParagraphStyle("cell", parent=body, leading=10.5),
-        "cell_center": ParagraphStyle("cell_center", parent=body, leading=10.5, alignment=1),
+        "cell": ParagraphStyle("cell", parent=body, leading=10),
+        "cell_center": ParagraphStyle("cell_center", parent=body, leading=10, alignment=1),
         "head": ParagraphStyle("head", parent=body, fontName=FONT_BOLD, leading=10.5),
         "head_center": ParagraphStyle("head_center", parent=body, fontName=FONT_BOLD, leading=10.5, alignment=1),
         "address": ParagraphStyle("address", parent=body, fontSize=6.75, leading=10, alignment=2, textColor=colors.HexColor("#333333")),
         "report_no": ParagraphStyle("report_no", parent=body, fontSize=7, alignment=2, textColor=colors.HexColor("#555555")),
         "title": ParagraphStyle("title", parent=body, fontName=FONT_BOLD, fontSize=12, leading=15, alignment=1, spaceAfter=6),
-        "note_heading": ParagraphStyle("note_heading", parent=body, fontName=FONT_BOLD, fontSize=10, leading=13, spaceBefore=6),
+        "note_heading": ParagraphStyle("note_heading", parent=body, fontName=FONT_BOLD, fontSize=10, leading=12, spaceBefore=4),
         "note": ParagraphStyle("note", parent=body, fontSize=7.5, leading=10.5),
         "signer": ParagraphStyle("signer", parent=body, alignment=1),
         "qr_caption": ParagraphStyle("qr_caption", parent=body, fontSize=5.25, leading=7, alignment=1, textColor=colors.HexColor("#666666")),
@@ -762,7 +762,7 @@ def _signature_block(sig: dict, styles):
     if sig.get("signature_b64"):
         try:
             # Fit within the box, keeping the signature's own aspect ratio.
-            image = RLImage(io.BytesIO(base64.b64decode(sig["signature_b64"])), width=4.5 * cm, height=1.85 * cm, kind="proportional")
+            image = RLImage(io.BytesIO(base64.b64decode(sig["signature_b64"])), width=4.5 * cm, height=1.45 * cm, kind="proportional")
         except Exception:
             image = ""
     name = escape(sig.get("name") or "").upper() or "___________________"
@@ -770,7 +770,7 @@ def _signature_block(sig: dict, styles):
     block = Table(
         [[image], [Paragraph(f"<b>{name}</b><br/><i>{title}</i>", styles["signer"])]],
         colWidths=[4.8 * cm],
-        rowHeights=[1.95 * cm, None],
+        rowHeights=[1.55 * cm, None],
     )
     block.setStyle(TableStyle([
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
@@ -879,7 +879,8 @@ def generate_pdf(
     doc = SimpleDocTemplate(
         # Browsers offer the PDF's title as the file name when saving from the print dialog.
         buffer, pagesize=A4, title=_pdf_name(report, sample),
-        leftMargin=_SIDE_MARGIN, rightMargin=_SIDE_MARGIN, topMargin=10 * mm, bottomMargin=20 * mm,
+        # The footer is drawn 8–14 mm from the page bottom; content stops just above it.
+        leftMargin=_SIDE_MARGIN, rightMargin=_SIDE_MARGIN, topMargin=10 * mm, bottomMargin=16 * mm,
     )
     story = []
 
@@ -998,8 +999,8 @@ def generate_pdf(
         ("GRID", (0, 0), (-1, -1), 0.75, _BLACK),
         ("BACKGROUND", (0, 0), (-1, 0), _HEADER_BG),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, -1), 1.5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ("TOPPADDING", (0, 0), (-1, -1), 1),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
         ("LEFTPADDING", (0, 0), (-1, -1), 4),
         ("RIGHTPADDING", (0, 0), (-1, -1), 4),
     ]
@@ -1097,8 +1098,10 @@ def generate_pdf(
     signatures.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
     ]))
-    story.append(Spacer(1, 24))
+    story.append(Spacer(1, 10))
     story.append(KeepTogether([signatures]))
 
     # ── Revision history ──
@@ -1125,7 +1128,7 @@ def generate_pdf(
             ("LEFTPADDING", (0, 0), (-1, -1), 0),
             ("TOPPADDING", (0, 0), (-1, -1), 3),
         ]))
-        story.append(Spacer(1, 6))
+        story.append(Spacer(1, 4))
         story.append(history_table)
 
     doc.build(story, canvasmaker=_NumberedCanvas)
