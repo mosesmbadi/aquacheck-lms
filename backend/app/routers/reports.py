@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.units import cm, mm
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether, Image as RLImage
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether, PageBreak, Image as RLImage
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen.canvas import Canvas
@@ -77,6 +77,9 @@ PHYSIO_SECTION = "Physio-Chemical Test"
 MICRO_SECTION = "Microbiological Test"
 # Paint reports head the microbiology section this way, as on the lab's paint report.
 PAINT_MICRO_SECTION = "Microbiology Test"
+# Sections that start the report's microbiology page (matched case-insensitively, so
+# manually entered section titles count too).
+_MICRO_SECTION_TITLES = {MICRO_SECTION.lower(), PAINT_MICRO_SECTION.lower()}
 
 _SCHEDULE_SPEC_HEADERS = {
     3: "NEMA STANDARD FOR EFFLUENT WATER;\nTHIRD SCHEDULE.\nMaximum levels Permissible.",
@@ -707,8 +710,8 @@ SAMPLING_CLAUSE = (
 )
 REPRODUCTION_NOTE = "The test report shall not be reproduced without the written approval of Aquacheck Laboratories Ltd."
 
-# Report typography (points): Calibri 9 for body and results; the key, disclaimer and
-# comments use 10pt headings over 7.5pt text.
+# Report typography (points): Calibri 9 for body and results; the key and
+# comments use 10pt headings over 7.5pt text; the disclaimer uses 9pt over 7pt.
 _BLACK = colors.black
 _HEADER_BG = colors.HexColor("#e0e0e0")
 _ZEBRA_BG = colors.HexColor("#d9d9d9")
@@ -731,6 +734,9 @@ def _styles():
         "title": ParagraphStyle("title", parent=body, fontName=FONT_BOLD, fontSize=12, leading=15, alignment=1, spaceAfter=6),
         "note_heading": ParagraphStyle("note_heading", parent=body, fontName=FONT_BOLD, fontSize=10, leading=13, spaceBefore=6),
         "note": ParagraphStyle("note", parent=body, fontSize=7.5, leading=10.5),
+        # The disclaimer sits a step below the key and comments so it reads as fine print.
+        "disclaimer_heading": ParagraphStyle("disclaimer_heading", parent=body, fontName=FONT_BOLD, fontSize=9, leading=11.5, spaceBefore=6),
+        "disclaimer": ParagraphStyle("disclaimer", parent=body, fontSize=7, leading=9.5),
         "signer": ParagraphStyle("signer", parent=body, alignment=1),
         "qr_caption": ParagraphStyle("qr_caption", parent=body, fontSize=5.25, leading=7, alignment=1, textColor=colors.HexColor("#666666")),
         "issued": ParagraphStyle("issued", parent=body, fontName=FONT_BOLD, alignment=1),
@@ -881,31 +887,6 @@ def generate_pdf(
         buffer, pagesize=A4, title=_pdf_name(report, sample),
         leftMargin=_SIDE_MARGIN, rightMargin=_SIDE_MARGIN, topMargin=10 * mm, bottomMargin=20 * mm,
     )
-    story = []
-
-    # ── Header: logo, lab address, rule, report number, title ──
-    if _LOGO_PATH.is_file():
-        logo = RLImage(str(_LOGO_PATH), width=6 * cm, height=1.6 * cm, kind="proportional")
-        logo.hAlign = "LEFT"
-    else:
-        logo = Paragraph("<b>AQUACHECK</b>", st["title"])
-    header = Table(
-        [[logo, Paragraph("<br/>".join(LAB_ADDRESS_LINES), st["address"])]],
-        colWidths=[_CONTENT_WIDTH / 2] * 2,
-    )
-    header.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-        ("TOPPADDING", (0, 0), (-1, -1), 0),
-        ("LINEBELOW", (0, 0), (-1, 0), 1.5, _BLACK),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-    ]))
-    story.append(header)
-    amended = ' <font color="#b45309">[AMENDED]</font>' if report.status == ReportStatus.amended else ""
-    story.append(Paragraph(f"Report No: <b>{escape(report.report_number)}</b>{amended}", st["report_no"]))
-    story.append(Paragraph(f"<u>{escape(_content_value(content, 'report_title', 'TEST REPORT'))}</u>", st["title"]))
-
     # ── Sample details ──
     contact = (
         _content_value(content, "client_contact", None)
@@ -948,103 +929,6 @@ def generate_pdf(
         ("SAMPLING LOCATION:", _content_value(content, "sampling_location", sample.collection_location if sample else None) or "—",
          "SAMPLE LAB ID:", _content_value(content, "sample_lab_id", None) or (sample.physical_sample_id if sample else None) or (sample.sample_code if sample else report.report_number)),
     ]
-    detail_rows = [
-        [Paragraph(f"<b>{label}</b>", st["body"]), Paragraph(escape(str(value)).upper(), st["body"]),
-         Paragraph(f"<b>{label2}</b>", st["body_right"]), Paragraph(escape(str(value2)), st["body_right"])]
-        for label, value, label2, value2 in details
-    ]
-    detail_style = [
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("TOPPADDING", (0, 0), (-1, -1), 1.5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
-        ("LEFTPADDING", (0, 0), (-1, -1), 3),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
-        # The right-hand block ends flush with the results table's right edge.
-        ("RIGHTPADDING", (3, 0), (3, -1), 0),
-    ]
-    if sample and sample.notes:
-        detail_rows.append([Paragraph("<b>NOTES:</b>", st["body"]), Paragraph(escape(sample.notes), st["body"]), "", ""])
-        detail_style.append(("SPAN", (1, len(detail_rows) - 1), (3, len(detail_rows) - 1)))
-    # The right-hand values are short (dates, lab ID): their column is sized to the
-    # longest one so the block sits against the right edge, beside its labels, and
-    # the spare width goes to the left-hand values.
-    value2_width = max(stringWidth(str(value2), FONT, 9) for _, _, _, value2 in details) + 3 + 1
-    value2_width = min(max(value2_width, 1.8 * cm), 4.5 * cm)
-    details_table = Table(
-        detail_rows,
-        colWidths=[3.4 * cm, _CONTENT_WIDTH - 6.9 * cm - value2_width, 3.5 * cm, value2_width],
-    )
-    details_table.setStyle(TableStyle(detail_style))
-    story.append(details_table)
-    story.append(Spacer(1, 8))
-
-    # ── Results ──
-    # The first section's title heads the TEST column instead of taking a row of its
-    # own; later sections get a divider row. Effluent reports print one plain list.
-    columns = ["TEST", "METHOD", "RESULTS"]
-    if not is_paint:
-        columns.append(spec_header)
-    if show_who:
-        columns.append(WHO_SPEC_HEADER)
-    if show_remarks:
-        columns.append(PAINT_REMARKS_HEADER if is_paint else "REMARKS")
-    if result_sections and not is_waste:
-        columns[0] = result_sections[0]["title"]
-    header_row = [Paragraph(escape(columns[0]).upper(), st["head"])] + [
-        Paragraph(escape(c).replace("\n", "<br/>"), st["head_center"]) for c in columns[1:]
-    ]
-    rows = [header_row]
-    table_style = [
-        ("GRID", (0, 0), (-1, -1), 0.75, _BLACK),
-        ("BACKGROUND", (0, 0), (-1, 0), _HEADER_BG),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, -1), 1.5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-        ("LEFTPADDING", (0, 0), (-1, -1), 4),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-    ]
-    for section_index, section in enumerate(result_sections):
-        if not is_waste and section_index > 0:
-            rows.append([Paragraph(escape(section["title"]).upper(), st["head"])] + [""] * (len(columns) - 1))
-            table_style += [("SPAN", (0, len(rows) - 1), (-1, len(rows) - 1)), ("BACKGROUND", (0, len(rows) - 1), (-1, len(rows) - 1), _HEADER_BG)]
-        for item_index, row in enumerate(section.get("rows", [])):
-            mark = row.get("mark")
-            name = escape(str(row.get("parameter") or "—"))
-            cells = [
-                Paragraph(f"{name} <b>{_mark_markup(mark)}</b>" if mark else name, st["cell"]),
-                Paragraph(escape(str(row.get("method") or "—")), st["cell"]),
-                Paragraph(escape(str(row.get("result") or "—")), st["cell_center"]),
-            ]
-            if not is_paint:
-                cells.append(Paragraph(escape(str(row.get("specification") or "NS")), st["cell_center"]))
-            if show_who:
-                cells.append(Paragraph(escape(str(row.get("who_specification") or "NS")), st["cell_center"]))
-            if show_remarks:
-                kind = _remark_kind(row)
-                text = escape(str(row.get("remarks") or "—"))
-                if kind == "non_compliant":
-                    text = f"<b>{text}</b>"
-                elif kind == "not_tested":
-                    text = f"<i>{text}</i>"
-                if kind in _REMARK_COLORS:
-                    text = f'<font color="{_REMARK_COLORS[kind]}">{text}</font>'
-                cells.append(Paragraph(text, st["cell_center"]))
-            rows.append(cells)
-            if item_index % 2 == 0:
-                table_style.append(("BACKGROUND", (0, len(rows) - 1), (-1, len(rows) - 1), _ZEBRA_BG))
-    # Widths (cm) by printed columns: test, method, results, [spec], [WHO], [remarks].
-    widths = {
-        (True, False, True): [6.4, 4.6, 3.5, 4.5],
-        (False, False, True): [5.9, 4.9, 2.0, 3.3, 2.9],
-        (False, True, True): [4.9, 4.2, 1.9, 3.0, 2.3, 2.7],
-        (False, False, False): [6.5, 5.5, 2.6, 4.4],
-        (False, True, False): [5.8, 4.9, 2.3, 3.0, 3.0],
-    }[(is_paint, show_who, show_remarks)]
-    results_table = Table(rows, colWidths=[w * cm for w in widths], repeatRows=1)
-    results_table.setStyle(TableStyle(table_style))
-    story.append(results_table)
-    if len(rows) == 1:
-        story.append(Paragraph("No tests are linked to this report yet.", st["note"]))
 
     # ── Key ──
     legend_note = _content_value(content, "ns_definition", None)
@@ -1060,73 +944,227 @@ def generate_pdf(
     marks = mark_legend(result_sections)
     if marks:
         key_lines.append("&nbsp;&nbsp;&nbsp;&nbsp;".join(f"<b>{_mark_markup(mark)}</b> {label}" for mark, label in marks) + ".")
-    story.append(Spacer(1, 4))
-    if key_lines:
-        story.append(Paragraph("<u>KEY</u>", st["note_heading"]))
-        story += [Paragraph(line, st["note"]) for line in key_lines]
 
-    # ── Disclaimer ──
-    story.append(Paragraph("<u>DISCLAIMER</u>", st["note_heading"]))
     disclaimer = _content_value(content, "disclaimer", None) or DISCLAIMER_TEXT + ("" if sampled_by_lab else SAMPLING_CLAUSE)
-    story.append(Paragraph(escape(disclaimer), st["note"]))
-    story.append(Paragraph(REPRODUCTION_NOTE, st["note"]))
-
-    # ── Comments ──
     comments = _comment_paragraphs(content, sample, result_sections, spec_context, natural, show_remarks)
-    if comments:
-        story.append(Paragraph("<u>COMMENTS.</u>", st["note_heading"]))
-        story += [Paragraph(escape(text), st["note"]) for text in comments]
-
-    # ── Signatures, with the issue date and QR code in the middle column ──
-    blocks = [_signature_block(sig, st) for sig in _report_signers(db, content, signer_ids)]
-    half = (len(blocks) + 1) // 2
-    middle = []
+    report_signers = _report_signers(db, content, signer_ids)
+    qr_png = None
     if report.public_token:
         default_base = os.environ.get("PUBLIC_BASE_URL", "https://lims.aquachecklab.com")
         public_url = _content_value(content, "public_base_url", default_base).rstrip("/")
-        qr_b64 = generate_barcode(f"{public_url}/public/reports/{report.public_token}")
-        middle += [
-            RLImage(io.BytesIO(base64.b64decode(qr_b64)), width=1.7 * cm, height=1.7 * cm),
-            Paragraph("Scan to verify", st["qr_caption"]),
-        ]
-    middle.append(Paragraph(issued_on, st["issued"]))
-    signatures = Table(
-        [[blocks[:half] or "", middle, blocks[half:] or ""]],
-        colWidths=[6.5 * cm, _CONTENT_WIDTH - 13 * cm, 6.5 * cm],
-    )
-    signatures.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-    ]))
-    story.append(Spacer(1, 24))
-    story.append(KeepTogether([signatures]))
+        qr_png = base64.b64decode(generate_barcode(f"{public_url}/public/reports/{report.public_token}"))
 
-    # ── Revision history ──
-    history = report.revision_history or []
-    if history:
-        entries = []
-        for entry in reversed(history):
-            when = _format_date(entry.get("timestamp"))
-            if entry.get("timestamp"):
-                try:
-                    when = datetime.fromisoformat(entry["timestamp"]).astimezone(_LAB_TZ).strftime("%d %b %Y %H:%M")
-                except ValueError:
-                    pass
-            text = f"<b>{escape(str(entry.get('action') or '').upper())}</b> — {when}"
-            if entry.get("reason"):
-                text += f" — {escape(str(entry['reason']))}"
-            entries.append(text)
-        history_table = Table(
-            [[Paragraph("<b>REVISION HISTORY:</b> " + "; ".join(entries), st["history"])]],
-            colWidths=[_CONTENT_WIDTH],
+    # Columns the results tables print, by position: test, method, results, [spec], [WHO], [remarks].
+    columns = ["TEST", "METHOD", "RESULTS"]
+    if not is_paint:
+        columns.append(spec_header)
+    if show_who:
+        columns.append(WHO_SPEC_HEADER)
+    if show_remarks:
+        columns.append(PAINT_REMARKS_HEADER if is_paint else "REMARKS")
+    widths = {
+        (True, False, True): [6.4, 4.6, 3.5, 4.5],
+        (False, False, True): [5.9, 4.9, 2.0, 3.3, 2.9],
+        (False, True, True): [4.9, 4.2, 1.9, 3.0, 2.3, 2.7],
+        (False, False, False): [6.5, 5.5, 2.6, 4.4],
+        (False, True, False): [5.8, 4.9, 2.3, 3.0, 3.0],
+    }[(is_paint, show_who, show_remarks)]
+
+    # Flowables can only be laid out once, so each page builds its own copies.
+    def header_flowables():
+        if _LOGO_PATH.is_file():
+            logo = RLImage(str(_LOGO_PATH), width=6 * cm, height=1.6 * cm, kind="proportional")
+            logo.hAlign = "LEFT"
+        else:
+            logo = Paragraph("<b>AQUACHECK</b>", st["title"])
+        header = Table(
+            [[logo, Paragraph("<br/>".join(LAB_ADDRESS_LINES), st["address"])]],
+            colWidths=[_CONTENT_WIDTH / 2] * 2,
         )
-        history_table.setStyle(TableStyle([
-            ("LINEABOVE", (0, 0), (-1, 0), 0.5, colors.HexColor("#cccccc")),
+        header.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ("LEFTPADDING", (0, 0), (-1, -1), 0),
-            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("LINEBELOW", (0, 0), (-1, 0), 1.5, _BLACK),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
         ]))
-        story.append(Spacer(1, 6))
-        story.append(history_table)
+        amended = ' <font color="#b45309">[AMENDED]</font>' if report.status == ReportStatus.amended else ""
+
+        detail_rows = [
+            [Paragraph(f"<b>{label}</b>", st["body"]), Paragraph(escape(str(value)).upper(), st["body"]),
+             Paragraph(f"<b>{label2}</b>", st["body_right"]), Paragraph(escape(str(value2)), st["body_right"])]
+            for label, value, label2, value2 in details
+        ]
+        detail_style = [
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("TOPPADDING", (0, 0), (-1, -1), 1.5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
+            ("LEFTPADDING", (0, 0), (-1, -1), 3),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+            # The right-hand block ends flush with the results table's right edge.
+            ("RIGHTPADDING", (3, 0), (3, -1), 0),
+        ]
+        if sample and sample.notes:
+            detail_rows.append([Paragraph("<b>NOTES:</b>", st["body"]), Paragraph(escape(sample.notes), st["body"]), "", ""])
+            detail_style.append(("SPAN", (1, len(detail_rows) - 1), (3, len(detail_rows) - 1)))
+        # The right-hand values are short (dates, lab ID): their column is sized to the
+        # longest one so the block sits against the right edge, beside its labels, and
+        # the spare width goes to the left-hand values.
+        value2_width = max(stringWidth(str(value2), FONT, 9) for _, _, _, value2 in details) + 3 + 1
+        value2_width = min(max(value2_width, 1.8 * cm), 4.5 * cm)
+        details_table = Table(
+            detail_rows,
+            colWidths=[3.4 * cm, _CONTENT_WIDTH - 6.9 * cm - value2_width, 3.5 * cm, value2_width],
+        )
+        details_table.setStyle(TableStyle(detail_style))
+        return [
+            header,
+            Paragraph(f"Report No: <b>{escape(report.report_number)}</b>{amended}", st["report_no"]),
+            Paragraph(f"<u>{escape(_content_value(content, 'report_title', 'TEST REPORT'))}</u>", st["title"]),
+            details_table,
+            Spacer(1, 8),
+        ]
+
+    def results_flowables(sections):
+        # The first section's title heads the TEST column instead of taking a row of its
+        # own; later sections get a divider row. Effluent reports print one plain list.
+        page_columns = list(columns)
+        if sections and not is_waste:
+            page_columns[0] = sections[0]["title"]
+        rows = [[Paragraph(escape(page_columns[0]).upper(), st["head"])] + [
+            Paragraph(escape(c).replace("\n", "<br/>"), st["head_center"]) for c in page_columns[1:]
+        ]]
+        table_style = [
+            ("GRID", (0, 0), (-1, -1), 0.75, _BLACK),
+            ("BACKGROUND", (0, 0), (-1, 0), _HEADER_BG),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 1.5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ]
+        for section_index, section in enumerate(sections):
+            if not is_waste and section_index > 0:
+                rows.append([Paragraph(escape(section["title"]).upper(), st["head"])] + [""] * (len(columns) - 1))
+                table_style += [("SPAN", (0, len(rows) - 1), (-1, len(rows) - 1)), ("BACKGROUND", (0, len(rows) - 1), (-1, len(rows) - 1), _HEADER_BG)]
+            for item_index, row in enumerate(section.get("rows", [])):
+                mark = row.get("mark")
+                name = escape(str(row.get("parameter") or "—"))
+                cells = [
+                    Paragraph(f"{name} <b>{_mark_markup(mark)}</b>" if mark else name, st["cell"]),
+                    Paragraph(escape(str(row.get("method") or "—")), st["cell"]),
+                    Paragraph(escape(str(row.get("result") or "—")), st["cell_center"]),
+                ]
+                if not is_paint:
+                    cells.append(Paragraph(escape(str(row.get("specification") or "NS")), st["cell_center"]))
+                if show_who:
+                    cells.append(Paragraph(escape(str(row.get("who_specification") or "NS")), st["cell_center"]))
+                if show_remarks:
+                    kind = _remark_kind(row)
+                    text = escape(str(row.get("remarks") or "—"))
+                    if kind == "non_compliant":
+                        text = f"<b>{text}</b>"
+                    elif kind == "not_tested":
+                        text = f"<i>{text}</i>"
+                    if kind in _REMARK_COLORS:
+                        text = f'<font color="{_REMARK_COLORS[kind]}">{text}</font>'
+                    cells.append(Paragraph(text, st["cell_center"]))
+                rows.append(cells)
+                if item_index % 2 == 0:
+                    table_style.append(("BACKGROUND", (0, len(rows) - 1), (-1, len(rows) - 1), _ZEBRA_BG))
+        results_table = Table(rows, colWidths=[w * cm for w in widths], repeatRows=1)
+        results_table.setStyle(TableStyle(table_style))
+        flowables = [results_table]
+        if len(rows) == 1:
+            flowables.append(Paragraph("No tests are linked to this report yet.", st["note"]))
+        return flowables
+
+    def closing_flowables():
+        flowables = [Spacer(1, 4)]
+        # ── Key ──
+        if key_lines:
+            flowables.append(Paragraph("<u>KEY</u>", st["note_heading"]))
+            flowables += [Paragraph(line, st["note"]) for line in key_lines]
+
+        # ── Disclaimer ──
+        flowables.append(Paragraph("<u>DISCLAIMER</u>", st["disclaimer_heading"]))
+        flowables.append(Paragraph(escape(disclaimer), st["disclaimer"]))
+        flowables.append(Paragraph(REPRODUCTION_NOTE, st["disclaimer"]))
+
+        # ── Comments ──
+        if comments:
+            flowables.append(Paragraph("<u>COMMENTS.</u>", st["note_heading"]))
+            flowables += [Paragraph(escape(text), st["note"]) for text in comments]
+
+        # ── Signatures, with the issue date and QR code in the middle column ──
+        blocks = [_signature_block(sig, st) for sig in report_signers]
+        half = (len(blocks) + 1) // 2
+        middle = []
+        if qr_png:
+            middle += [
+                RLImage(io.BytesIO(qr_png), width=1.7 * cm, height=1.7 * cm),
+                Paragraph("Scan to verify", st["qr_caption"]),
+            ]
+        middle.append(Paragraph(issued_on, st["issued"]))
+        signatures = Table(
+            [[blocks[:half] or "", middle, blocks[half:] or ""]],
+            colWidths=[6.5 * cm, _CONTENT_WIDTH - 13 * cm, 6.5 * cm],
+        )
+        signatures.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ]))
+        flowables.append(Spacer(1, 24))
+        flowables.append(KeepTogether([signatures]))
+
+        # ── Revision history ──
+        history = report.revision_history or []
+        if history:
+            entries = []
+            for entry in reversed(history):
+                when = _format_date(entry.get("timestamp"))
+                if entry.get("timestamp"):
+                    try:
+                        when = datetime.fromisoformat(entry["timestamp"]).astimezone(_LAB_TZ).strftime("%d %b %Y %H:%M")
+                    except ValueError:
+                        pass
+                text = f"<b>{escape(str(entry.get('action') or '').upper())}</b> — {when}"
+                if entry.get("reason"):
+                    text += f" — {escape(str(entry['reason']))}"
+                entries.append(text)
+            history_table = Table(
+                [[Paragraph("<b>REVISION HISTORY:</b> " + "; ".join(entries), st["history"])]],
+                colWidths=[_CONTENT_WIDTH],
+            )
+            history_table.setStyle(TableStyle([
+                ("LINEABOVE", (0, 0), (-1, 0), 0.5, colors.HexColor("#cccccc")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ]))
+            flowables.append(Spacer(1, 6))
+            flowables.append(history_table)
+        return flowables
+
+    # The microbiological results (and any sections after them) print on a page of
+    # their own, under the same header, sample details, notes and signatures.
+    page_sections = [result_sections]
+    if not is_waste:
+        micro_start = next(
+            (i for i, section in enumerate(result_sections)
+             if i > 0 and str(section.get("title") or "").strip().lower() in _MICRO_SECTION_TITLES),
+            None,
+        )
+        if micro_start is not None:
+            page_sections = [result_sections[:micro_start], result_sections[micro_start:]]
+
+    story = []
+    for page_index, sections in enumerate(page_sections):
+        if page_index:
+            story.append(PageBreak())
+        story += header_flowables()
+        story += results_flowables(sections)
+        story += closing_flowables()
 
     doc.build(story, canvasmaker=_NumberedCanvas)
     buffer.seek(0)
