@@ -408,6 +408,16 @@ export const resultQualifiersApi = {
   seed: () => api.post<{ added: number; message: string }>("/result-qualifiers/seed"),
 };
 
+// ─── Scientific Names (italicised on the test report) ────────────────────────
+export const scientificNamesApi = {
+  list: () => api.get<import("./types").ScientificName[]>("/scientific-names"),
+  create: (data: { term: string; is_active?: boolean }) =>
+    api.post<import("./types").ScientificName>("/scientific-names", data),
+  update: (id: number, data: Partial<import("./types").ScientificName>) =>
+    api.put<import("./types").ScientificName>(`/scientific-names/${id}`, data),
+  delete: (id: number) => api.delete(`/scientific-names/${id}`),
+};
+
 // ─── Invoices ─────────────────────────────────────────────────────────────────
 export const invoicesApi = {
   list: () => api.get<Invoice[]>("/invoices"),

@@ -37,6 +37,7 @@ from app.services.audit import log_action
 from app.services.auth import create_access_token, decode_access_token
 from app.services.barcode import generate_barcode
 from app.services.compliance import evaluate_item_remark, legend_entries
+from app.services.scientific_names import load_italicizer
 from app.services.signatories import frozen_signatories, resolve_signatories
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
@@ -873,6 +874,7 @@ def generate_pdf(
     show_who, show_remarks = report_options(content, customer, sample)
     result_sections = _result_sections(items, result_by_item, content, sample, qualifiers, show_who)
     spec_header, spec_context, natural = _specification_context(sample, items, content, show_who)
+    italicize = load_italicizer(db)
     st = _styles()
 
     buffer = io.BytesIO()
@@ -1010,7 +1012,7 @@ def generate_pdf(
             table_style += [("SPAN", (0, len(rows) - 1), (-1, len(rows) - 1)), ("BACKGROUND", (0, len(rows) - 1), (-1, len(rows) - 1), _HEADER_BG)]
         for item_index, row in enumerate(section.get("rows", [])):
             mark = row.get("mark")
-            name = escape(str(row.get("parameter") or "—"))
+            name = italicize(escape(str(row.get("parameter") or "—")))
             cells = [
                 Paragraph(f"{name} <b>{_mark_markup(mark)}</b>" if mark else name, st["cell"]),
                 Paragraph(escape(str(row.get("method") or "—")), st["cell"]),
@@ -1076,7 +1078,7 @@ def generate_pdf(
     comments = _comment_paragraphs(content, sample, result_sections, spec_context, natural, show_remarks)
     if comments:
         story.append(Paragraph("<u>COMMENTS.</u>", st["note_heading"]))
-        story += [Paragraph(escape(text), st["note"]) for text in comments]
+        story += [Paragraph(italicize(escape(text)), st["note"]) for text in comments]
 
     # ── Signatures, with the issue date and QR code in the middle column ──
     blocks = [_signature_block(sig, st) for sig in _report_signers(db, content, signer_ids)]
