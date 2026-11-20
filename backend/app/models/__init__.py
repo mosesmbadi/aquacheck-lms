@@ -20,6 +20,7 @@ from app.models.calibration_record import CalibrationRecord, CalibrationResult
 from app.models.invoice import Invoice, InvoiceStatus
 from app.models.test_package import TestPackage, TestPackageItem
 from app.models.result_qualifier import ResultQualifier, QualifierKind, LegendScope
+from app.models.scientific_name import ScientificName
 
 __all__ = [
     "User", "UserRole",
@@ -42,4 +43,5 @@ __all__ = [
     "Invoice", "InvoiceStatus",
     "TestPackage", "TestPackageItem",
     "ResultQualifier", "QualifierKind", "LegendScope",
+    "ScientificName",
 ]

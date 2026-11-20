@@ -1,20 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { apiErrorMessage } from "@/lib/utils";
-import { resultQualifiersApi } from "@/lib/api";
-import type { ResultQualifier, QualifierKind } from "@/lib/types";
+import { resultQualifiersApi, scientificNamesApi } from "@/lib/api";
+import type { ResultQualifier, QualifierKind, ScientificName } from "@/lib/types";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
-import { Plus, Pencil, ToggleLeft, ToggleRight, Trash2, Tags, BookOpen } from "lucide-react";
+import { Plus, Pencil, ToggleLeft, ToggleRight, Trash2, Tags, BookOpen, Italic, Check, X } from "lucide-react";
 
 // ─── Form schema ─────────────────────────────────────────────────────────────
 
@@ -56,6 +56,156 @@ function ruleSummary(q: ResultQualifier): string {
   else parts.push("no numeric value");
   parts.push(q.is_detected ? "analyte present" : "analyte absent");
   return parts.join(" · ");
+}
+
+// ─── Scientific names (printed in italics on the test report) ───────────────
+
+function ScientificNamesCard() {
+  const qc = useQueryClient();
+  const [newTerm, setNewTerm] = useState("");
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editTerm, setEditTerm] = useState("");
+  const [error, setError] = useState("");
+
+  const { data: names = [], isLoading } = useQuery<ScientificName[]>({
+    queryKey: ["scientific-names"],
+    queryFn: () => scientificNamesApi.list().then((r) => r.data),
+  });
+
+  const invalidate = () => {
+    setError("");
+    qc.invalidateQueries({ queryKey: ["scientific-names"] });
+  };
+  const onError = (fallback: string) => (err: unknown) => setError(apiErrorMessage(err, fallback));
+
+  const createMutation = useMutation({
+    mutationFn: (term: string) => scientificNamesApi.create({ term }),
+    onSuccess: () => { setNewTerm(""); invalidate(); },
+    onError: onError("Could not add the name."),
+  });
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Partial<ScientificName> }) =>
+      scientificNamesApi.update(id, data),
+    onSuccess: () => { setEditingId(null); invalidate(); },
+    onError: onError("Could not save the name."),
+  });
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => scientificNamesApi.delete(id),
+    onSuccess: invalidate,
+    onError: onError("Could not delete the name."),
+  });
+
+  function add(e: FormEvent) {
+    e.preventDefault();
+    if (newTerm.trim()) createMutation.mutate(newTerm.trim());
+  }
+
+  function saveEdit(id: number) {
+    if (editTerm.trim()) updateMutation.mutate({ id, data: { term: editTerm.trim() } });
+  }
+
+  return (
+    <Card className="overflow-hidden">
+      <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-2">
+        <Italic className="w-4 h-4 text-primary-600" />
+        <h3 className="text-sm font-semibold text-gray-900">Scientific names</h3>
+        <Badge variant="default">{names.length}</Badge>
+      </div>
+      <div className="px-4 py-3 space-y-3">
+        <p className="text-xs text-gray-500 max-w-3xl">
+          Printed in <i>italics</i> on the test report wherever they appear: test names and
+          comments. Enter only the part that is italic by convention, e.g.{" "}
+          <i>Salmonella</i>, not &ldquo;Salmonella spp&rdquo;. Upper/lower case is ignored, and{" "}
+          &ldquo;E.coli&rdquo; matches &ldquo;E. coli&rdquo;.
+        </p>
+        <form onSubmit={add} className="flex items-end gap-2 max-w-md">
+          <div className="flex-1">
+            <Input
+              value={newTerm}
+              onChange={(e) => setNewTerm(e.target.value)}
+              placeholder="e.g. Klebsiella pneumoniae"
+            />
+          </div>
+          <Button type="submit" loading={createMutation.isPending} disabled={!newTerm.trim()}>
+            <Plus className="w-4 h-4 mr-1" /> Add
+          </Button>
+        </form>
+        {error && (
+          <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded border border-red-200">{error}</p>
+        )}
+      </div>
+      <table className="w-full text-sm">
+        <tbody className="divide-y divide-gray-100 border-t border-gray-100">
+          {isLoading ? (
+            <tr><td className="px-3 py-6 text-center text-gray-400 text-xs">Loading…</td></tr>
+          ) : names.length === 0 ? (
+            <tr><td className="px-3 py-6 text-center text-gray-400 text-xs">No scientific names defined.</td></tr>
+          ) : (
+            names.map((item) => (
+              <tr key={item.id} className={`hover:bg-blue-50/50 ${item.is_active ? "" : "opacity-50"}`}>
+                <td className="px-3 py-2 text-gray-900">
+                  {editingId === item.id ? (
+                    <input
+                      autoFocus
+                      value={editTerm}
+                      onChange={(e) => setEditTerm(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") saveEdit(item.id);
+                        if (e.key === "Escape") setEditingId(null);
+                      }}
+                      className="w-full max-w-sm rounded border border-gray-300 px-2 py-1 text-sm"
+                    />
+                  ) : (
+                    <i>{item.term}</i>
+                  )}
+                </td>
+                <td className="px-3 py-2">
+                  <div className="flex items-center justify-end gap-1">
+                    {editingId === item.id ? (
+                      <>
+                        <button onClick={() => saveEdit(item.id)} className="p-1.5 text-gray-500 hover:text-green-600 rounded" title="Save">
+                          <Check className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => setEditingId(null)} className="p-1.5 text-gray-500 hover:text-gray-800 rounded" title="Cancel">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => { setEditingId(item.id); setEditTerm(item.term); }}
+                        className="p-1.5 text-gray-500 hover:text-primary-600 rounded"
+                        title="Edit"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => updateMutation.mutate({ id: item.id, data: { is_active: !item.is_active } })}
+                      className="p-1.5 text-gray-500 hover:text-primary-600 rounded"
+                      title={item.is_active ? "Deactivate" : "Activate"}
+                    >
+                      {item.is_active ? <ToggleRight className="w-4 h-4 text-green-600" /> : <ToggleLeft className="w-4 h-4" />}
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (confirm(`Delete "${item.term}"? Reports will print it in normal type.`)) {
+                          deleteMutation.mutate(item.id);
+                        }
+                      }}
+                      className="p-1.5 text-gray-500 hover:text-red-600 rounded"
+                      title="Delete"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </Card>
+  );
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -332,6 +482,8 @@ export default function ResultQualifiersPage() {
             </Card>
           </>
         )}
+
+        <ScientificNamesCard />
       </div>
 
       <Modal

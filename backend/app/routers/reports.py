@@ -36,7 +36,8 @@ from app.schemas.report import ReportCreate, ReportUpdate, ReportOut
 from app.services.audit import log_action
 from app.services.auth import create_access_token, decode_access_token
 from app.services.barcode import generate_barcode
-from app.services.compliance import evaluate_item_remark, legend_entries
+from app.services.compliance import evaluate_item_remark, evaluate_remark, legend_entries, RemarkKind
+from app.services.scientific_names import load_italicizer
 from app.services.signatories import frozen_signatories, resolve_signatories
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
@@ -293,6 +294,10 @@ def _result_sections(items, result_by_item, content: dict, sample=None, qualifie
         remark = evaluate_item_remark(
             item.remark_rule, item.standard_limit, value, qualifiers, stored_remark, who_specification
         )
+        # Which printed limit(s) the result breaks — bolded on reports without REMARKS.
+        limit_based = remark.kind == RemarkKind.non_compliant and item.remark_rule not in ("manual", "contamination_rating")
+        exceeds_spec = limit_based and evaluate_remark(item.standard_limit, value, qualifiers).kind == RemarkKind.non_compliant
+        exceeds_who = limit_based and show_who and evaluate_remark(who_specification, value, qualifiers).kind == RemarkKind.non_compliant
         sections.setdefault(_section_title(item, is_paint), []).append({
             "parameter": item.name or "—",
             "mark": parameter_mark(item, sample, content),
@@ -302,6 +307,8 @@ def _result_sections(items, result_by_item, content: dict, sample=None, qualifie
             "who_specification": who_specification,
             "remarks": remark.label,
             "remark_kind": remark.kind.value,
+            "exceeds_spec": exceeds_spec,
+            "exceeds_who": exceeds_who,
         })
     return [{"title": title, "rows": rows} for title, rows in sections.items() if rows]
 
@@ -879,6 +886,13 @@ def generate_pdf(
     show_who, show_remarks = report_options(content, customer, sample)
     result_sections = _result_sections(items, result_by_item, content, sample, qualifiers, show_who)
     spec_header, spec_context, natural = _specification_context(sample, items, content, show_who)
+    italicize = load_italicizer(db)
+    # Without a REMARKS column, a result over a printed limit is shown by bolding the
+    # test, its result and the limit(s) it exceeds.
+    highlight_exceeded = not show_remarks and not is_paint
+    any_exceeded = highlight_exceeded and any(
+        _remark_kind(row) == "non_compliant" for section in result_sections for row in section.get("rows", [])
+    )
     st = _styles()
 
     buffer = io.BytesIO()
@@ -942,9 +956,14 @@ def generate_pdf(
             else _legend_entries(qualifiers, is_waste, show_who or category == "swimming_pool")
         )
         key_lines = [", ".join(f"<b>{escape(code)}:</b> {escape(label)}" for code, label in entries) + "."] if entries else []
+    if any_exceeded:
+        key_lines.append("<b>Bold</b>: the result exceeds the limit printed in bold beside it.")
     marks = mark_legend(result_sections)
     if marks:
         key_lines.append("&nbsp;&nbsp;&nbsp;&nbsp;".join(f"<b>{_mark_markup(mark)}</b> {label}" for mark, label in marks) + ".")
+
+    def _bold_if(text, on):
+        return f"<b>{text}</b>" if on else text
 
     disclaimer = _content_value(content, "disclaimer", None) or DISCLAIMER_TEXT + ("" if sampled_by_lab else SAMPLING_CLAUSE)
     comments = _comment_paragraphs(content, sample, result_sections, spec_context, natural, show_remarks)
@@ -1050,17 +1069,24 @@ def generate_pdf(
                 rows.append([Paragraph(escape(section["title"]).upper(), st["head"])] + [""] * (len(columns) - 1))
                 table_style += [("SPAN", (0, len(rows) - 1), (-1, len(rows) - 1)), ("BACKGROUND", (0, len(rows) - 1), (-1, len(rows) - 1), _HEADER_BG)]
             for item_index, row in enumerate(section.get("rows", [])):
+                exceeded = highlight_exceeded and _remark_kind(row) == "non_compliant"
                 mark = row.get("mark")
-                name = escape(str(row.get("parameter") or "—"))
+                name = _bold_if(italicize(escape(str(row.get("parameter") or "—"))), exceeded)
                 cells = [
                     Paragraph(f"{name} <b>{_mark_markup(mark)}</b>" if mark else name, st["cell"]),
                     Paragraph(escape(str(row.get("method") or "—")), st["cell"]),
-                    Paragraph(escape(str(row.get("result") or "—")), st["cell_center"]),
+                    Paragraph(_bold_if(escape(str(row.get("result") or "—")), exceeded), st["cell_center"]),
                 ]
                 if not is_paint:
-                    cells.append(Paragraph(escape(str(row.get("specification") or "NS")), st["cell_center"]))
+                    cells.append(Paragraph(
+                        _bold_if(escape(str(row.get("specification") or "NS")), exceeded and row.get("exceeds_spec")),
+                        st["cell_center"],
+                    ))
                 if show_who:
-                    cells.append(Paragraph(escape(str(row.get("who_specification") or "NS")), st["cell_center"]))
+                    cells.append(Paragraph(
+                        _bold_if(escape(str(row.get("who_specification") or "NS")), exceeded and row.get("exceeds_who")),
+                        st["cell_center"],
+                    ))
                 if show_remarks:
                     kind = _remark_kind(row)
                     text = escape(str(row.get("remarks") or "—"))
@@ -1096,7 +1122,7 @@ def generate_pdf(
         # ── Comments ──
         if comments:
             flowables.append(Paragraph("<u>COMMENTS.</u>", st["note_heading"]))
-            flowables += [Paragraph(escape(text), st["note"]) for text in comments]
+            flowables += [Paragraph(italicize(escape(text)), st["note"]) for text in comments]
 
         # ── Signatures, with the issue date and QR code in the middle column ──
         blocks = [_signature_block(sig, st) for sig in report_signers]

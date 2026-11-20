@@ -130,6 +130,13 @@ export type RemarkRule = "compliance" | "contamination_rating" | "manual";
 export type QualifierKind = "qualifier" | "abbreviation";
 export type LegendScope = "all" | "waste" | "non_waste";
 
+/** A scientific name the printed test report shows in italics wherever it appears. */
+export interface ScientificName {
+  id: number;
+  term: string;
+  is_active: boolean;
+}
+
 export interface ResultQualifier {
   id: number;
   code: string;

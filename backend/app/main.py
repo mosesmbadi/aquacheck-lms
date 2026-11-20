@@ -28,7 +28,7 @@ from app.routers import (
     public,
     invoices,
 )
-from app.routers import calibration_records, test_packages, result_qualifiers
+from app.routers import calibration_records, test_packages, result_qualifiers, scientific_names
 from app.routers import admin
 
 app = FastAPI(
@@ -61,7 +61,7 @@ for router_module in [
     auth, users, customers, contracts, samples,
     test_results, equipment, calibration_records, reports, complaints, nonconformities, quality,
     test_catalog, test_packages, documents, inventory, quotations, public, invoices,
-    result_qualifiers, admin,
+    result_qualifiers, scientific_names, admin,
 ]:
     app.include_router(router_module.router, prefix=API_PREFIX)
 
@@ -691,6 +691,11 @@ def on_startup():
             print(f"[LIMS] Seeded {qual_added} result qualifiers / legend abbreviations.")
         else:
             print("[LIMS] Result qualifiers already up to date.")
+
+        from app.services.scientific_names import seed_scientific_names
+        sci_added = seed_scientific_names(db)
+        if sci_added:
+            print(f"[LIMS] Seeded {sci_added} scientific names (printed in italics).")
 
         from app.services.seed_customers import seed_customers
         cust_added = seed_customers(db)
